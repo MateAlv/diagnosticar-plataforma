@@ -14,7 +14,7 @@ Subtítulo: diagnostic.ar ayuda a las familias a registrar síntomas y obtener o
 
 En Argentina, muchas familias atraviesan años de incertidumbre hasta obtener un diagnóstico preciso. Diagnostic.ar nace para ayudar a acortar ese camino.
 Nuestra plataforma digital, gratuita y abierta a toda la comunidad, permite registrar síntomas de manera sencilla y segura. A partir de esta información, el sistema genera recomendaciones personalizadas, sugiriendo qué otros síntomas podría ser útil observar y qué estudios complementarios podrían acercar al diagnóstico correcto.
-Con un enfoque en la innovación, la accesibilidad y la excelencia científica, Diagnostik.ar busca transformar el paradigma del diagnóstico de enfermedades poco frecuentes, apoyándose en la colaboración con las familias y en un compromiso absoluto con la seguridad y privacidad de los datos.
+Con un enfoque en la innovación, la accesibilidad y la excelencia científica, Diagnostic.ar busca transformar el paradigma del diagnóstico de enfermedades poco frecuentes, apoyándose en la colaboración con las familias y en un compromiso absoluto con la seguridad y privacidad de los datos.
 
 El proyecto es desarrollado por el Grupo de Genómica Clínica de la Facultad de Ciencias Exactas y Naturales de la Universidad de Buenos Aires
 
@@ -75,7 +75,7 @@ y con esto se actualizan 2)  nuevas sugerencias 3) orientacion diagnostica
 ## orientacion dianostica (hay que desarollar el algoritmo => gian)
 La idea es que de acuerdo a los genes que GenPhenIA priorza lleguemos a un (sub)grupo de especualidad diagnostica
 para esto vamos a en principio usar los paneles/clasificacion de bitgenia (que son listas curadas mandualmente), pero podemos mas adelante buscar opciones
-Doy un ejemplo: Para "Desordenes Metaboico" hay 3-4 grupos:
+Doy un ejemplo: Para "Desordenes Metabolico" hay 3-4 grupos:
 
 1) Enfermedades Lisosomales:
 
