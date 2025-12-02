@@ -1,0 +1,36 @@
+import { Pool } from 'pg';
+import { DATABASE_URL } from '../config.js';
+
+const pool = new Pool({
+    connectionString: DATABASE_URL,
+});
+
+export const query = (text: string, params?: any[]) => pool.query(text, params);
+
+export async function migrate() {
+    const client = await pool.connect();
+    try {
+        await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        full_name VARCHAR(255),
+        organization VARCHAR(255),
+        role VARCHAR(50) DEFAULT 'user',
+        status VARCHAR(50) DEFAULT 'active',
+        token_version INTEGER DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        last_login_at TIMESTAMP WITH TIME ZONE,
+        verification_token VARCHAR(255),
+        verified BOOLEAN DEFAULT FALSE
+      );
+    `);
+        console.log('Migration completed: users table created/verified.');
+    } catch (err) {
+        console.error('Migration failed:', err);
+    } finally {
+        client.release();
+    }
+}

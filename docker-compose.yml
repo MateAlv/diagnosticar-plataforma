@@ -1,28 +1,6 @@
 version: '3.8'
 
 services:
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/diagnostic_ar
-      - JWT_ACCESS_SECRET=dev_secret_access
-      - JWT_REFRESH_SECRET=dev_secret_refresh
-      - SMTP_HOST=smtp.gmail.com
-      - SMTP_PORT=587
-      - SMTP_USER=${SMTP_USER}
-      - SMTP_PASS=${SMTP_PASS}
-      - NEXT_PUBLIC_API_URL=http://localhost:3000/api
-    depends_on:
-      - db
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
-
   db:
     image: postgres:15-alpine
     environment:

@@ -9,5 +9,8 @@ down:
 logs:
 	docker-compose logs -f
 
-shell:
+shell-frontend:
 	docker-compose exec frontend sh
+
+shell-backend:
+	docker-compose exec backend sh
