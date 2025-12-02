@@ -86,7 +86,22 @@ export default function SignUpPage() {
           <Image src="/brand/logo.png" alt="LUCAI" width={160} height={36} priority />
         </div>
 
-        <h2 className="kicker">Join LUCAI and co-create the future of bio-AI</h2>
+        <h2 className="kicker">Creá tu cuenta en Diagnostic.ar</h2>
+
+        <div className="mx-auto max-w-2xl mb-8 text-center space-y-4">
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-800 text-left">
+            <p className="font-bold mb-2 flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+              Tu privacidad es nuestra prioridad
+            </p>
+            <ul className="list-disc list-inside space-y-1 opacity-90 ml-1">
+              <li><strong>No pedimos datos personales identificatorios</strong> (DNI, nombre real completo, etc.).</li>
+              <li>Podés usar un <strong>nombre de fantasía</strong> o apodo.</li>
+              <li>No compartimos tus datos con terceros ni enviamos spam.</li>
+              <li>La opción de re-contacto es totalmente opcional.</li>
+            </ul>
+          </div>
+        </div>
 
         <form
           onSubmit={handleSubmit}
@@ -95,7 +110,7 @@ export default function SignUpPage() {
         >
           <input
             className="pill-input"
-            placeholder="Nombre o apodo"
+            placeholder="Nombre de fantasía o Apodo"
             value={fullName}
             onChange={(event) => setFullName(event.target.value)}
             autoComplete="name"

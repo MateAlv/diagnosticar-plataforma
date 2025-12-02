@@ -6,7 +6,7 @@ ENV NEXT_PUBLIC_MICROIN_URL=${NEXT_PUBLIC_MICROIN_URL}
 WORKDIR /app
 COPY package.json package-lock.json ./
 # Evita problemas con seccomp/clone3 en hosts antiguos usando Alpine (musl)
-RUN npm ci --no-audit --no-fund
+RUN npm install --no-audit --no-fund
 
 FROM deps AS builder
 ARG NEXT_PUBLIC_MICROIN_URL
