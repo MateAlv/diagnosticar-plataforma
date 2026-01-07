@@ -145,5 +145,4 @@ Estos cuadros suelen ser evaluados por especialistas como médicos endocrinólog
 
 Disclaimer breve: “Este documento no constituye un diagnóstico médico. Es una orientación generada por métodos computacionales.”
 
-
-
+### Notas 

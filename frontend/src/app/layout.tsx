@@ -8,8 +8,11 @@ const sora = Sora({ subsets: ["latin"], weight: ["400", "600", "700", "800"], di
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], weight: ["400", "500", "600", "700"], display: "swap", variable: "--font-space" });
 
 export const metadata = {
-  title: "LUCAI — Chat",
-  description: "Login + Chat",
+  title: "Diagnostic.ar",
+  description: "Plataforma de orientación diagnóstica para EPoFs.",
+  icons: {
+    icon: "/icon.svg",
+  },
   robots: { index: false, follow: false },
 };
 

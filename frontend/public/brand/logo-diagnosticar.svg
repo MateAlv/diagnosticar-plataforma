@@ -1,0 +1,11 @@
+<svg width="250" height="60" viewBox="0 0 250 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <g transform="translate(15, 12)">
+         <path d="M10 5 C 25 5, 25 35, 10 35" stroke="#00A896" stroke-width="3" stroke-linecap="round" fill="none"/>
+         <path d="M25 5 C 10 5, 10 35, 25 35" stroke="#333333" stroke-width="3" stroke-linecap="round" fill="none"/>
+         <circle cx="17.5" cy="20" r="3" fill="#00A896"/>
+    </g>
+
+    <text x="60" y="38" font-family="sans-serif" font-size="24" fill="#333333">
+        <tspan font-weight="bold">Diagnostic</tspan><tspan font-weight="normal" fill="#00A896">.ar</tspan>
+    </text>
+</svg>

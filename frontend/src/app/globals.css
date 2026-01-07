@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import url("/vendor/lucai.scoped.css") layer(vendor);
 
-/* ============== TOKENS (LUCAI dark) ============== */
+/* ============== TOKENS (base) ============== */
 :root {
   --lu-bg: #0b0b0b;
   --lu-text: #f5f6f7;
@@ -13,7 +13,7 @@
   --lu-amber: #fcb900;
   /* amarillo */
   --lu-green: #39d067;
-  /* verde LUCAI */
+  /* verde principal */
   --lu-cta-grad: linear-gradient(135deg, var(--lu-amber) 0%, var(--lu-accent) 100%);
   --lu-shadow: 0 20px 60px rgba(0, 0, 0, .35);
   --lu-radius: 28px;
@@ -21,7 +21,7 @@
   /* ancho mínimo del botón Send/Enter */
 }
 
-/* ============== THEME: MedPhenAI (Calm & Trust) ============== */
+/* ============== THEME: Diagnostic (Calm & Trust) ============== */
 .theme-medphenai {
   --lu-bg: #ffffff;
   --lu-text: #334155;
@@ -62,8 +62,8 @@
   animation: breathe 5s ease-in-out infinite;
 }
 
-/* Background gradient for MedPhenAI landing */
-.medphenai-hero-bg {
+/* Background gradient for Diagnostic landing */
+.diagnostic-hero-bg {
   background: radial-gradient(circle at 50% 50%, var(--lu-accent-light) 0%, transparent 70%);
   opacity: 0.8;
 }
@@ -1030,6 +1030,111 @@ body {
   color: var(--lu-subtle);
   font-size: clamp(16px, 2.4vw, 18px);
   max-width: 60ch;
+}
+
+#lucai-app .hero-cta-primary {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 56px;
+  padding: 0 40px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--lu-accent) 45%, #0f766e);
+  background: linear-gradient(135deg, color-mix(in oklab, var(--lu-accent) 85%, #0f766e), var(--lu-green));
+  color: #f8fafc;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  box-shadow:
+    0 20px 34px color-mix(in oklab, var(--lu-accent) 35%, transparent),
+    0 8px 18px rgba(15, 118, 110, 0.25);
+  overflow: hidden;
+  isolation: isolate;
+  transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+}
+
+#lucai-app .hero-cta-primary::before {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  background: radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.45), transparent 60%);
+  opacity: 0.35;
+  filter: blur(18px);
+  animation: hero-cta-pulse 4.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+#lucai-app .hero-cta-primary::after {
+  content: "";
+  position: absolute;
+  inset: -30% -90%;
+  background: linear-gradient(120deg, transparent 40%, rgba(255, 255, 255, 0.55) 50%, transparent 60%);
+  transform: translateX(-70%);
+  opacity: 0.6;
+  mix-blend-mode: screen;
+  animation: hero-cta-sheen 5.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+#lucai-app .hero-cta-primary:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 26px 40px color-mix(in oklab, var(--lu-accent) 40%, transparent),
+    0 10px 20px rgba(15, 118, 110, 0.3);
+}
+
+#lucai-app .hero-cta-primary:active {
+  transform: translateY(0);
+  filter: brightness(0.98);
+}
+
+#lucai-app .hero-cta-primary:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 4px color-mix(in oklab, var(--lu-accent) 25%, transparent),
+    0 22px 36px color-mix(in oklab, var(--lu-accent) 35%, transparent);
+}
+
+@keyframes hero-cta-sheen {
+  0% {
+    transform: translateX(-80%);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.65;
+  }
+  60% {
+    transform: translateX(80%);
+    opacity: 0.15;
+  }
+  100% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+}
+
+@keyframes hero-cta-pulse {
+  0%,
+  100% {
+    transform: scale(0.98);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #lucai-app .hero-cta-primary::before,
+  #lucai-app .hero-cta-primary::after {
+    animation: none;
+  }
+  #lucai-app .hero-cta-primary {
+    transition: none;
+  }
 }
 
 /* versión “full gradiente” ya mencionada en tus notas */
