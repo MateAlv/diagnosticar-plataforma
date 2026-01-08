@@ -89,6 +89,8 @@ router.post('/signup', signupRateLimit, async (req, res) => {
             return res.status(400).json({ error: 'Invalid payload' });
         }
         const { email, password, fullName, organization } = parsed.data;
+        const safeFullName = fullName ?? undefined;
+        const safeOrganization = organization ?? undefined;
 
         const existing = await getUserByEmail(email);
         if (existing) {
@@ -99,7 +101,7 @@ router.post('/signup', signupRateLimit, async (req, res) => {
         const verificationToken = crypto.randomBytes(32).toString('hex');
         const verificationTokenHash = hashToken(verificationToken);
 
-        await createUser(email, passwordHash, verificationTokenHash, fullName, organization);
+        await createUser(email, passwordHash, verificationTokenHash, safeFullName, safeOrganization);
         await sendVerificationEmail(email, verificationToken);
 
         res.json({ message: 'If an account exists, a verification email will be sent.' });
