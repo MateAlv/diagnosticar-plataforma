@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, FRONTEND_URL } from '../config.js';
+import { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, FRONTEND_URL, IS_PRODUCTION } from '../config.js';
 
 const transporter = nodemailer.createTransport({
     host: SMTP_HOST,
@@ -14,7 +14,10 @@ const transporter = nodemailer.createTransport({
 export async function sendVerificationEmail(email: string, token: string) {
     const verificationUrl = `${FRONTEND_URL}/verify?token=${token}`;
 
-    if (!SMTP_USER || !SMTP_PASS) {
+    if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+        if (IS_PRODUCTION) {
+            throw new Error('SMTP is not configured for production email delivery.');
+        }
         console.log(`[MOCK EMAIL] To: ${email}, Link: ${verificationUrl}`);
         return;
     }
@@ -33,6 +36,8 @@ export async function sendVerificationEmail(email: string, token: string) {
         console.log(`Verification email sent to ${email}`);
     } catch (error) {
         console.error('Error sending email:', error);
-        console.log(`[FALLBACK EMAIL] To: ${email}, Link: ${verificationUrl}`);
+        if (!IS_PRODUCTION) {
+            console.log(`[FALLBACK EMAIL] To: ${email}, Link: ${verificationUrl}`);
+        }
     }
 }

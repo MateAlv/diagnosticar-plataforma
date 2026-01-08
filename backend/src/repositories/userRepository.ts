@@ -1,4 +1,5 @@
 import { query } from '../database/pool.js';
+import { hashToken } from '../utils/tokens.js';
 
 export type User = {
     id: string;
@@ -26,7 +27,11 @@ export async function getUserById(id: string): Promise<User | null> {
 }
 
 export async function getUserByVerificationToken(token: string): Promise<User | null> {
-    const res = await query('SELECT * FROM users WHERE verification_token = $1', [token]);
+    const hashedToken = hashToken(token);
+    const res = await query('SELECT * FROM users WHERE verification_token = $1 OR verification_token = $2', [
+        hashedToken,
+        token,
+    ]);
     if (res.rows.length === 0) return null;
     return res.rows[0];
 }

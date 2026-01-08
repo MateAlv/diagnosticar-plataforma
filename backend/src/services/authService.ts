@@ -17,7 +17,10 @@ export function signAccessToken(user: User): string {
         role: user.role,
         tokenVersion: user.token_version,
     };
-    return jwt.sign(payload, JWT_ACCESS_SECRET, { expiresIn: JWT_ACCESS_EXPIRES_IN } as SignOptions);
+    return jwt.sign(payload, JWT_ACCESS_SECRET, {
+        expiresIn: JWT_ACCESS_EXPIRES_IN,
+        algorithm: 'HS256',
+    } as SignOptions);
 }
 
 export function signRefreshToken(user: User): string {
@@ -25,12 +28,15 @@ export function signRefreshToken(user: User): string {
         sub: user.id,
         tokenVersion: user.token_version,
     };
-    return jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: JWT_REFRESH_EXPIRES_IN } as SignOptions);
+    return jwt.sign(payload, JWT_REFRESH_SECRET, {
+        expiresIn: JWT_REFRESH_EXPIRES_IN,
+        algorithm: 'HS256',
+    } as SignOptions);
 }
 
 export function verifyAccessToken(token: string) {
     try {
-        return jwt.verify(token, JWT_ACCESS_SECRET);
+        return jwt.verify(token, JWT_ACCESS_SECRET, { algorithms: ['HS256'] });
     } catch (e) {
         return null;
     }
@@ -38,7 +44,7 @@ export function verifyAccessToken(token: string) {
 
 export function verifyRefreshToken(token: string) {
     try {
-        return jwt.verify(token, JWT_REFRESH_SECRET);
+        return jwt.verify(token, JWT_REFRESH_SECRET, { algorithms: ['HS256'] });
     } catch (e) {
         return null;
     }

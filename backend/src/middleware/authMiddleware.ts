@@ -1,8 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../services/authService.js';
+import { getUserById, type User } from '../repositories/userRepository.js';
 
 export interface AuthRequest extends Request {
     user?: any;
+    userRecord?: User;
 }
 
 export function authenticate(req: AuthRequest, res: Response, next: NextFunction) {
@@ -22,4 +24,27 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
 
     req.user = decoded;
     next();
+}
+
+export async function requireFreshAccessToken(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+        const payload = req.user;
+        if (!payload || typeof payload.sub !== 'string' || typeof payload.tokenVersion !== 'number') {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const user = await getUserById(payload.sub);
+        if (!user) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        if (user.token_version !== payload.tokenVersion) {
+            return res.status(403).json({ error: 'Token revoked' });
+        }
+
+        req.userRecord = user;
+        return next();
+    } catch (error) {
+        return res.status(500).json({ error: 'Error' });
+    }
 }

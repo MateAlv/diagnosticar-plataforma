@@ -1,45 +1,125 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import crypto from 'crypto';
-import { createUser, getUserByEmail, getUserById, verifyUser, updateUserTokenVersion, getUserByVerificationToken } from '../repositories/userRepository.js';
-import { hashPassword, verifyPassword, signAccessToken, signRefreshToken, verifyRefreshToken } from '../services/authService.js';
+import { z } from 'zod';
+import {
+    createUser,
+    getUserByEmail,
+    getUserById,
+    verifyUser,
+    updateUserTokenVersion,
+    getUserByVerificationToken,
+} from '../repositories/userRepository.js';
+import {
+    hashPassword,
+    verifyPassword,
+    signAccessToken,
+    signRefreshToken,
+    verifyRefreshToken,
+    verifyAccessToken,
+} from '../services/authService.js';
 import { sendVerificationEmail } from '../services/emailService.js';
-import { authenticate, AuthRequest } from '../middleware/authMiddleware.js';
+import { authenticate, AuthRequest, requireFreshAccessToken } from '../middleware/authMiddleware.js';
+import { CSRF_COOKIE_NAME } from '../middleware/csrfMiddleware.js';
+import { rateLimit } from '../middleware/rateLimit.js';
+import { hashToken } from '../utils/tokens.js';
+import { IS_PRODUCTION } from '../config.js';
 
 const router = Router();
 
-router.post('/signup', async (req, res) => {
+const signupSchema = z
+    .object({
+        email: z.string().email().max(255),
+        password: z.string().min(8).max(128),
+        fullName: z.string().trim().min(1).max(255).optional().nullable(),
+        organization: z.string().trim().min(1).max(255).optional().nullable(),
+    })
+    .strict();
+
+const loginSchema = z
+    .object({
+        email: z.string().email().max(255),
+        password: z.string().min(8).max(128),
+    })
+    .strict();
+
+const verifySchema = z
+    .object({
+        token: z.string().min(32).max(255),
+    })
+    .strict();
+
+const ACCESS_TOKEN_MAX_AGE_MS = 15 * 60 * 1000;
+const REFRESH_TOKEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+const accessCookieOptions = {
+    httpOnly: true,
+    secure: IS_PRODUCTION,
+    sameSite: 'lax' as const,
+    path: '/',
+};
+
+const refreshCookieOptions = {
+    httpOnly: true,
+    secure: IS_PRODUCTION,
+    sameSite: 'lax' as const,
+    path: '/',
+};
+
+const csrfCookieOptions = {
+    secure: IS_PRODUCTION,
+    sameSite: 'lax' as const,
+    path: '/',
+};
+
+const signupRateLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 5 });
+const loginRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+
+function setCsrfCookie(res: Response) {
+    const token = crypto.randomBytes(32).toString('hex');
+    res.cookie(CSRF_COOKIE_NAME, token, {
+        ...csrfCookieOptions,
+        maxAge: REFRESH_TOKEN_MAX_AGE_MS,
+    });
+}
+
+router.post('/signup', signupRateLimit, async (req, res) => {
     try {
-        const { email, password, fullName, organization } = req.body;
+        const parsed = signupSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: 'Invalid payload' });
+        }
+        const { email, password, fullName, organization } = parsed.data;
 
         const existing = await getUserByEmail(email);
         if (existing) {
-            return res.status(400).json({ error: 'User already exists' });
+            return res.json({ message: 'If an account exists, a verification email will be sent.' });
         }
 
         const passwordHash = await hashPassword(password);
         const verificationToken = crypto.randomBytes(32).toString('hex');
+        const verificationTokenHash = hashToken(verificationToken);
 
-        await createUser(email, passwordHash, verificationToken, fullName, organization);
+        await createUser(email, passwordHash, verificationTokenHash, fullName, organization);
         await sendVerificationEmail(email, verificationToken);
 
-        res.status(201).json({ message: 'User created. Please check your email to verify.' });
+        res.json({ message: 'If an account exists, a verification email will be sent.' });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', loginRateLimit, async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const parsed = loginSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: 'Invalid payload' });
+        }
+        const { email, password } = parsed.data;
         const user = await getUserByEmail(email);
 
-        if (!user || !(await verifyPassword(password, user.password_hash))) {
+        if (!user || !(await verifyPassword(password, user.password_hash)) || !user.verified) {
             return res.status(401).json({ error: 'Invalid credentials' });
-        }
-
-        if (!user.verified) {
-            return res.status(403).json({ error: 'Email not verified' });
         }
 
         const accessToken = signAccessToken(user);
@@ -47,18 +127,15 @@ router.post('/login', async (req, res) => {
 
         // Set cookies
         res.cookie('access_token', accessToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 15 * 60 * 1000 // 15m
+            ...accessCookieOptions,
+            maxAge: ACCESS_TOKEN_MAX_AGE_MS // 15m
         });
 
         res.cookie('refresh_token', refreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7d
+            ...refreshCookieOptions,
+            maxAge: REFRESH_TOKEN_MAX_AGE_MS // 7d
         });
+        setCsrfCookie(res);
 
         res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role } });
     } catch (error) {
@@ -69,7 +146,11 @@ router.post('/login', async (req, res) => {
 
 router.post('/verify', async (req, res) => {
     try {
-        const { token } = req.body;
+        const parsed = verifySchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: 'Invalid payload' });
+        }
+        const { token } = parsed.data;
         const user = await getUserByVerificationToken(token);
 
         if (!user) {
@@ -84,9 +165,9 @@ router.post('/verify', async (req, res) => {
     }
 });
 
-router.get('/me', authenticate, async (req: AuthRequest, res) => {
+router.get('/me', authenticate, requireFreshAccessToken, async (req: AuthRequest, res) => {
     try {
-        const user = await getUserById(req.user.sub);
+        const user = req.userRecord ?? (req.user?.sub ? await getUserById(req.user.sub) : null);
         if (!user) return res.status(404).json({ error: 'User not found' });
         res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role } });
     } catch (error) {
@@ -100,31 +181,71 @@ router.post('/refresh', async (req, res) => {
         if (!refreshToken) return res.status(401).json({ error: 'No refresh token' });
 
         const decoded = verifyRefreshToken(refreshToken) as any;
-        if (!decoded) return res.status(403).json({ error: 'Invalid refresh token' });
+        if (!decoded || typeof decoded.sub !== 'string' || typeof decoded.tokenVersion !== 'number') {
+            return res.status(403).json({ error: 'Invalid refresh token' });
+        }
 
         const user = await getUserById(decoded.sub);
         if (!user || user.token_version !== decoded.tokenVersion) {
             return res.status(403).json({ error: 'Token revoked' });
         }
 
-        const newAccessToken = signAccessToken(user);
+        await updateUserTokenVersion(user.id);
+        const rotatedUser = { ...user, token_version: user.token_version + 1 };
+        const newAccessToken = signAccessToken(rotatedUser);
+        const newRefreshToken = signRefreshToken(rotatedUser);
         res.cookie('access_token', newAccessToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 15 * 60 * 1000
+            ...accessCookieOptions,
+            maxAge: ACCESS_TOKEN_MAX_AGE_MS
         });
+        res.cookie('refresh_token', newRefreshToken, {
+            ...refreshCookieOptions,
+            maxAge: REFRESH_TOKEN_MAX_AGE_MS
+        });
+        setCsrfCookie(res);
 
-        res.json({ message: 'Refreshed' });
+        res.json({ user: { id: rotatedUser.id, email: rotatedUser.email, full_name: rotatedUser.full_name, role: rotatedUser.role } });
     } catch (error) {
         res.status(500).json({ error: 'Error' });
     }
 });
 
-router.post('/logout', (req, res) => {
-    res.clearCookie('access_token');
-    res.clearCookie('refresh_token');
-    res.json({ message: 'Logged out' });
+router.post('/logout', async (req, res) => {
+    try {
+        const refreshToken = req.cookies?.['refresh_token'];
+        const accessTokenHeader = req.headers.authorization;
+        const accessTokenCookie = req.cookies?.['access_token'];
+        const accessToken =
+            (accessTokenHeader && accessTokenHeader.split(' ')[1]) || accessTokenCookie || null;
+        let userId: string | null = null;
+
+        if (refreshToken) {
+            const decoded = verifyRefreshToken(refreshToken) as any;
+            if (decoded && typeof decoded.sub === 'string') {
+                userId = decoded.sub;
+            }
+        }
+
+        if (!userId && accessToken) {
+            const decoded = verifyAccessToken(accessToken) as any;
+            if (decoded && typeof decoded.sub === 'string') {
+                userId = decoded.sub;
+            }
+        }
+
+        if (userId) {
+            await updateUserTokenVersion(userId);
+        }
+    } catch (error) {
+        if (!IS_PRODUCTION) {
+            console.error('[auth] logout token revocation failed', error);
+        }
+    } finally {
+        res.clearCookie('access_token', accessCookieOptions);
+        res.clearCookie('refresh_token', refreshCookieOptions);
+        res.clearCookie(CSRF_COOKIE_NAME, csrfCookieOptions);
+        res.json({ message: 'Logged out' });
+    }
 });
 
 export default router;
