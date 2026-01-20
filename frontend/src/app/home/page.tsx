@@ -6,8 +6,16 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
 
 export default function HomePage() {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
   const router = useRouter();
+  const displayName = user?.name?.trim() || user?.email;
+  const heroCta = user
+    ? { href: "/medphenai", label: "Ir a la App" }
+    : { href: "/demo", label: "Comenzar ahora" };
+
+  const handleLogout = async () => {
+    await logout();
+  };
 
   return (
     <main className="page-root relative min-h-screen bg-[var(--lu-surface)] text-[var(--lu-text)]">
@@ -57,9 +65,19 @@ export default function HomePage() {
                 </Link>
               </>
             ) : (
-              <Link href="/medphenai" className="btn-primary inline-flex items-center justify-center h-9 px-4 rounded-md text-sm">
-                Ir a la App
-              </Link>
+              <>
+                <Link href="/medphenai" className="btn-primary inline-flex items-center justify-center h-9 px-4 rounded-md text-sm">
+                  Ir a la App
+                </Link>
+                {displayName && (
+                  <span className="user-badge truncate">
+                    {displayName}
+                  </span>
+                )}
+                <button type="button" onClick={handleLogout} className="nav-link text-sm">
+                  Cerrar sesión
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -80,12 +98,14 @@ export default function HomePage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
-            <Link href="/demo" className="hero-cta-primary">
-              Comenzar ahora
+            <Link href={heroCta.href} className="hero-cta-primary">
+              {heroCta.label}
             </Link>
-            <Link href="/sign-up" className="btn-outline h-14 px-10 rounded-full text-xl font-semibold border-2 border-[var(--lu-accent)] text-[var(--lu-accent)] hover:bg-[var(--lu-accent)] hover:text-white transition-all">
-              Crear cuenta
-            </Link>
+            {!user && (
+              <Link href="/sign-up" className="btn-outline h-14 px-10 rounded-full text-xl font-semibold border-2 border-[var(--lu-accent)] text-[var(--lu-accent)] hover:bg-[var(--lu-accent)] hover:text-white transition-all">
+                Crear cuenta
+              </Link>
+            )}
           </div>
 
           <div className="pt-8 max-w-3xl mx-auto text-lg text-[var(--lu-text)] opacity-90 leading-relaxed">

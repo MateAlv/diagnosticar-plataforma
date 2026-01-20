@@ -199,6 +199,46 @@ body {
   transform: translateY(1px);
 }
 
+#lucai-app .btn-google {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1px solid #d7dde4;
+  background: #fff;
+  color: #1f2937;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  transition: background-color .2s ease, box-shadow .2s ease, transform .06s ease;
+}
+
+#lucai-app .btn-google:hover {
+  background: #f8fafc;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+}
+
+#lucai-app .btn-google:active {
+  transform: translateY(1px);
+}
+
+#lucai-app .btn-google:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35), 0 4px 10px rgba(15, 23, 42, 0.08);
+}
+
+#lucai-app .btn-google svg {
+  width: 18px;
+  height: 18px;
+}
+
 #lucai-app .btn-danger-outline {
   all: unset;
   box-sizing: border-box;
@@ -1241,6 +1281,26 @@ body {
 
 .nav-link:hover {
   color: var(--lu-text);
+}
+
+#lucai-app .user-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 220px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--lu-accent) 20%, var(--lu-border));
+  background: color-mix(in oklab, var(--lu-accent-light) 70%, #ffffff);
+  color: color-mix(in oklab, var(--lu-text) 78%, var(--lu-accent) 22%);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+@media (max-width: 640px) {
+  #lucai-app .user-badge {
+    max-width: 160px;
+  }
 }
 
 /* Opcional: reduce min-width de btn-outline para CTA del header */
