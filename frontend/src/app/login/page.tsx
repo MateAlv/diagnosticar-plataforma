@@ -7,6 +7,8 @@ import { useAuth } from "../../lib/auth-context";
 
 export default function LoginPage() {
   const r = useRouter();
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+  const googleAuthUrl = `${API_URL}/auth/oauth/google`;
   const [email, setEmail] = useState("");
   const [pass, setPass]   = useState("");
   const [show, setShow]   = useState(false);
@@ -66,6 +68,12 @@ export default function LoginPage() {
           <div className="mt-6 rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-accent-light)] p-4 text-sm text-[color:var(--lu-text)]">
             <p className="font-semibold">Tu privacidad es nuestra prioridad</p>
             <p className="mt-1 text-[color:var(--lu-subtle)]">No compartimos tus datos ni enviamos spam.</p>
+          </div>
+
+          <div className="mt-6">
+            <a href={googleAuthUrl} className="btn-outline w-full justify-center">
+              Continuar con Google
+            </a>
           </div>
 
           <form onSubmit={onSubmit} className="mx-auto mt-8 grid gap-5">

@@ -21,7 +21,7 @@ type AuthContextValue = {
   user: AuthUser | null;
   loading: boolean;
   login: (input: { email: string; password: string }) => Promise<void>;
-  register: (input: { email: string; password: string; name?: string | null; organization?: string | null }) => Promise<void>;
+  register: (input: { email: string; password: string; name?: string | null }) => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
 };
@@ -152,7 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const register = useCallback(
-    async (input: { email: string; password: string; name?: string | null; organization?: string | null }) => {
+    async (input: { email: string; password: string; name?: string | null }) => {
       const res = await fetch(`${API_URL}/auth/signup`, buildInit({ method: "POST", body: JSON.stringify(input) }));
       const payload = await parseResponse(res);
       if (!res.ok) {

@@ -6,6 +6,8 @@ import { PORT, FRONTEND_URL } from './config.js';
 import { migrate } from './database/pool.js';
 import authRouter from './routes/auth.js';
 import { enforceCsrf, enforceOrigin } from './middleware/csrfMiddleware.js';
+import passport from 'passport';
+import { configureGoogleAuth } from './services/googleAuth.js';
 
 const app = express();
 
@@ -31,6 +33,7 @@ app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
 app.use(enforceOrigin);
 app.use(enforceCsrf);
+app.use(passport.initialize());
 
 app.use('/api/auth', authRouter);
 
@@ -39,6 +42,7 @@ app.get('/health', (req, res) => {
 });
 
 async function start() {
+    configureGoogleAuth();
     await migrate();
     app.listen(PORT, () => {
         console.log(`Backend running on port ${PORT}`);

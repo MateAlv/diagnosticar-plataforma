@@ -62,3 +62,10 @@ export const FRONTEND_URL = readEnv('FRONTEND_URL', {
     fallback: 'http://localhost:3000',
     requiredInProd: true,
 });
+export const BACKEND_URL = process.env.BACKEND_URL || `http://localhost:${PORT}`;
+export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+export const GOOGLE_CALLBACK_URL =
+    process.env.GOOGLE_CALLBACK_URL || `${BACKEND_URL}/api/auth/oauth/google/callback`;
+export const GOOGLE_REDIRECT_URL = process.env.GOOGLE_REDIRECT_URL || `${FRONTEND_URL}/login`;
+export const GOOGLE_AUTH_ENABLED = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);

@@ -7,12 +7,13 @@ import { useAuth } from "../../lib/auth-context";
 
 export default function SignUpPage() {
   const router = useRouter();
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+  const googleAuthUrl = `${API_URL}/auth/oauth/google`;
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [organization, setOrganization] = useState("");
   const [showMainPass, setShowMainPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -47,7 +48,7 @@ export default function SignUpPage() {
     }
 
     if (!acceptedTerms) {
-      setError("Debés aceptar los términos y condiciones para continuar.");
+      setError("Tenés que aceptar los términos y condiciones para continuar.");
       return;
     }
 
@@ -57,7 +58,6 @@ export default function SignUpPage() {
       email,
       password,
       name: fullName,
-      organization: organization || null,
     })
       .then(() => setSuccess(true))
       .catch((err) => {
@@ -136,6 +136,12 @@ export default function SignUpPage() {
               <li>No compartimos tus datos con terceros ni enviamos spam.</li>
               <li>La opción de re-contacto es totalmente opcional.</li>
             </ul>
+          </div>
+
+          <div className="mt-6">
+            <a href={googleAuthUrl} className="btn-outline w-full justify-center">
+              Continuar con Google
+            </a>
           </div>
 
           <form onSubmit={handleSubmit} className="mx-auto mt-8 grid gap-5">
@@ -257,14 +263,6 @@ export default function SignUpPage() {
                 )}
               </button>
             </div>
-
-            <input
-              className="pill-input"
-              placeholder="Organización / equipo (opcional)"
-              value={organization}
-              onChange={(event) => setOrganization(event.target.value)}
-              autoComplete="organization"
-            />
 
             <label className="flex items-start gap-3 text-sm text-[color:var(--lu-subtle)]">
               <input

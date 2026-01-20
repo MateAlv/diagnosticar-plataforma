@@ -2,9 +2,12 @@ import { Router, type Response } from 'express';
 import crypto from 'crypto';
 import { z } from 'zod';
 import {
+    createGoogleUser,
     createUser,
     getUserByEmail,
     getUserById,
+    getUserByGoogleId,
+    linkGoogleAccount,
     verifyUser,
     updateUserTokenVersion,
     getUserByVerificationToken,
@@ -22,7 +25,9 @@ import { authenticate, AuthRequest, requireFreshAccessToken } from '../middlewar
 import { CSRF_COOKIE_NAME } from '../middleware/csrfMiddleware.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { hashToken } from '../utils/tokens.js';
-import { IS_PRODUCTION } from '../config.js';
+import { GOOGLE_AUTH_ENABLED, GOOGLE_REDIRECT_URL, IS_PRODUCTION } from '../config.js';
+import passport from 'passport';
+import { GoogleProfile } from '../services/googleAuth.js';
 
 const router = Router();
 
@@ -31,6 +36,7 @@ const signupSchema = z
         email: z.string().email().max(255),
         password: z.string().min(8).max(128),
         fullName: z.string().trim().min(1).max(255).optional().nullable(),
+        name: z.string().trim().min(1).max(255).optional().nullable(),
         organization: z.string().trim().min(1).max(255).optional().nullable(),
     })
     .strict();
@@ -73,6 +79,7 @@ const csrfCookieOptions = {
 
 const signupRateLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 5 });
 const loginRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+const googleRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
 
 function setCsrfCookie(res: Response) {
     const token = crypto.randomBytes(32).toString('hex');
@@ -82,14 +89,107 @@ function setCsrfCookie(res: Response) {
     });
 }
 
+function googleAuthUnavailable(res: Response) {
+    return res.redirect(`${GOOGLE_REDIRECT_URL}?error=google_auth_unavailable`);
+}
+
+function extractGoogleProfile(user: unknown): GoogleProfile | null {
+    if (!user || typeof user !== 'object') {
+        return null;
+    }
+    return user as GoogleProfile;
+}
+
+router.get('/oauth/google', googleRateLimit, (req, res, next) => {
+    if (!GOOGLE_AUTH_ENABLED) {
+        return googleAuthUnavailable(res);
+    }
+    return passport.authenticate('google', {
+        scope: ['profile', 'email'],
+        session: false,
+        prompt: 'select_account',
+    })(req, res, next);
+});
+
+router.get(
+    '/oauth/google/callback',
+    (req, res, next) => {
+        if (!GOOGLE_AUTH_ENABLED) {
+            return googleAuthUnavailable(res);
+        }
+        return passport.authenticate('google', {
+            session: false,
+            failureRedirect: `${GOOGLE_REDIRECT_URL}?error=google_auth_failed`,
+        })(req, res, next);
+    },
+    async (req, res) => {
+        try {
+            const profile = extractGoogleProfile(req.user);
+            if (!profile) {
+                return res.redirect(`${GOOGLE_REDIRECT_URL}?error=google_profile_missing`);
+            }
+
+            const googleId = profile.id;
+            const email = profile.emails?.[0]?.value;
+            const fullName = profile.displayName || undefined;
+            const avatarUrl = profile.photos?.[0]?.value ?? null;
+
+            if (!email) {
+                return res.redirect(`${GOOGLE_REDIRECT_URL}?error=google_email_missing`);
+            }
+
+            let user = await getUserByGoogleId(googleId);
+            if (!user) {
+                const existing = await getUserByEmail(email);
+                if (existing) {
+                    user = await linkGoogleAccount(existing.id, googleId, avatarUrl);
+                }
+            }
+
+            if (!user) {
+                const passwordHash = await hashPassword(crypto.randomBytes(32).toString('hex'));
+                user = await createGoogleUser(email, passwordHash, googleId, fullName, avatarUrl);
+            }
+
+            if (!user) {
+                return res.redirect(`${GOOGLE_REDIRECT_URL}?error=google_user_missing`);
+            }
+
+            if (!user.verified) {
+                await verifyUser(user.id);
+            }
+
+            const accessToken = signAccessToken(user);
+            const refreshToken = signRefreshToken(user);
+
+            res.cookie('access_token', accessToken, {
+                ...accessCookieOptions,
+                maxAge: ACCESS_TOKEN_MAX_AGE_MS,
+            });
+            res.cookie('refresh_token', refreshToken, {
+                ...refreshCookieOptions,
+                maxAge: REFRESH_TOKEN_MAX_AGE_MS,
+            });
+            setCsrfCookie(res);
+
+            return res.redirect(GOOGLE_REDIRECT_URL);
+        } catch (error) {
+            if (!IS_PRODUCTION) {
+                console.error('[auth] google callback failed', error);
+            }
+            return res.redirect(`${GOOGLE_REDIRECT_URL}?error=google_auth_failed`);
+        }
+    }
+);
+
 router.post('/signup', signupRateLimit, async (req, res) => {
     try {
         const parsed = signupSchema.safeParse(req.body);
         if (!parsed.success) {
             return res.status(400).json({ error: 'Invalid payload' });
         }
-        const { email, password, fullName, organization } = parsed.data;
-        const safeFullName = fullName ?? undefined;
+        const { email, password, fullName, name, organization } = parsed.data;
+        const safeFullName = fullName ?? name ?? undefined;
         const safeOrganization = organization ?? undefined;
 
         const existing = await getUserByEmail(email);
