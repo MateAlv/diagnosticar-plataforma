@@ -333,7 +333,16 @@ body {
 }
 
 #lucai-app input[type="date"] {
-  color-scheme: dark;
+  color-scheme: light;
+}
+
+#lucai-app input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.75;
+  cursor: pointer;
+}
+
+#lucai-app input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 0.95;
 }
 
 #lucai-app .btn-enter {
