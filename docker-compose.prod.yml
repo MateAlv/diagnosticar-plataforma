@@ -1,0 +1,93 @@
+version: "3.8"
+
+networks:
+  traefik_net:
+    external: true
+    name: ${TRAEFIK_NETWORK:-internal-nodo0-web}
+
+services:
+  db:
+    restart: unless-stopped
+
+  backend:
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
+      - "traefik.http.services.diagnosticar-backend.loadbalancer.server.port=4000"
+      - "traefik.http.routers.diagnosticar-backend.rule=Host(`${DIAGNOSTICAR_HOST}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.diagnosticar-backend.entrypoints=websecure"
+      - "traefik.http.routers.diagnosticar-backend.tls=true"
+      - "traefik.http.routers.diagnosticar-backend.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
+      - "traefik.http.routers.diagnosticar-backend.priority=220"
+    networks:
+      - default
+      - traefik_net
+
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+        NEXT_PUBLIC_HPO_API_URL: ${NEXT_PUBLIC_HPO_API_URL}
+        NEXT_PUBLIC_GENPHENAI_URL: ${NEXT_PUBLIC_GENPHENAI_URL}
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
+      - "traefik.http.services.diagnosticar-frontend.loadbalancer.server.port=3000"
+      - "traefik.http.routers.diagnosticar-frontend.rule=Host(`${DIAGNOSTICAR_HOST}`)"
+      - "traefik.http.routers.diagnosticar-frontend.entrypoints=websecure"
+      - "traefik.http.routers.diagnosticar-frontend.tls=true"
+      - "traefik.http.routers.diagnosticar-frontend.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
+      - "traefik.http.routers.diagnosticar-frontend.priority=100"
+    networks:
+      - default
+      - traefik_net
+
+  # Bridges browser traffic routed by Traefik to the reverse SSH tunnel endpoints on nodo0.
+  hpo-tunnel:
+    image: alpine/socat:1.8.0.1
+    command:
+      - "TCP-LISTEN:8000,fork,reuseaddr"
+      - "TCP:host.docker.internal:8000"
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
+      - "traefik.http.services.diagnosticar-hpo.loadbalancer.server.port=8000"
+      - "traefik.http.routers.diagnosticar-hpo.rule=Host(`${DIAGNOSTICAR_HOST}`) && PathPrefix(`/hpo-api`)"
+      - "traefik.http.routers.diagnosticar-hpo.entrypoints=websecure"
+      - "traefik.http.routers.diagnosticar-hpo.tls=true"
+      - "traefik.http.routers.diagnosticar-hpo.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
+      - "traefik.http.routers.diagnosticar-hpo.priority=230"
+      - "traefik.http.routers.diagnosticar-hpo.middlewares=diagnosticar-hpo-strip"
+      - "traefik.http.middlewares.diagnosticar-hpo-strip.stripprefix.prefixes=/hpo-api"
+    networks:
+      - traefik_net
+
+  genphenai-tunnel:
+    image: alpine/socat:1.8.0.1
+    command:
+      - "TCP-LISTEN:18020,fork,reuseaddr"
+      - "TCP:host.docker.internal:18020"
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
+      - "traefik.http.services.diagnosticar-genphenai.loadbalancer.server.port=18020"
+      - "traefik.http.routers.diagnosticar-genphenai.rule=Host(`${DIAGNOSTICAR_HOST}`) && PathPrefix(`/genphenai`)"
+      - "traefik.http.routers.diagnosticar-genphenai.entrypoints=websecure"
+      - "traefik.http.routers.diagnosticar-genphenai.tls=true"
+      - "traefik.http.routers.diagnosticar-genphenai.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
+      - "traefik.http.routers.diagnosticar-genphenai.priority=230"
+      - "traefik.http.routers.diagnosticar-genphenai.middlewares=diagnosticar-genphenai-strip"
+      - "traefik.http.middlewares.diagnosticar-genphenai-strip.stripprefix.prefixes=/genphenai"
+    networks:
+      - traefik_net
