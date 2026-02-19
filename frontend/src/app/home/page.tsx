@@ -10,7 +10,7 @@ export default function HomePage() {
   const router = useRouter();
   const displayName = user?.name?.trim() || user?.email;
   const heroCta = user
-    ? { href: "/medphenai", label: "Ir a la App" }
+    ? { href: "/diagnosticar", label: "Ir a la App" }
     : { href: "/demo", label: "Comenzar ahora" };
 
   const handleLogout = async () => {
@@ -66,7 +66,7 @@ export default function HomePage() {
               </>
             ) : (
               <>
-                <Link href="/medphenai" className="btn-primary inline-flex items-center justify-center h-9 px-4 rounded-md text-sm">
+                <Link href="/diagnosticar" className="btn-primary inline-flex items-center justify-center h-9 px-4 rounded-md text-sm">
                   Ir a la App
                 </Link>
                 {displayName && (
