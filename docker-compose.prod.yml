@@ -52,7 +52,7 @@ services:
     image: alpine/socat:1.8.0.1
     command:
       - "TCP-LISTEN:8000,fork,reuseaddr"
-      - "TCP:host.docker.internal:8000"
+      - "TCP:host.docker.internal:18100"
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -74,7 +74,7 @@ services:
     image: alpine/socat:1.8.0.1
     command:
       - "TCP-LISTEN:18020,fork,reuseaddr"
-      - "TCP:host.docker.internal:18020"
+      - "TCP:host.docker.internal:18120"
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
