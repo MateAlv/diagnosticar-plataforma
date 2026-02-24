@@ -313,9 +313,8 @@ function NuevoDiagnosticoScreen() {
   const isLowConfidenceResult =
     genphenConfidence !== null && genphenConfidence < GENPHENAI_LOW_CONFIDENCE_THRESHOLD;
   const topSpecialtiesDisplayed = (genphenSpecialties?.top_specialties ?? []).slice(0, 3);
-  const visibleGeneResults = isDemoMode ? genphenResults.slice(0, 1) : genphenResults;
-  const demoBlurredGeneRows =
-    isDemoMode && genphenResults.length > 0 ? DEMO_BLURRED_GENE_PLACEHOLDERS : 0;
+  const visibleGeneResults = genphenResults;
+  const demoBlurredGeneRows = isDemoMode ? DEMO_BLURRED_GENE_PLACEHOLDERS : 0;
 
   useEffect(() => {
     if (!isDemoMode && !authLoading && !user) {
@@ -906,220 +905,220 @@ function NuevoDiagnosticoScreen() {
                 </div>
               )}
 
-              {step === 4 && (
-                <div className="space-y-6">
-                  {/* Main recommendation card */}
-                  <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
-                    <div className="flex items-center gap-2 mb-5">
-                      <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700 border border-amber-200">
-                        BETA
-                      </span>
-                      <span className="text-xs uppercase tracking-widest text-[var(--lu-subtle)]">
-                        Orientación diagnóstica
-                      </span>
-                    </div>
-
-                    {genphenError ? (
-                      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                        {genphenError}
-                      </div>
-                    ) : isLowConfidenceResult ? (
-                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
-                        <p className="leading-relaxed">
-                          Los síntomas provistos no son suficientes para realizar una guía diagnóstica precisa. Intentá cargando más síntomas.
-                        </p>
-                        <button
-                          type="button"
-                          className="mt-4 inline-flex items-center justify-center h-10 px-5 rounded-xl border border-amber-300 text-amber-900 font-medium hover:bg-amber-100 transition-colors"
-                          onClick={() => setStep(3)}
-                        >
-                          Volver al paso 3: cargar síntomas
-                        </button>
-                      </div>
-                    ) : genphenSpecialties && topSpecialtiesDisplayed.length > 0 ? (
-                      <>
-                        <p className="text-base text-[var(--lu-text)] leading-relaxed">
-                          En base a los genes probables predichos por nuestro sistema, recomendamos que busque algún especialista de las siguientes áreas:
-                        </p>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {topSpecialtiesDisplayed.map((sp) => (
-                            <span
-                              key={sp}
-                              className="rounded-full bg-[var(--lu-accent)] text-white px-4 py-1.5 text-sm font-semibold shadow-sm"
-                            >
-                              {sp}
-                            </span>
-                          ))}
-                        </div>
-                      </>
-                    ) : (
-                      <p className="text-base text-[var(--lu-subtle)] leading-relaxed">
-                        No se pudo determinar una especialidad recomendada para los síntomas ingresados. Consultá con un genetista clínico.
-                      </p>
-                    )}
-
-                    <div className="mt-6">
-                      <button
-                        type="button"
-                        disabled
-                        title="Función en desarrollo"
-                        className="inline-flex items-center justify-center gap-2 h-11 px-6 rounded-xl border border-[var(--lu-border)] bg-[var(--lu-surface)] text-[var(--lu-subtle)] font-medium cursor-not-allowed opacity-60"
+              {step === 4 &&
+                (isDemoMode ? (
+                  <div className="space-y-6">
+                    <div className="flex justify-start">
+                      <Link
+                        href="/login"
+                        className="inline-flex items-center justify-center h-11 px-6 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors"
                       >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={2}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                          />
-                        </svg>
-                        Descargar informe PDF — Próximamente
-                      </button>
+                        Iniciar sesión
+                      </Link>
                     </div>
-                  </div>
 
-                  {/* Specialty ranking detail */}
-                  {!isLowConfidenceResult && genphenSpecialties && genphenSpecialties.specialty_ranking.length > 0 && (
-                    <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
-                      <p className="text-xs uppercase tracking-widest text-[var(--lu-subtle)] mb-4">
-                        Detalle por especialidad
-                      </p>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm border-collapse">
-                          <thead>
-                            <tr className="border-b border-[var(--lu-border)] text-left text-xs uppercase tracking-wide text-[var(--lu-subtle)]">
-                              <th className="pb-2 pr-6">Especialidad</th>
-                              <th className="pb-2 pr-6 text-right">Genes</th>
-                              <th className="pb-2">Genes candidatos</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-[var(--lu-border)]">
-                            {genphenSpecialties.specialty_ranking.map((row) => (
-                              <tr key={row.specialty}>
-                                <td className="py-2 pr-6 font-medium text-[var(--lu-text)]">{row.specialty}</td>
-                                <td className="py-2 pr-6 text-right text-[var(--lu-subtle)]">{row.matched_genes_count}</td>
-                                <td className="py-2 text-xs text-[var(--lu-subtle)]">
-                                  {isDemoMode ? "Listado de genes bloqueado en demo" : row.genes.join(", ")}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      {!isDemoMode && genphenSpecialties.unmapped_genes.length > 0 && (
-                        <p className="mt-4 text-xs text-[var(--lu-subtle)]">
-                          Genes sin especialidad mapeada: {genphenSpecialties.unmapped_genes.join(", ")}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Gene ranking – technical detail */}
-                  {!isLowConfidenceResult && genphenResults.length > 0 && (
                     <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
                       <p className="text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Detalle técnico</p>
                       <h3 className="mt-2 text-lg font-semibold text-[var(--lu-text)]">Genes candidatos priorizados</h3>
-                      <p className="mt-1 text-sm text-[var(--lu-subtle)] leading-relaxed">
-                        {isDemoMode
-                          ? "En modo demo solo se muestra el primer gen priorizado. Registrate para ver el ranking completo."
-                          : "Ranking computacional a partir de los síntomas HPO. Usarlo como guía inicial junto con el equipo clínico."}
-                      </p>
                       <div className="mt-5 space-y-3">
-                        {visibleGeneResults.map((gene, index) => (
+                        {Array.from({ length: demoBlurredGeneRows }).map((_, idx) => (
                           <div
-                            key={`${gene.gene_id}-${index}`}
-                            className="rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-4"
+                            key={`demo-locked-gene-${idx}`}
+                            className="relative rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-4 pointer-events-none select-none"
                           >
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div className="flex items-center gap-3">
-                                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--lu-accent)] text-xs font-bold text-white">
-                                  {index + 1}
-                                </span>
-                                <p className="text-base font-semibold text-[var(--lu-text)]">
-                                  {gene.gene_symbol || gene.gene_id}
-                                </p>
-                              </div>
-                              <div className="flex flex-wrap gap-2 text-xs text-[var(--lu-subtle)]">
-                                <span className="rounded-full border border-[var(--lu-border)] bg-white px-2 py-1">
-                                  Score {Number(gene.score).toFixed(3)}
-                                </span>
-                                {gene.matched_count > 0 && (
-                                  <span className="rounded-full border border-[var(--lu-border)] bg-white px-2 py-1">
-                                    Match {gene.matched_count}/{gene.input_count}
-                                  </span>
-                                )}
-                              </div>
+                            <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/55 backdrop-blur-[1px]">
+                              <span className="rounded-full border border-[var(--lu-border)] bg-white px-3 py-1 text-xs font-semibold text-[var(--lu-subtle)]">
+                                Iniciá sesión para ver el ranking completo
+                              </span>
                             </div>
-                            {gene.matched_hpo_ids?.length > 0 && (
-                              <p className="mt-3 text-xs text-[var(--lu-subtle)]">
-                                HPO: {gene.matched_hpo_ids.join(", ")}
-                              </p>
-                            )}
+                            <div className="blur-sm opacity-70">
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--lu-accent)] text-xs font-bold text-white">
+                                    {idx + 1}
+                                  </span>
+                                  <p className="text-base font-semibold text-[var(--lu-text)]">GENE_******</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2 text-xs text-[var(--lu-subtle)]">
+                                  <span className="rounded-full border border-[var(--lu-border)] bg-white px-2 py-1">
+                                    Score ***
+                                  </span>
+                                </div>
+                              </div>
+                              <p className="mt-3 text-xs text-[var(--lu-subtle)]">HPO: HP:*******</p>
+                            </div>
                           </div>
                         ))}
-                        {isDemoMode &&
-                          Array.from({ length: demoBlurredGeneRows }).map((_, idx) => (
-                            <div
-                              key={`demo-locked-gene-${idx}`}
-                              className="relative rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-4 pointer-events-none select-none"
-                            >
-                              <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/55 backdrop-blur-[1px]">
-                                <span className="rounded-full border border-[var(--lu-border)] bg-white px-3 py-1 text-xs font-semibold text-[var(--lu-subtle)]">
-                                  Desbloqueá el ranking completo creando una cuenta
-                                </span>
-                              </div>
-                              <div className="blur-sm opacity-70">
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                  <div className="flex items-center gap-3">
-                                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--lu-accent)] text-xs font-bold text-white">
-                                      {idx + 2}
-                                    </span>
-                                    <p className="text-base font-semibold text-[var(--lu-text)]">GENE_******</p>
-                                  </div>
-                                  <div className="flex flex-wrap gap-2 text-xs text-[var(--lu-subtle)]">
-                                    <span className="rounded-full border border-[var(--lu-border)] bg-white px-2 py-1">
-                                      Score ***
-                                    </span>
-                                  </div>
-                                </div>
-                                <p className="mt-3 text-xs text-[var(--lu-subtle)]">HPO: HP:*******</p>
-                              </div>
-                            </div>
-                          ))}
                       </div>
                     </div>
-                  )}
-
-                  {/* Medical disclaimer */}
-                  <div className="rounded-2xl border border-amber-100 bg-amber-50 px-5 py-4">
-                    <p className="text-xs text-amber-700 leading-relaxed">
-                      Este resultado no constituye un diagnóstico médico. Es una orientación generada por métodos computacionales basada en información genómica y fenotípica. Siempre consultá con un profesional médico calificado.
-                    </p>
                   </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Main recommendation card */}
+                    <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
+                      <div className="flex items-center gap-2 mb-5">
+                        <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700 border border-amber-200">
+                          BETA
+                        </span>
+                        <span className="text-xs uppercase tracking-widest text-[var(--lu-subtle)]">
+                          Orientación diagnóstica
+                        </span>
+                      </div>
 
-                  <div className="flex flex-wrap gap-3">
-                    {isDemoMode ? (
-                      <>
-                        <Link
-                          href="/login"
-                          className="inline-flex items-center justify-center h-11 px-6 rounded-xl border border-[var(--lu-border)] text-[var(--lu-subtle)] font-medium hover:bg-[var(--lu-surface)] hover:text-[var(--lu-text)] transition-colors"
+                      {genphenError ? (
+                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                          {genphenError}
+                        </div>
+                      ) : isLowConfidenceResult ? (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+                          <p className="leading-relaxed">
+                            Los síntomas provistos no son suficientes para realizar una guía diagnóstica precisa. Intentá cargando más síntomas.
+                          </p>
+                          <button
+                            type="button"
+                            className="mt-4 inline-flex items-center justify-center h-10 px-5 rounded-xl border border-amber-300 text-amber-900 font-medium hover:bg-amber-100 transition-colors"
+                            onClick={() => setStep(3)}
+                          >
+                            Volver al paso 3: cargar síntomas
+                          </button>
+                        </div>
+                      ) : genphenSpecialties && topSpecialtiesDisplayed.length > 0 ? (
+                        <>
+                          <p className="text-base text-[var(--lu-text)] leading-relaxed">
+                            En base a los genes probables predichos por nuestro sistema, recomendamos que busque algún especialista de las siguientes áreas:
+                          </p>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {topSpecialtiesDisplayed.map((sp) => (
+                              <span
+                                key={sp}
+                                className="rounded-full bg-[var(--lu-accent)] text-white px-4 py-1.5 text-sm font-semibold shadow-sm"
+                              >
+                                {sp}
+                              </span>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-base text-[var(--lu-subtle)] leading-relaxed">
+                          No se pudo determinar una especialidad recomendada para los síntomas ingresados. Consultá con un genetista clínico.
+                        </p>
+                      )}
+
+                      <div className="mt-6">
+                        <button
+                          type="button"
+                          disabled
+                          title="Función en desarrollo"
+                          className="inline-flex items-center justify-center gap-2 h-11 px-6 rounded-xl border border-[var(--lu-border)] bg-[var(--lu-surface)] text-[var(--lu-subtle)] font-medium cursor-not-allowed opacity-60"
                         >
-                          Iniciar sesión
-                        </Link>
-                        <Link
-                          href="/sign-up"
-                          className="inline-flex items-center justify-center h-11 px-6 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors"
-                        >
-                          Crear cuenta para ver todo el resultado
-                        </Link>
-                      </>
-                    ) : (
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                            />
+                          </svg>
+                          Descargar informe PDF — Próximamente
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Specialty ranking detail */}
+                    {!isLowConfidenceResult && genphenSpecialties && genphenSpecialties.specialty_ranking.length > 0 && (
+                      <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
+                        <p className="text-xs uppercase tracking-widest text-[var(--lu-subtle)] mb-4">
+                          Detalle por especialidad
+                        </p>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm border-collapse">
+                            <thead>
+                              <tr className="border-b border-[var(--lu-border)] text-left text-xs uppercase tracking-wide text-[var(--lu-subtle)]">
+                                <th className="pb-2 pr-6">Especialidad</th>
+                                <th className="pb-2 pr-6 text-right">Genes</th>
+                                <th className="pb-2">Genes candidatos</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[var(--lu-border)]">
+                              {genphenSpecialties.specialty_ranking.map((row) => (
+                                <tr key={row.specialty}>
+                                  <td className="py-2 pr-6 font-medium text-[var(--lu-text)]">{row.specialty}</td>
+                                  <td className="py-2 pr-6 text-right text-[var(--lu-subtle)]">
+                                    {row.matched_genes_count}
+                                  </td>
+                                  <td className="py-2 text-xs text-[var(--lu-subtle)]">{row.genes.join(", ")}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {genphenSpecialties.unmapped_genes.length > 0 && (
+                          <p className="mt-4 text-xs text-[var(--lu-subtle)]">
+                            Genes sin especialidad mapeada: {genphenSpecialties.unmapped_genes.join(", ")}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Gene ranking – technical detail */}
+                    {!isLowConfidenceResult && genphenResults.length > 0 && (
+                      <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
+                        <p className="text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Detalle técnico</p>
+                        <h3 className="mt-2 text-lg font-semibold text-[var(--lu-text)]">Genes candidatos priorizados</h3>
+                        <p className="mt-1 text-sm text-[var(--lu-subtle)] leading-relaxed">
+                          Ranking computacional a partir de los síntomas HPO. Usarlo como guía inicial junto con el equipo clínico.
+                        </p>
+                        <div className="mt-5 space-y-3">
+                          {visibleGeneResults.map((gene, index) => (
+                            <div
+                              key={`${gene.gene_id}-${index}`}
+                              className="rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-4"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--lu-accent)] text-xs font-bold text-white">
+                                    {index + 1}
+                                  </span>
+                                  <p className="text-base font-semibold text-[var(--lu-text)]">
+                                    {gene.gene_symbol || gene.gene_id}
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap gap-2 text-xs text-[var(--lu-subtle)]">
+                                  <span className="rounded-full border border-[var(--lu-border)] bg-white px-2 py-1">
+                                    Score {Number(gene.score).toFixed(3)}
+                                  </span>
+                                  {gene.matched_count > 0 && (
+                                    <span className="rounded-full border border-[var(--lu-border)] bg-white px-2 py-1">
+                                      Match {gene.matched_count}/{gene.input_count}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {gene.matched_hpo_ids?.length > 0 && (
+                                <p className="mt-3 text-xs text-[var(--lu-subtle)]">
+                                  HPO: {gene.matched_hpo_ids.join(", ")}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Medical disclaimer */}
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50 px-5 py-4">
+                      <p className="text-xs text-amber-700 leading-relaxed">
+                        Este resultado no constituye un diagnóstico médico. Es una orientación generada por métodos computacionales basada en información genómica y fenotípica. Siempre consultá con un profesional médico calificado.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3">
                       <button
                         type="button"
                         className="inline-flex items-center justify-center h-11 px-6 rounded-xl border border-[var(--lu-border)] text-[var(--lu-subtle)] font-medium hover:bg-[var(--lu-surface)] hover:text-[var(--lu-text)] transition-colors"
@@ -1127,17 +1126,16 @@ function NuevoDiagnosticoScreen() {
                       >
                         Volver a Diagnostic.ar
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      className="inline-flex items-center justify-center h-11 px-6 rounded-xl bg-[var(--lu-green)] text-white font-bold hover:bg-[color-mix(in_oklab,var(--lu-green)_90%,#000)] shadow-md transition-all"
-                      onClick={() => (isDemoMode ? router.push("/home") : setShowCancelModal(true))}
-                    >
-                      {isDemoMode ? "Volver al inicio" : "Comenzar otro diagnóstico"}
-                    </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center h-11 px-6 rounded-xl bg-[var(--lu-green)] text-white font-bold hover:bg-[color-mix(in_oklab,var(--lu-green)_90%,#000)] shadow-md transition-all"
+                        onClick={() => setShowCancelModal(true)}
+                      >
+                        Comenzar otro diagnóstico
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                ))}
             </div>
 
             {step < 4 && (

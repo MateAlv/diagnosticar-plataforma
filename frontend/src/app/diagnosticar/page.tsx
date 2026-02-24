@@ -61,11 +61,7 @@ function formatRelativeTime(isoString: string): string {
 function savedToMember(record: SavedDiagnostic): Member {
   const diag =
     record.topSpecialties.length > 0
-      ? `Especialidad/es recomendada/s: ${record.topSpecialties.join(", ")}.${
-          record.confidence !== null
-            ? ` Confianza del sistema: ${Math.round((record.confidence ?? 0) * 100)}%.`
-            : ""
-        }`
+      ? `Especialidad/es recomendada/s: ${record.topSpecialties.join(", ")}.`
       : "Sin orientación diagnóstica disponible.";
 
   return {
