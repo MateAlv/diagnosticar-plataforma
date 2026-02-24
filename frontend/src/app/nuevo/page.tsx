@@ -66,6 +66,8 @@ const HPO_EXTRACT_ENDPOINT = `${HPO_API_URL.replace(/\/$/, "")}/extract-hpo`;
 const HPO_SEARCH_ENDPOINT = `${HPO_API_URL.replace(/\/$/, "")}/hpo/es/search`;
 const GENPHENAI_API_URL = process.env.NEXT_PUBLIC_GENPHENAI_URL || "http://localhost:18020";
 const GENPHENAI_ENDPOINT = `${GENPHENAI_API_URL.replace(/\/$/, "")}/rank-genes`;
+const GENPHENAI_LOW_CONFIDENCE_THRESHOLD = 0.4;
+const DEMO_BLURRED_GENE_PLACEHOLDERS = 4;
 
 const countries = [
   "Afganistán",
@@ -267,7 +269,8 @@ const countries = [
 function NuevoDiagnosticoScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, logout } = useAuth();
+  const { user, logout, loading: authLoading } = useAuth();
+  const isDemoMode = searchParams.get("demo") === "1";
   const [step, setStep] = useState<Step>(1);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
@@ -307,6 +310,18 @@ function NuevoDiagnosticoScreen() {
 
   const canGoStep2 = historiaClinica.trim().length > 12;
   const canGoStep3 = symptoms.length > 0;
+  const isLowConfidenceResult =
+    genphenConfidence !== null && genphenConfidence < GENPHENAI_LOW_CONFIDENCE_THRESHOLD;
+  const topSpecialtiesDisplayed = (genphenSpecialties?.top_specialties ?? []).slice(0, 3);
+  const visibleGeneResults = isDemoMode ? genphenResults.slice(0, 1) : genphenResults;
+  const demoBlurredGeneRows =
+    isDemoMode && genphenResults.length > 0 ? DEMO_BLURRED_GENE_PLACEHOLDERS : 0;
+
+  useEffect(() => {
+    if (!isDemoMode && !authLoading && !user) {
+      router.replace("/login");
+    }
+  }, [isDemoMode, authLoading, user, router]);
 
   useEffect(() => {
     const targetStep = searchParams.get("step");
@@ -463,7 +478,7 @@ function NuevoDiagnosticoScreen() {
         const response = await fetch(GENPHENAI_ENDPOINT, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ hpo_ids: hpoIds, top_k: 10 }),
+          body: JSON.stringify({ hpo_ids: hpoIds, top_k: isDemoMode ? 1 : 10 }),
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
@@ -478,7 +493,7 @@ function NuevoDiagnosticoScreen() {
         if (typeof payload?.confidence === "number") setGenphenConfidence(payload.confidence);
 
         // Save diagnostic record to localStorage for dashboard
-        if (typeof window !== "undefined") {
+        if (typeof window !== "undefined" && !isDemoMode) {
           const record = {
             id: Date.now().toString(),
             nombre: datosBasicos.nombre.trim() || "Paciente",
@@ -509,7 +524,7 @@ function NuevoDiagnosticoScreen() {
 
   const handleCancelFlow = () => {
     setShowCancelModal(false);
-    router.push("/diagnosticar");
+    router.push(isDemoMode ? "/home" : "/diagnosticar");
   };
 
   const handleAddSymptom = () => {
@@ -542,6 +557,18 @@ function NuevoDiagnosticoScreen() {
     router.replace("/login");
   };
 
+  if (!isDemoMode && authLoading) {
+    return (
+      <main className="page-root relative min-h-screen flex items-center justify-center bg-[var(--lu-bg)]">
+        <div className="text-sm text-[var(--lu-subtle)]">Verificando sesión…</div>
+      </main>
+    );
+  }
+
+  if (!isDemoMode && !user) {
+    return null;
+  }
+
   return (
     <main className="page-root relative overflow-hidden">
       {/* Background decoration */}
@@ -565,21 +592,34 @@ function NuevoDiagnosticoScreen() {
             <Link href="/home" className="text-sm font-medium text-[var(--lu-subtle)] hover:text-[var(--lu-text)] transition-colors">
               Home
             </Link>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 px-4 h-9 text-sm font-medium text-red-500 hover:text-red-700 transition-colors"
-              onClick={() => setShowCancelModal(true)}
-            >
-              Cancelar
-            </button>
-            {displayName && (
+            {isDemoMode ? (
               <>
-                <span className="user-badge truncate">
-                  {displayName}
+                <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-bold uppercase tracking-wider border border-amber-200">
+                  Modo demostración
                 </span>
-                <button type="button" onClick={handleLogout} className="nav-link text-sm">
-                  Cerrar sesión
+                <Link href="/sign-up" className="text-sm font-medium text-[var(--lu-accent)] hover:underline">
+                  Crear cuenta
+                </Link>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 px-4 h-9 text-sm font-medium text-red-500 hover:text-red-700 transition-colors"
+                  onClick={() => setShowCancelModal(true)}
+                >
+                  Cancelar
                 </button>
+                {displayName && (
+                  <>
+                    <span className="user-badge truncate">
+                      {displayName}
+                    </span>
+                    <button type="button" onClick={handleLogout} className="nav-link text-sm">
+                      Cerrar sesión
+                    </button>
+                  </>
+                )}
               </>
             )}
           </nav>
@@ -588,12 +628,23 @@ function NuevoDiagnosticoScreen() {
 
       <div className="content-wrap relative z-10">
         <section className="mx-auto max-w-5xl w-full px-5 pt-12 pb-24 flex-1">
+          {isDemoMode && (
+            <div className="mb-6 rounded-xl bg-blue-50 border border-blue-100 p-4 flex items-start gap-3">
+              <div className="text-blue-500 mt-0.5">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
+              </div>
+              <div className="text-sm text-blue-800">
+                <p className="font-semibold">Estás probando Diagnostic.ar sin registrarte.</p>
+                <p className="opacity-90">Este modo no guarda datos y muestra resultados limitados. Para ver todo el informe y guardar pacientes, creá una cuenta.</p>
+              </div>
+            </div>
+          )}
           <div className="rounded-[32px] border border-[var(--lu-border)] bg-[var(--lu-surface)] px-8 py-10 shadow-[var(--lu-shadow)] relative">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--lu-border)] pb-8">
               <div className="space-y-2">
                 <span className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-[var(--lu-accent)] font-semibold">
                   <span className="inline-flex h-2 w-2 rounded-full bg-[var(--lu-accent)]" aria-hidden />
-                  Nuevo diagnóstico
+                  {isDemoMode ? "Prueba rápida" : "Nuevo diagnóstico"}
                 </span>
                 <h1 className="text-3xl font-bold text-[var(--lu-text)] leading-tight">{stepTitle}</h1>
               </div>
@@ -872,13 +923,26 @@ function NuevoDiagnosticoScreen() {
                       <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                         {genphenError}
                       </div>
-                    ) : genphenSpecialties && genphenSpecialties.top_specialties.length > 0 ? (
+                    ) : isLowConfidenceResult ? (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+                        <p className="leading-relaxed">
+                          Los síntomas provistos no son suficientes para realizar una guía diagnóstica precisa. Intentá cargando más síntomas.
+                        </p>
+                        <button
+                          type="button"
+                          className="mt-4 inline-flex items-center justify-center h-10 px-5 rounded-xl border border-amber-300 text-amber-900 font-medium hover:bg-amber-100 transition-colors"
+                          onClick={() => setStep(3)}
+                        >
+                          Volver al paso 3: cargar síntomas
+                        </button>
+                      </div>
+                    ) : genphenSpecialties && topSpecialtiesDisplayed.length > 0 ? (
                       <>
                         <p className="text-base text-[var(--lu-text)] leading-relaxed">
                           En base a los genes probables predichos por nuestro sistema, recomendamos que busque algún especialista de las siguientes áreas:
                         </p>
                         <div className="mt-4 flex flex-wrap gap-2">
-                          {genphenSpecialties.top_specialties.map((sp) => (
+                          {topSpecialtiesDisplayed.map((sp) => (
                             <span
                               key={sp}
                               className="rounded-full bg-[var(--lu-accent)] text-white px-4 py-1.5 text-sm font-semibold shadow-sm"
@@ -887,14 +951,6 @@ function NuevoDiagnosticoScreen() {
                             </span>
                           ))}
                         </div>
-                        {genphenConfidence !== null && (
-                          <p className="mt-4 text-sm text-[var(--lu-subtle)]">
-                            Nivel de confianza del sistema:{" "}
-                            <span className="font-semibold text-[var(--lu-text)]">
-                              {Math.round(genphenConfidence * 100)}%
-                            </span>
-                          </p>
-                        )}
                       </>
                     ) : (
                       <p className="text-base text-[var(--lu-subtle)] leading-relaxed">
@@ -929,7 +985,7 @@ function NuevoDiagnosticoScreen() {
                   </div>
 
                   {/* Specialty ranking detail */}
-                  {genphenSpecialties && genphenSpecialties.specialty_ranking.length > 0 && (
+                  {!isLowConfidenceResult && genphenSpecialties && genphenSpecialties.specialty_ranking.length > 0 && (
                     <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
                       <p className="text-xs uppercase tracking-widest text-[var(--lu-subtle)] mb-4">
                         Detalle por especialidad
@@ -948,13 +1004,15 @@ function NuevoDiagnosticoScreen() {
                               <tr key={row.specialty}>
                                 <td className="py-2 pr-6 font-medium text-[var(--lu-text)]">{row.specialty}</td>
                                 <td className="py-2 pr-6 text-right text-[var(--lu-subtle)]">{row.matched_genes_count}</td>
-                                <td className="py-2 text-xs text-[var(--lu-subtle)]">{row.genes.join(", ")}</td>
+                                <td className="py-2 text-xs text-[var(--lu-subtle)]">
+                                  {isDemoMode ? "Listado de genes bloqueado en demo" : row.genes.join(", ")}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
-                      {genphenSpecialties.unmapped_genes.length > 0 && (
+                      {!isDemoMode && genphenSpecialties.unmapped_genes.length > 0 && (
                         <p className="mt-4 text-xs text-[var(--lu-subtle)]">
                           Genes sin especialidad mapeada: {genphenSpecialties.unmapped_genes.join(", ")}
                         </p>
@@ -963,15 +1021,17 @@ function NuevoDiagnosticoScreen() {
                   )}
 
                   {/* Gene ranking – technical detail */}
-                  {genphenResults.length > 0 && (
+                  {!isLowConfidenceResult && genphenResults.length > 0 && (
                     <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
                       <p className="text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Detalle técnico</p>
                       <h3 className="mt-2 text-lg font-semibold text-[var(--lu-text)]">Genes candidatos priorizados</h3>
                       <p className="mt-1 text-sm text-[var(--lu-subtle)] leading-relaxed">
-                        Ranking computacional a partir de los síntomas HPO. Usarlo como guía inicial junto con el equipo clínico.
+                        {isDemoMode
+                          ? "En modo demo solo se muestra el primer gen priorizado. Registrate para ver el ranking completo."
+                          : "Ranking computacional a partir de los síntomas HPO. Usarlo como guía inicial junto con el equipo clínico."}
                       </p>
                       <div className="mt-5 space-y-3">
-                        {genphenResults.map((gene, index) => (
+                        {visibleGeneResults.map((gene, index) => (
                           <div
                             key={`${gene.gene_id}-${index}`}
                             className="rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-4"
@@ -1003,6 +1063,35 @@ function NuevoDiagnosticoScreen() {
                             )}
                           </div>
                         ))}
+                        {isDemoMode &&
+                          Array.from({ length: demoBlurredGeneRows }).map((_, idx) => (
+                            <div
+                              key={`demo-locked-gene-${idx}`}
+                              className="relative rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-4 pointer-events-none select-none"
+                            >
+                              <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-white/55 backdrop-blur-[1px]">
+                                <span className="rounded-full border border-[var(--lu-border)] bg-white px-3 py-1 text-xs font-semibold text-[var(--lu-subtle)]">
+                                  Desbloqueá el ranking completo creando una cuenta
+                                </span>
+                              </div>
+                              <div className="blur-sm opacity-70">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                  <div className="flex items-center gap-3">
+                                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--lu-accent)] text-xs font-bold text-white">
+                                      {idx + 2}
+                                    </span>
+                                    <p className="text-base font-semibold text-[var(--lu-text)]">GENE_******</p>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2 text-xs text-[var(--lu-subtle)]">
+                                    <span className="rounded-full border border-[var(--lu-border)] bg-white px-2 py-1">
+                                      Score ***
+                                    </span>
+                                  </div>
+                                </div>
+                                <p className="mt-3 text-xs text-[var(--lu-subtle)]">HPO: HP:*******</p>
+                              </div>
+                            </div>
+                          ))}
                       </div>
                     </div>
                   )}
@@ -1015,19 +1104,36 @@ function NuevoDiagnosticoScreen() {
                   </div>
 
                   <div className="flex flex-wrap gap-3">
-                    <button
-                      type="button"
-                      className="inline-flex items-center justify-center h-11 px-6 rounded-xl border border-[var(--lu-border)] text-[var(--lu-subtle)] font-medium hover:bg-[var(--lu-surface)] hover:text-[var(--lu-text)] transition-colors"
-                      onClick={() => router.push("/diagnosticar")}
-                    >
-                      Volver a Diagnostic.ar
-                    </button>
+                    {isDemoMode ? (
+                      <>
+                        <Link
+                          href="/login"
+                          className="inline-flex items-center justify-center h-11 px-6 rounded-xl border border-[var(--lu-border)] text-[var(--lu-subtle)] font-medium hover:bg-[var(--lu-surface)] hover:text-[var(--lu-text)] transition-colors"
+                        >
+                          Iniciar sesión
+                        </Link>
+                        <Link
+                          href="/sign-up"
+                          className="inline-flex items-center justify-center h-11 px-6 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors"
+                        >
+                          Crear cuenta para ver todo el resultado
+                        </Link>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center h-11 px-6 rounded-xl border border-[var(--lu-border)] text-[var(--lu-subtle)] font-medium hover:bg-[var(--lu-surface)] hover:text-[var(--lu-text)] transition-colors"
+                        onClick={() => router.push("/diagnosticar")}
+                      >
+                        Volver a Diagnostic.ar
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="inline-flex items-center justify-center h-11 px-6 rounded-xl bg-[var(--lu-green)] text-white font-bold hover:bg-[color-mix(in_oklab,var(--lu-green)_90%,#000)] shadow-md transition-all"
-                      onClick={() => setShowCancelModal(true)}
+                      onClick={() => (isDemoMode ? router.push("/home") : setShowCancelModal(true))}
                     >
-                      Comenzar otro diagnóstico
+                      {isDemoMode ? "Volver al inicio" : "Comenzar otro diagnóstico"}
                     </button>
                   </div>
                 </div>
