@@ -271,7 +271,7 @@ function NuevoDiagnosticoScreen() {
   const searchParams = useSearchParams();
   const { user, logout, loading: authLoading } = useAuth();
   const isDemoMode = searchParams.get("demo") === "1";
-  const [step, setStep] = useState<Step>(1);
+  const [step, setStep] = useState<Step>(isDemoMode ? 2 : 1);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -314,13 +314,21 @@ function NuevoDiagnosticoScreen() {
     genphenConfidence !== null && genphenConfidence < GENPHENAI_LOW_CONFIDENCE_THRESHOLD;
   const topSpecialtiesDisplayed = (genphenSpecialties?.top_specialties ?? []).slice(0, 3);
   const visibleGeneResults = genphenResults;
-  const demoBlurredGeneRows = isDemoMode ? DEMO_BLURRED_GENE_PLACEHOLDERS : 0;
+  const demoPrimaryGene = isDemoMode ? genphenResults[0] : null;
+  const demoBlurredGeneRows =
+    isDemoMode && genphenResults.length > 0 ? DEMO_BLURRED_GENE_PLACEHOLDERS : 0;
 
   useEffect(() => {
     if (!isDemoMode && !authLoading && !user) {
       router.replace("/login");
     }
   }, [isDemoMode, authLoading, user, router]);
+
+  useEffect(() => {
+    if (isDemoMode && step === 1) {
+      setStep(2);
+    }
+  }, [isDemoMode, step]);
 
   useEffect(() => {
     const targetStep = searchParams.get("step");
@@ -548,7 +556,11 @@ function NuevoDiagnosticoScreen() {
     setSymptoms((prev) => prev.filter((symptom) => symptom.code !== code));
   };
 
-  const stepTitle = stepsMeta.find((meta) => meta.id === step)?.title ?? "";
+  const visibleStepsMeta = isDemoMode ? stepsMeta.filter((meta) => meta.id !== 1) : stepsMeta;
+  const stepTitle =
+    visibleStepsMeta.find((meta) => meta.id === step)?.title ??
+    stepsMeta.find((meta) => meta.id === step)?.title ??
+    "";
   const displayName = user?.name?.trim() || user?.email;
 
   const handleLogout = async () => {
@@ -649,9 +661,10 @@ function NuevoDiagnosticoScreen() {
               </div>
 
               <div className="flex items-center gap-3">
-                {stepsMeta.map((meta) => {
+                {visibleStepsMeta.map((meta, index) => {
                   const isActive = step === meta.id;
                   const isCompleted = step > meta.id;
+                  const stepLabel = isDemoMode ? index + 1 : meta.id;
                   return (
                     <span
                       key={meta.id}
@@ -664,7 +677,7 @@ function NuevoDiagnosticoScreen() {
                             : "border-[var(--lu-border)] bg-white text-[var(--lu-subtle)]",
                       ].join(" ")}
                     >
-                      {meta.id}
+                      {stepLabel}
                     </span>
                   );
                 })}
@@ -793,6 +806,18 @@ function NuevoDiagnosticoScreen() {
                       {extractError}
                     </div>
                   )}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExtractError(null);
+                        setStep(3);
+                      }}
+                      className="inline-flex items-center justify-center h-10 px-5 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors"
+                    >
+                      Cargar manualmente
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -917,11 +942,36 @@ function NuevoDiagnosticoScreen() {
                       </Link>
                     </div>
 
-                    <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
-                      <p className="text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Detalle técnico</p>
-                      <h3 className="mt-2 text-lg font-semibold text-[var(--lu-text)]">Genes candidatos priorizados</h3>
-                      <div className="mt-5 space-y-3">
-                        {Array.from({ length: demoBlurredGeneRows }).map((_, idx) => (
+                    {genphenError ? (
+                      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        {genphenError}
+                      </div>
+                    ) : (
+                      <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
+                        <p className="text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Detalle técnico</p>
+                        <h3 className="mt-2 text-lg font-semibold text-[var(--lu-text)]">Genes candidatos priorizados</h3>
+                        <div className="mt-5 space-y-3">
+                          {demoPrimaryGene && (
+                            <div className="rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-4">
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--lu-accent)] text-xs font-bold text-white">
+                                    1
+                                  </span>
+                                  <p className="text-base font-semibold text-[var(--lu-text)]">
+                                    {demoPrimaryGene.gene_symbol || demoPrimaryGene.gene_id}
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap gap-2 text-xs text-[var(--lu-subtle)]">
+                                  <span className="rounded-full border border-[var(--lu-border)] bg-white px-2 py-1">
+                                    Score {Number(demoPrimaryGene.score).toFixed(3)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {Array.from({ length: demoBlurredGeneRows }).map((_, idx) => (
                           <div
                             key={`demo-locked-gene-${idx}`}
                             className="relative rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-4 pointer-events-none select-none"
@@ -935,7 +985,7 @@ function NuevoDiagnosticoScreen() {
                               <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div className="flex items-center gap-3">
                                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--lu-accent)] text-xs font-bold text-white">
-                                    {idx + 1}
+                                    {idx + 2}
                                   </span>
                                   <p className="text-base font-semibold text-[var(--lu-text)]">GENE_******</p>
                                 </div>
@@ -948,9 +998,10 @@ function NuevoDiagnosticoScreen() {
                               <p className="mt-3 text-xs text-[var(--lu-subtle)]">HPO: HP:*******</p>
                             </div>
                           </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-6">

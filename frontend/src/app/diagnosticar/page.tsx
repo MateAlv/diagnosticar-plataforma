@@ -272,19 +272,6 @@ export default function DiagnosticarPage() {
                         Diagnostic.ar reúne historias clínicas, síntomas y modelos predictivos para que equipos de salud y
                         personas que buscan respuestas interpreten su cuadro con la guía de GenPhenIA.
                       </p>
-                      <div className="flex flex-col gap-3 pt-4">
-                        <a
-                          href="https://genphenai.pages.dev/"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 self-start rounded-full bg-[var(--lu-surface)] px-5 py-2.5 text-sm font-semibold text-[var(--lu-text)] hover:bg-[var(--lu-border)] transition-colors"
-                        >
-                          Abrir GenPhenIA
-                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <path d="M4 12L12 4" /><path d="M6 4h6v6" />
-                          </svg>
-                        </a>
-                      </div>
                     </div>
                   </div>
 
