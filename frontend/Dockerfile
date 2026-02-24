@@ -50,4 +50,5 @@ COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 RUN mkdir -p .next/cache && chown -R node:node .next
 EXPOSE 3000
 USER node
-CMD ["node", "server.js"]
+# Force bind on all interfaces so Traefik can reach the app through Docker networks.
+CMD ["sh", "-c", "HOSTNAME=0.0.0.0 node server.js"]
