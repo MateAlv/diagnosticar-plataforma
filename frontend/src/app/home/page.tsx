@@ -129,7 +129,7 @@ export default function HomePage() {
             {/* Placeholders for Logos - User to provide assets */}
             <div className="h-12 flex items-center font-bold text-xl text-slate-400">FCEN-UBA</div>
             <div className="h-12 flex items-center font-bold text-xl text-slate-400">QB</div>
-            <div className="h-12 flex items-center font-bold text-xl text-slate-400">IQUIBCEN</div>
+            <div className="h-12 flex items-center font-bold text-xl text-slate-400">IQUIBICEN</div>
           </div>
         </div>
       </section>
@@ -155,7 +155,7 @@ export default function HomePage() {
           <div className="flex gap-6 text-sm text-[var(--lu-subtle)]">
             <Link href="#" className="hover:text-[var(--lu-accent)] transition-colors">Términos</Link>
             <Link href="#" className="hover:text-[var(--lu-accent)] transition-colors">Privacidad</Link>
-            <a href="mailto:contacto@diagnostic.ar" className="hover:text-[var(--lu-accent)] transition-colors">Contacto</a>
+            <a href="mailto:diagnosticar.ar@gmail.com" className="hover:text-[var(--lu-accent)] transition-colors">Contacto</a>
           </div>
         </div>
       </footer>

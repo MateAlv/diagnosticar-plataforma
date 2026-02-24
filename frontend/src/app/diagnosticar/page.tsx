@@ -466,7 +466,7 @@ export default function DiagnosticarPage() {
           <div>
             <h2 className="text-xl font-bold text-[var(--lu-text)] mb-2">Contactanos</h2>
             <p className="text-[var(--lu-subtle)]">
-              <a href="mailto:contacto@diagnostic.ar" className="hover:text-[var(--lu-accent)] transition-colors">contacto@diagnostic.ar</a>
+              <a href="mailto:diagnosticar.ar@gmail.com" className="hover:text-[var(--lu-accent)] transition-colors">diagnosticar.ar@gmail.com</a>
             </p>
           </div>
         </div>
