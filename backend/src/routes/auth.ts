@@ -308,10 +308,8 @@ router.post('/refresh', async (req, res) => {
             return res.status(403).json({ error: 'Token revoked' });
         }
 
-        await updateUserTokenVersion(user.id);
-        const rotatedUser = { ...user, token_version: user.token_version + 1 };
-        const newAccessToken = signAccessToken(rotatedUser);
-        const newRefreshToken = signRefreshToken(rotatedUser);
+        const newAccessToken = signAccessToken(user);
+        const newRefreshToken = signRefreshToken(user);
         res.cookie('access_token', newAccessToken, {
             ...accessCookieOptions,
             maxAge: ACCESS_TOKEN_MAX_AGE_MS
@@ -322,7 +320,7 @@ router.post('/refresh', async (req, res) => {
         });
         setCsrfCookie(res);
 
-        res.json({ user: { id: rotatedUser.id, email: rotatedUser.email, full_name: rotatedUser.full_name, role: rotatedUser.role } });
+        res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role } });
     } catch (error) {
         res.status(500).json({ error: 'Error' });
     }

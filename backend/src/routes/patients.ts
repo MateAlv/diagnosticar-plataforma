@@ -15,6 +15,17 @@ import {
 
 const router = Router();
 
+const historiaClinicaSchema = z
+    .string()
+    .optional()
+    .nullable()
+    .transform((value) => {
+        const normalized = typeof value === 'string' ? value.trim() : '';
+        return normalized.length > 0
+            ? normalized
+            : 'Carga manual de síntomas sin historia clínica detallada.';
+    });
+
 const createPatientSchema = z.object({
     // Patient demographics
     nombre: z.string().trim().min(1).max(255),
@@ -23,7 +34,7 @@ const createPatientSchema = z.object({
     localidad: z.string().max(255).nullable().optional(),
     pais: z.string().max(100).nullable().optional(),
     // Diagnosis data
-    historiaClinica: z.string().min(1),
+    historiaClinica: historiaClinicaSchema,
     symptomsExtracted: z.array(z.any()).default([]),
     phenotypes: z.array(z.any()).default([]),
     genphenGenes: z.array(z.any()).default([]),
@@ -32,7 +43,7 @@ const createPatientSchema = z.object({
 });
 
 const createDiagnosisSchema = z.object({
-    historiaClinica: z.string().min(1),
+    historiaClinica: historiaClinicaSchema,
     symptomsExtracted: z.array(z.any()).default([]),
     phenotypes: z.array(z.any()).default([]),
     genphenGenes: z.array(z.any()).default([]),
