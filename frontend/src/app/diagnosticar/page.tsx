@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
 
@@ -110,7 +110,7 @@ function savedToMember(record: SavedDiagnostic): Member {
   };
 }
 
-export default function DiagnosticarPage() {
+function DiagnosticarContent() {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabId>(
     searchParams.get("tab") === "integrantes" ? "integrantes" : "overview"
@@ -522,5 +522,19 @@ export default function DiagnosticarPage() {
         </div>
       </footer>
     </main>
+  );
+}
+
+export default function DiagnosticarPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen flex items-center justify-center text-sm text-[var(--lu-subtle)]">
+          Cargando…
+        </main>
+      }
+    >
+      <DiagnosticarContent />
+    </Suspense>
   );
 }
