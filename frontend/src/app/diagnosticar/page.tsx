@@ -18,9 +18,14 @@ type Member = {
   id: string;
   nombre: string;
   savedAt: string;
+  fechaNacimiento: string | null;
+  sexo: string | null;
+  localidad: string | null;
+  pais: string | null;
   historiaClinica: string;
   sintomas: Symptom[];
   diagnostico: string;
+  latestDiagnosisId: string | null;
 };
 
 type SavedDiagnostic = {
@@ -41,12 +46,6 @@ const tabs: Array<{ id: TabId; label: string }> = [
   { id: "integrantes", label: "Integrantes" },
 ];
 
-const createSymptomId = () => {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `sym-${Math.random().toString(16).slice(2)}-${Date.now()}`;
-};
 
 function formatRelativeTime(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -62,15 +61,52 @@ function formatRelativeTime(isoString: string): string {
 type ApiPatient = {
   id: string;
   nombre: string;
+  fecha_nacimiento: string | null;
+  sexo: string | null;
+  localidad: string | null;
+  pais: string | null;
   created_at: string;
   latest_diagnosis: {
     id: string;
+    historia_clinica: string;
+    symptoms_extracted: Array<{ description?: string; code?: string }>;
     genphen_confidence: number | null;
     genphen_specialties: { top_specialties?: string[] } | null;
     genphen_genes_top5: Array<{ gene_symbol: string }>;
     created_at: string;
   } | null;
 };
+
+function mapSymptoms(rawSymptoms: unknown, memberId: string): Symptom[] {
+  if (!Array.isArray(rawSymptoms)) {
+    return [];
+  }
+  return rawSymptoms
+    .map((item, index) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const maybe = item as { description?: unknown; code?: unknown };
+      const codigoRaw =
+        typeof maybe.code === "string" && maybe.code.trim()
+          ? maybe.code.trim().toUpperCase()
+          : "";
+      const label =
+        typeof maybe.description === "string" && maybe.description.trim()
+          ? maybe.description.trim()
+          : codigoRaw || null;
+      const codigo = codigoRaw || undefined;
+      if (!label) {
+        return null;
+      }
+      return {
+        id: `${memberId}-${codigo ?? `sym-${index}`}-${index}`,
+        label,
+        codigo,
+      } satisfies Symptom;
+    })
+    .filter((symptom): symptom is Symptom => symptom !== null);
+}
 
 function apiPatientToMember(p: ApiPatient): Member {
   const diag = p.latest_diagnosis;
@@ -80,13 +116,22 @@ function apiPatientToMember(p: ApiPatient): Member {
       ? `Especialidad/es recomendada/s: ${topSpecialties.join(", ")}.`
       : "Sin orientación diagnóstica disponible.";
   const savedAt = diag?.created_at ?? p.created_at;
+  const historiaClinica =
+    typeof diag?.historia_clinica === "string" && diag.historia_clinica.trim()
+      ? diag.historia_clinica
+      : `Diagnóstico · ${new Date(savedAt).toLocaleDateString("es-AR")}`;
   return {
     id: p.id,
     nombre: p.nombre,
     savedAt,
-    historiaClinica: `Diagnóstico · ${new Date(savedAt).toLocaleDateString("es-AR")}`,
-    sintomas: [],
+    fechaNacimiento: p.fecha_nacimiento,
+    sexo: p.sexo,
+    localidad: p.localidad,
+    pais: p.pais,
+    historiaClinica,
+    sintomas: mapSymptoms(diag?.symptoms_extracted ?? [], p.id),
     diagnostico,
+    latestDiagnosisId: diag?.id ?? null,
   };
 }
 
@@ -100,6 +145,10 @@ function savedToMember(record: SavedDiagnostic): Member {
     id: record.id,
     nombre: record.nombre,
     savedAt: record.savedAt,
+    fechaNacimiento: null,
+    sexo: null,
+    localidad: null,
+    pais: null,
     historiaClinica: `Diagnóstico · ${new Date(record.savedAt).toLocaleDateString("es-AR")}`,
     sintomas: record.symptoms.map((s, i) => ({
       id: `${record.id}-${i}`,
@@ -107,6 +156,7 @@ function savedToMember(record: SavedDiagnostic): Member {
       codigo: s.code,
     })),
     diagnostico: diag,
+    latestDiagnosisId: null,
   };
 }
 
@@ -117,8 +167,6 @@ function DiagnosticarContent() {
   );
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
-  const [symptomDrafts, setSymptomDrafts] = useState<Record<string, Symptom[]>>({});
-  const [newSymptom, setNewSymptom] = useState<Record<string, { label: string; code: string }>>({});
   const router = useRouter();
   const { user, loading, logout } = useAuth();
 
@@ -130,14 +178,6 @@ function DiagnosticarContent() {
       setMembers(loaded);
       if (loaded.length > 0) {
         setSelectedMemberId(loaded[0].id);
-        const drafts: Record<string, Symptom[]> = {};
-        const inputs: Record<string, { label: string; code: string }> = {};
-        for (const m of loaded) {
-          drafts[m.id] = m.sintomas.map((s) => ({ ...s }));
-          inputs[m.id] = { label: "", code: "" };
-        }
-        setSymptomDrafts(drafts);
-        setNewSymptom(inputs);
       }
     };
 
@@ -170,13 +210,7 @@ function DiagnosticarContent() {
   // Hooks must be called unconditionally — before any early returns
   const selectedMember = members.find((m) => m.id === selectedMemberId) ?? null;
 
-  const activeMember = useMemo(() => {
-    if (!selectedMember) return null;
-    return {
-      ...selectedMember,
-      sintomas: symptomDrafts[selectedMember.id] ?? [],
-    };
-  }, [selectedMember, symptomDrafts]);
+  const activeMember = useMemo(() => selectedMember, [selectedMember]);
 
   if (loading) {
     return (
@@ -199,35 +233,6 @@ function DiagnosticarContent() {
 
   const handleSelectMember = (member: Member) => {
     setSelectedMemberId(member.id);
-    setNewSymptom((prev) => ({
-      ...prev,
-      [member.id]: prev[member.id] ?? { label: "", code: "" },
-    }));
-  };
-
-  const handleDraftChange = (memberId: string, field: "label" | "code", value: string) => {
-    setNewSymptom((prev) => ({
-      ...prev,
-      [memberId]: { ...prev[memberId], [field]: value },
-    }));
-  };
-
-  const handleAddSymptom = (memberId: string) => {
-    const draft = newSymptom[memberId];
-    if (!draft?.label.trim() || !draft.code.trim()) return;
-    setSymptomDrafts((prev) => {
-      const nextList = [...(prev[memberId] ?? [])];
-      nextList.push({ id: createSymptomId(), label: draft.label.trim(), codigo: draft.code.trim().toUpperCase() });
-      return { ...prev, [memberId]: nextList };
-    });
-    setNewSymptom((prev) => ({ ...prev, [memberId]: { label: "", code: "" } }));
-  };
-
-  const handleRemoveSymptom = (memberId: string, symptomId: string) => {
-    setSymptomDrafts((prev) => ({
-      ...prev,
-      [memberId]: (prev[memberId] ?? []).filter((s) => s.id !== symptomId),
-    }));
   };
 
   const jumpToSymptomStep = () => {
@@ -235,17 +240,29 @@ function DiagnosticarContent() {
       router.push("/nuevo");
       return;
     }
+    if (!activeMember.latestDiagnosisId) {
+      router.push("/nuevo");
+      return;
+    }
     if (typeof window !== "undefined") {
       const payload = {
+        mode: "regenerate" as const,
+        patientId: activeMember.id,
+        sourceDiagnosisId: activeMember.latestDiagnosisId,
         nombre: activeMember.nombre,
-        sintomas: (symptomDrafts[activeMember.id] ?? []).map((s) => ({
+        fechaNacimiento: activeMember.fechaNacimiento,
+        sexo: activeMember.sexo,
+        localidad: activeMember.localidad,
+        pais: activeMember.pais,
+        historiaClinica: activeMember.historiaClinica,
+        sintomas: activeMember.sintomas.map((s) => ({
           description: s.label,
           code: s.codigo ?? "",
         })),
       };
       window.sessionStorage.setItem("diagnosticar:newDiagDraft", JSON.stringify(payload));
     }
-    router.push("/nuevo?step=3");
+    router.push("/nuevo?step=3&mode=regenerate");
   };
 
   const hasMembers = members.length > 0;
@@ -437,48 +454,16 @@ function DiagnosticarContent() {
 
                           <div>
                             <p className="mb-2 text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Síntomas reportados</p>
-                            <div className="space-y-3">
-                              <ul className="flex flex-wrap gap-2">
-                                {activeMember.sintomas.map((symptom) => (
-                                  <li key={symptom.id} className="flex items-center gap-2 rounded-full border border-[var(--lu-border)] bg-[var(--lu-surface)] px-3 py-1 text-xs text-[var(--lu-text)]">
-                                    <span className="font-semibold">{symptom.label}</span>
-                                    {symptom.codigo && <span className="text-[10px] text-[var(--lu-subtle)]">{symptom.codigo}</span>}
-                                    <button
-                                      type="button"
-                                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[var(--lu-border)] text-[10px] text-[var(--lu-subtle)] hover:text-[var(--lu-accent)] hover:border-[var(--lu-accent)] transition-colors"
-                                      onClick={() => handleRemoveSymptom(activeMember.id, symptom.id)}
-                                      aria-label={`Eliminar ${symptom.label}`}
-                                    >
-                                      ×
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                              <div className="grid gap-3 md:grid-cols-[2fr_1fr_auto]">
-                                <input
-                                  type="text"
-                                  placeholder="Descripción"
-                                  value={newSymptom[activeMember.id]?.label ?? ""}
-                                  onChange={(e) => handleDraftChange(activeMember.id, "label", e.target.value)}
-                                  className="rounded-xl border border-[var(--lu-border)] bg-[var(--lu-surface)] px-4 py-2 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--lu-accent)]"
-                                />
-                                <input
-                                  type="text"
-                                  placeholder="Código HPO (HP:0001027)"
-                                  value={newSymptom[activeMember.id]?.code ?? ""}
-                                  onChange={(e) => handleDraftChange(activeMember.id, "code", e.target.value)}
-                                  className="rounded-xl border border-[var(--lu-border)] bg-[var(--lu-surface)] px-4 py-2 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--lu-accent)]"
-                                />
-                                <button
-                                  type="button"
-                                  className="inline-flex items-center justify-center h-10 px-4 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                  onClick={() => handleAddSymptom(activeMember.id)}
-                                  disabled={!newSymptom[activeMember.id]?.label.trim() || !newSymptom[activeMember.id]?.code.trim()}
-                                >
-                                  Agregar
-                                </button>
-                              </div>
-                            </div>
+                            <ul className="flex flex-wrap gap-2">
+                              {activeMember.sintomas.length === 0 ? (
+                                <li className="text-xs text-[var(--lu-subtle)]">No hay síntomas cargados para este diagnóstico.</li>
+                              ) : activeMember.sintomas.map((symptom) => (
+                                <li key={symptom.id} className="flex items-center gap-2 rounded-full border border-[var(--lu-border)] bg-[var(--lu-surface)] px-3 py-1 text-xs text-[var(--lu-text)]">
+                                  <span className="font-semibold">{symptom.label}</span>
+                                  {symptom.codigo && <span className="text-[10px] text-[var(--lu-subtle)]">{symptom.codigo}</span>}
+                                </li>
+                              ))}
+                            </ul>
                           </div>
 
                           <div>
@@ -487,7 +472,12 @@ function DiagnosticarContent() {
                               {activeMember.diagnostico}
                             </p>
                             <div className="mt-4 flex flex-wrap gap-3">
-                              <button type="button" className="inline-flex items-center justify-center h-10 px-4 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors" onClick={jumpToSymptomStep}>
+                              <button
+                                type="button"
+                                className="inline-flex items-center justify-center h-10 px-4 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                onClick={jumpToSymptomStep}
+                                disabled={!activeMember.latestDiagnosisId}
+                              >
                                 Regenerar diagnóstico
                               </button>
                             </div>

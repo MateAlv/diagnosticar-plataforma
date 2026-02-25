@@ -8,6 +8,7 @@ import {
     deletePatient,
 } from '../repositories/patientRepository.js';
 import {
+    createDiagnosisForPatient,
     getDiagnosesByPatient,
     getDiagnosisById,
 } from '../repositories/diagnosisRepository.js';
@@ -22,6 +23,15 @@ const createPatientSchema = z.object({
     localidad: z.string().max(255).nullable().optional(),
     pais: z.string().max(100).nullable().optional(),
     // Diagnosis data
+    historiaClinica: z.string().min(1),
+    symptomsExtracted: z.array(z.any()).default([]),
+    phenotypes: z.array(z.any()).default([]),
+    genphenGenes: z.array(z.any()).default([]),
+    genphenSpecialties: z.any().optional(),
+    genphenConfidence: z.number().nullable().optional(),
+});
+
+const createDiagnosisSchema = z.object({
     historiaClinica: z.string().min(1),
     symptomsExtracted: z.array(z.any()).default([]),
     phenotypes: z.array(z.any()).default([]),
@@ -63,6 +73,61 @@ router.post(
         } catch (err) {
             console.error('POST /api/patients error:', err);
             return res.status(500).json({ error: 'Failed to save patient' });
+        }
+    },
+);
+
+// POST /api/patients/:id/diagnoses — create a new diagnosis for an existing patient
+router.post(
+    '/:id/diagnoses',
+    authenticate,
+    requireFreshAccessToken,
+    async (req: AuthRequest, res: Response) => {
+        const parsed = createDiagnosisSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+        }
+
+        const userId = req.userRecord!.id;
+        const userEmail = req.userRecord!.email ?? null;
+        const sourceIp = (req.ip ?? req.socket.remoteAddress) ?? null;
+        const userAgent = req.headers['user-agent'] ?? null;
+
+        try {
+            const patient = await getPatientById(req.params.id, userId);
+            if (!patient) {
+                return res.status(404).json({ error: 'Not found' });
+            }
+
+            const {
+                historiaClinica,
+                symptomsExtracted,
+                phenotypes,
+                genphenGenes,
+                genphenSpecialties,
+                genphenConfidence,
+            } = parsed.data;
+
+            const result = await createDiagnosisForPatient(
+                req.params.id,
+                userId,
+                userEmail,
+                {
+                    historiaClinica,
+                    symptomsExtracted,
+                    phenotypes,
+                    genphenGenes,
+                    genphenSpecialties,
+                    genphenConfidence,
+                },
+                sourceIp,
+                userAgent,
+            );
+
+            return res.status(201).json(result);
+        } catch (err) {
+            console.error('POST /api/patients/:id/diagnoses error:', err);
+            return res.status(500).json({ error: 'Failed to save diagnosis' });
         }
     },
 );

@@ -16,6 +16,8 @@ export type Patient = {
 export type PatientWithLatestDiagnosis = Patient & {
     latest_diagnosis: {
         id: string;
+        historia_clinica: string;
+        symptoms_extracted: any[];
         genphen_confidence: number | null;
         genphen_specialties: any | null;
         genphen_genes_top5: any[];
@@ -114,13 +116,15 @@ export async function getPatientsByUser(userId: string): Promise<PatientWithLate
         `SELECT
            p.*,
            ld.id            AS diag_id,
+           ld.historia_clinica,
+           ld.symptoms_extracted,
            ld.genphen_confidence,
            ld.genphen_specialties,
            ld.genphen_genes,
            ld.created_at    AS diag_created_at
          FROM patients p
          LEFT JOIN LATERAL (
-           SELECT id, genphen_confidence, genphen_specialties, genphen_genes, created_at
+           SELECT id, historia_clinica, symptoms_extracted, genphen_confidence, genphen_specialties, genphen_genes, created_at
            FROM diagnoses d
            WHERE d.patient_id = p.id
            ORDER BY d.created_at DESC
@@ -136,6 +140,8 @@ export async function getPatientsByUser(userId: string): Promise<PatientWithLate
         const latestDiag = row.diag_id
             ? {
                   id: row.diag_id,
+                  historia_clinica: row.historia_clinica,
+                  symptoms_extracted: row.symptoms_extracted ?? [],
                   genphen_confidence: row.genphen_confidence,
                   genphen_specialties: row.genphen_specialties,
                   genphen_genes_top5: genes.slice(0, 5),

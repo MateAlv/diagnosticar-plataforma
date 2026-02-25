@@ -63,6 +63,19 @@ type PhenotypeItem = {
   matched_by: string;
 };
 
+type RegenerationDraft = {
+  mode?: "regenerate";
+  patientId?: string;
+  sourceDiagnosisId?: string;
+  nombre?: string;
+  fechaNacimiento?: string | null;
+  sexo?: string | null;
+  localidad?: string | null;
+  pais?: string | null;
+  historiaClinica?: string;
+  sintomas?: Array<{ description?: string; code?: string }>;
+};
+
 const stepsMeta: Array<{ id: Step; title: string }> = [
   { id: 1, title: "Datos básicos" },
   { id: 2, title: "Historia Clínica" },
@@ -324,6 +337,7 @@ function NuevoDiagnosticoScreen() {
   const [genphenError, setGenphenError] = useState<string | null>(null);
   const [extractedPhenotypes, setExtractedPhenotypes] = useState<PhenotypeItem[]>([]);
   const [saveWarning, setSaveWarning] = useState(false);
+  const [regenerationPatientId, setRegenerationPatientId] = useState<string | null>(null);
   const [hpoSuggestions, setHpoSuggestions] = useState<HpoSuggestion[]>([]);
   const [hpoSuggestOpen, setHpoSuggestOpen] = useState(false);
   const [hpoSuggestLoading, setHpoSuggestLoading] = useState(false);
@@ -378,17 +392,53 @@ function NuevoDiagnosticoScreen() {
         const stored = window.sessionStorage.getItem("diagnosticar:newDiagDraft");
         if (stored) {
           try {
-            const parsed = JSON.parse(stored) as { sintomas?: Array<{ description: string; code?: string }> };
-            if (parsed?.sintomas?.length) {
-              setSymptoms(parsed.sintomas.map((item) => ({ description: item.description, code: item.code ?? "" })));
+            const parsed = JSON.parse(stored) as RegenerationDraft;
+            const isRegenerateDraft = parsed?.mode === "regenerate" && typeof parsed?.patientId === "string";
+            setRegenerationPatientId(isRegenerateDraft ? parsed.patientId ?? null : null);
+
+            const parsedSymptoms = Array.isArray(parsed?.sintomas)
+              ? parsed.sintomas
+                  .map((item) => {
+                    const code = typeof item?.code === "string" ? item.code.trim().toUpperCase() : "";
+                    const description =
+                      typeof item?.description === "string" && item.description.trim()
+                        ? item.description.trim()
+                        : code;
+                    if (!description) return null;
+                    return { description, code };
+                  })
+                  .filter((item): item is Symptom => item !== null)
+              : [];
+
+            if (parsedSymptoms.length > 0) {
+              setSymptoms(parsedSymptoms);
             } else {
               setSymptoms(defaultSymptoms.map((symptom) => ({ ...symptom })));
             }
+
+            setDatosBasicos((prev) => ({
+              ...prev,
+              nombre:
+                typeof parsed?.nombre === "string" && parsed.nombre.trim()
+                  ? parsed.nombre.trim()
+                  : prev.nombre,
+              fechaNacimiento:
+                typeof parsed?.fechaNacimiento === "string" ? parsed.fechaNacimiento : prev.fechaNacimiento,
+              sexo: typeof parsed?.sexo === "string" ? parsed.sexo : prev.sexo,
+              localidad: typeof parsed?.localidad === "string" ? parsed.localidad : prev.localidad,
+              pais: typeof parsed?.pais === "string" ? parsed.pais : prev.pais,
+            }));
+
+            if (typeof parsed?.historiaClinica === "string" && parsed.historiaClinica.trim()) {
+              setHistoriaClinica(parsed.historiaClinica);
+            }
           } catch {
+            setRegenerationPatientId(null);
             setSymptoms(defaultSymptoms.map((symptom) => ({ ...symptom })));
           }
           window.sessionStorage.removeItem("diagnosticar:newDiagDraft");
         } else {
+          setRegenerationPatientId(null);
           setSymptoms(defaultSymptoms.map((symptom) => ({ ...symptom })));
         }
       }
@@ -544,28 +594,39 @@ function NuevoDiagnosticoScreen() {
         if (!isDemoMode && user) {
           try {
             const csrfToken = getCookieValue("csrf_token");
-            const saveRes = await fetch(`${BACKEND_API_URL}/patients`, {
+            const diagnosisPayload = {
+              historiaClinica,
+              symptomsExtracted: symptoms.map((s) => ({ description: s.description, code: s.code })),
+              phenotypes: extractedPhenotypes,
+              genphenGenes: results,
+              genphenSpecialties: payload?.specialties ?? null,
+              genphenConfidence: typeof payload?.confidence === "number" ? payload.confidence : null,
+            };
+            const saveUrl = regenerationPatientId
+              ? `${BACKEND_API_URL}/patients/${regenerationPatientId}/diagnoses`
+              : `${BACKEND_API_URL}/patients`;
+            const saveBody = regenerationPatientId
+              ? diagnosisPayload
+              : {
+                  nombre: datosBasicos.nombre.trim() || "Paciente",
+                  fechaNacimiento: datosBasicos.fechaNacimiento || null,
+                  sexo: datosBasicos.sexo || null,
+                  localidad: datosBasicos.localidad || null,
+                  pais: datosBasicos.pais || null,
+                  ...diagnosisPayload,
+                };
+
+            const saveRes = await fetch(saveUrl, {
               method: "POST",
               credentials: "include",
               headers: {
                 "Content-Type": "application/json",
                 ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
               },
-              body: JSON.stringify({
-                nombre: datosBasicos.nombre.trim() || "Paciente",
-                fechaNacimiento: datosBasicos.fechaNacimiento || null,
-                sexo: datosBasicos.sexo || null,
-                localidad: datosBasicos.localidad || null,
-                pais: datosBasicos.pais || null,
-                historiaClinica,
-                symptomsExtracted: symptoms.map((s) => ({ description: s.description, code: s.code })),
-                phenotypes: extractedPhenotypes,
-                genphenGenes: results,
-                genphenSpecialties: payload?.specialties ?? null,
-                genphenConfidence: typeof payload?.confidence === "number" ? payload.confidence : null,
-              }),
+              body: JSON.stringify(saveBody),
             });
             if (!saveRes.ok) throw new Error(`HTTP ${saveRes.status}`);
+            setRegenerationPatientId(null);
           } catch {
             // Backend save failed — fall back to localStorage so data is never lost
             const record = {
@@ -601,6 +662,7 @@ function NuevoDiagnosticoScreen() {
 
   const handleCancelFlow = () => {
     setShowCancelModal(false);
+    setRegenerationPatientId(null);
     localStorage.removeItem(HC_DRAFT_KEY);
     router.push(isDemoMode ? "/home" : "/diagnosticar");
   };
