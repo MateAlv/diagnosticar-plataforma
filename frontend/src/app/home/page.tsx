@@ -164,7 +164,7 @@ export default function HomePage() {
                 <div className="flex-1 rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-7">
                   <h3 className="text-lg font-bold text-[var(--lu-text)] mb-2">Extracción de síntomas con IA</h3>
                   <p className="text-[var(--lu-subtle)] leading-relaxed">
-                    Un modelo de lenguaje de gran escala (LLM) analiza el texto y extrae de forma automática cada hallazgo clínico individual. El modelo descompone descripciones complejas en síntomas atómicos canónicos — por ejemplo, convierte <em>"dificultad respiratoria con tiraje intercostal"</em> en dos hallazgos separados — y descarta información no fenotípica como edades, medidas o nombres de fármacos.
+                    Un modelo de lenguaje de gran escala (LLM) analiza el texto y extrae de forma automática cada hallazgo clínico individual. El modelo descompone descripciones complejas en síntomas atómicos canónicos — por ejemplo, convierte <em>&ldquo;dificultad respiratoria con tiraje intercostal&rdquo;</em> en dos hallazgos separados — y descarta información no fenotípica como edades, medidas o nombres de fármacos.
                   </p>
                 </div>
               </div>
@@ -271,7 +271,7 @@ export default function HomePage() {
             <p>
               Su objetivo es facilitar el acceso de personas con{" "}
               <strong className="text-[var(--lu-text)]">Enfermedades Poco Frecuentes</strong> a una orientación clínica temprana, contribuyendo a reducir los tiempos de la llamada{" "}
-              <span className="font-semibold text-[var(--lu-text)] italic">"odisea diagnóstica"</span>.
+              <span className="font-semibold text-[var(--lu-text)] italic">&ldquo;odisea diagnóstica&rdquo;</span>.
             </p>
           </div>
 
@@ -397,7 +397,7 @@ export default function HomePage() {
               Enfermedades Poco Frecuentes:<br />muchas más personas de las que creés
             </h2>
             <p className="text-lg text-[var(--lu-subtle)] max-w-2xl mx-auto leading-relaxed">
-              En Argentina se llaman <strong className="text-[var(--lu-text)]">EPOF</strong> — Enfermedades Poco Frecuentes —, aunque en el mundo también las conocés como "enfermedades raras". Individualmente son raras. Juntas, afectan a millones.
+              En Argentina se llaman <strong className="text-[var(--lu-text)]">EPOF</strong> — Enfermedades Poco Frecuentes —, aunque en el mundo también las conocés como &ldquo;enfermedades raras&rdquo;. Individualmente son raras. Juntas, afectan a millones.
             </p>
           </div>
 
@@ -480,7 +480,7 @@ export default function HomePage() {
                 La odisea diagnóstica — y cómo Diagnostic.ar ayuda a acortarla
               </h3>
               <p className="text-[var(--lu-subtle)] leading-relaxed mb-4">
-                Uno de los mayores desafíos de las EPOF no es solo el tratamiento: es <strong className="text-[var(--lu-text)]">llegar al diagnóstico</strong>. Muchas familias pasan años — a veces más de una década — consultando especialistas sin obtener respuesta. A ese recorrido se lo llama <em className="font-semibold text-[var(--lu-text)]">"odisea diagnóstica"</em>, y en las enfermedades genéticas es especialmente frecuente: los síntomas se parecen a enfermedades comunes, son muy variados, y pocos médicos tienen experiencia acumulada con cuadros que afectan a tan poca gente.
+                Uno de los mayores desafíos de las EPOF no es solo el tratamiento: es <strong className="text-[var(--lu-text)]">llegar al diagnóstico</strong>. Muchas familias pasan años — a veces más de una década — consultando especialistas sin obtener respuesta. A ese recorrido se lo llama <em className="font-semibold text-[var(--lu-text)]">&ldquo;odisea diagnóstica&rdquo;</em>, y en las enfermedades genéticas es especialmente frecuente: los síntomas se parecen a enfermedades comunes, son muy variados, y pocos médicos tienen experiencia acumulada con cuadros que afectan a tan poca gente.
               </p>
               <p className="text-[var(--lu-subtle)] leading-relaxed mb-6">
                 <strong className="text-[var(--lu-text)]">Diagnostic.ar</strong> nació para ayudar en ese primer paso. A partir de los síntomas descritos por la familia o el médico tratante, el sistema orienta hacia los genes y especialidades más probablemente involucrados, usando una red neuronal entrenada sobre datos de genómica clínica. No reemplaza al médico — lo potencia: le da una pista informada para que el proceso de derivación y estudio sea más rápido y más certero.

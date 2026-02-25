@@ -48,6 +48,21 @@ type HpoSuggestion = {
   label_en?: string;
 };
 
+type PhenotypeItem = {
+  hpo_id: string;
+  label: string;
+  label_es: string | null;
+  span_es: string;
+  span_en: string;
+  start_es: number;
+  end_es: number;
+  start_en: number;
+  end_en: number;
+  negated: boolean;
+  confidence: number;
+  matched_by: string;
+};
+
 const stepsMeta: Array<{ id: Step; title: string }> = [
   { id: 1, title: "Datos básicos" },
   { id: 2, title: "Historia Clínica" },
@@ -307,7 +322,7 @@ function NuevoDiagnosticoScreen() {
   const [genphenSpecialties, setGenphenSpecialties] = useState<GenPhenSpecialties | null>(null);
   const [genphenConfidence, setGenphenConfidence] = useState<number | null>(null);
   const [genphenError, setGenphenError] = useState<string | null>(null);
-  const [extractedPhenotypes, setExtractedPhenotypes] = useState<any[]>([]);
+  const [extractedPhenotypes, setExtractedPhenotypes] = useState<PhenotypeItem[]>([]);
   const [saveWarning, setSaveWarning] = useState(false);
   const [hpoSuggestions, setHpoSuggestions] = useState<HpoSuggestion[]>([]);
   const [hpoSuggestOpen, setHpoSuggestOpen] = useState(false);
