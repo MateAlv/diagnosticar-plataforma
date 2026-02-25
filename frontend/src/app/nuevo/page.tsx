@@ -594,8 +594,10 @@ function NuevoDiagnosticoScreen() {
         if (!isDemoMode && user) {
           try {
             const csrfToken = getCookieValue("csrf_token");
+            const historiaClinicaToSave =
+              historiaClinica.trim() || "Carga manual de síntomas sin historia clínica detallada.";
             const diagnosisPayload = {
-              historiaClinica,
+              historiaClinica: historiaClinicaToSave,
               symptomsExtracted: symptoms.map((s) => ({ description: s.description, code: s.code })),
               phenotypes: extractedPhenotypes,
               genphenGenes: results,
