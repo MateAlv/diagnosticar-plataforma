@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
 
 type TabId = "overview" | "integrantes";
@@ -79,7 +79,10 @@ function savedToMember(record: SavedDiagnostic): Member {
 }
 
 export default function DiagnosticarPage() {
-  const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<TabId>(
+    searchParams.get("tab") === "integrantes" ? "integrantes" : "overview"
+  );
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [symptomDrafts, setSymptomDrafts] = useState<Record<string, Symptom[]>>({});

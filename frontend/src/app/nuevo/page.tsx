@@ -283,10 +283,15 @@ function NuevoDiagnosticoScreen() {
     sexo: "",
     localidad: "",
     pais: "",
-    datosRelevantes: "",
   });
 
-  const [historiaClinica, setHistoriaClinica] = useState("");
+  const HC_DRAFT_KEY = "diagnosticar:hc-draft";
+  const [historiaClinica, setHistoriaClinica] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem(HC_DRAFT_KEY) ?? "";
+    }
+    return "";
+  });
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
   const [newSymptom, setNewSymptom] = useState({ description: "", code: "" });
   const [extractError, setExtractError] = useState<string | null>(null);
@@ -323,6 +328,16 @@ function NuevoDiagnosticoScreen() {
       router.replace("/login");
     }
   }, [isDemoMode, authLoading, user, router]);
+
+  // Persist draft HC text so navigating away doesn't lose work
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (historiaClinica.trim()) {
+      localStorage.setItem(HC_DRAFT_KEY, historiaClinica);
+    } else {
+      localStorage.removeItem(HC_DRAFT_KEY);
+    }
+  }, [historiaClinica]);
 
   useEffect(() => {
     if (isDemoMode && step === 1) {
@@ -514,6 +529,7 @@ function NuevoDiagnosticoScreen() {
           localStorage.setItem("diagnosticar:records", JSON.stringify([record, ...existing]));
         }
 
+        localStorage.removeItem(HC_DRAFT_KEY);
         setStep(4);
       } catch (error) {
         const message =
@@ -531,6 +547,7 @@ function NuevoDiagnosticoScreen() {
 
   const handleCancelFlow = () => {
     setShowCancelModal(false);
+    localStorage.removeItem(HC_DRAFT_KEY);
     router.push(isDemoMode ? "/home" : "/diagnosticar");
   };
 
@@ -767,20 +784,6 @@ function NuevoDiagnosticoScreen() {
                     </label>
                   </div>
 
-                  <div className="lg:col-span-2">
-                    <label className="block text-sm font-bold text-[var(--lu-text)] mb-2">
-                      Datos médicos relevantes (opcional)
-                      <textarea
-                        value={datosBasicos.datosRelevantes}
-                        onChange={(event) =>
-                          setDatosBasicos((prev) => ({ ...prev, datosRelevantes: event.target.value }))
-                        }
-                        rows={4}
-                        className="mt-2 w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all resize-none"
-                        placeholder="Resumen clínico, antecedentes familiares, medicación actual..."
-                      />
-                    </label>
-                  </div>
                 </div>
               )}
 
@@ -896,7 +899,7 @@ function NuevoDiagnosticoScreen() {
                                     <button
                                       type="button"
                                       className="w-full px-4 py-2 text-left hover:bg-[var(--lu-accent-light)] transition-colors"
-                                      onClick={() => handlePickSuggestion(item)}
+                                      onMouseDown={(e) => { e.preventDefault(); handlePickSuggestion(item); }}
                                     >
                                       <div className="text-sm font-semibold text-[var(--lu-text)]">{item.label_es}</div>
                                       <div className="text-xs text-[var(--lu-subtle)]">
@@ -1175,12 +1178,12 @@ function NuevoDiagnosticoScreen() {
                         className="inline-flex items-center justify-center h-11 px-6 rounded-xl border border-[var(--lu-border)] text-[var(--lu-subtle)] font-medium hover:bg-[var(--lu-surface)] hover:text-[var(--lu-text)] transition-colors"
                         onClick={() => router.push("/diagnosticar")}
                       >
-                        Volver a Diagnostic.ar
+                        Guardar diagnóstico y cerrar
                       </button>
                       <button
                         type="button"
                         className="inline-flex items-center justify-center h-11 px-6 rounded-xl bg-[var(--lu-green)] text-white font-bold hover:bg-[color-mix(in_oklab,var(--lu-green)_90%,#000)] shadow-md transition-all"
-                        onClick={() => setShowCancelModal(true)}
+                        onClick={() => router.push("/diagnosticar?tab=integrantes")}
                       >
                         Comenzar otro diagnóstico
                       </button>
