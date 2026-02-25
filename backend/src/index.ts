@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import { PORT, FRONTEND_URL } from './config.js';
 import { migrate } from './database/pool.js';
 import authRouter from './routes/auth.js';
+import patientsRouter from './routes/patients.js';
 import { enforceCsrf, enforceOrigin } from './middleware/csrfMiddleware.js';
 import passport from 'passport';
 import { configureGoogleAuth } from './services/googleAuth.js';
@@ -36,9 +37,16 @@ app.use(enforceCsrf);
 app.use(passport.initialize());
 
 app.use('/api/auth', authRouter);
+app.use('/api/patients', patientsRouter);
 
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok' });
+app.get('/health', async (req, res) => {
+    try {
+        const { query } = await import('./database/pool.js');
+        await query('SELECT 1');
+        res.json({ status: 'ok' });
+    } catch {
+        res.status(503).json({ status: 'error', detail: 'database unreachable' });
+    }
 });
 
 async function start() {

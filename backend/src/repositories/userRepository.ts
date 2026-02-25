@@ -97,3 +97,11 @@ export async function verifyUser(id: string) {
 export async function updateUserTokenVersion(id: string) {
     await query('UPDATE users SET token_version = token_version + 1 WHERE id = $1', [id]);
 }
+
+export async function deleteUserById(id: string) {
+    await query('DELETE FROM users WHERE id = $1', [id]);
+}
+
+export async function updateVerificationToken(id: string, tokenHash: string) {
+    await query('UPDATE users SET verification_token = $1 WHERE id = $2', [tokenHash, id]);
+}

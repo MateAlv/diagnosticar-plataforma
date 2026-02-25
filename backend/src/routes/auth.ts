@@ -11,6 +11,8 @@ import {
     verifyUser,
     updateUserTokenVersion,
     getUserByVerificationToken,
+    deleteUserById,
+    updateVerificationToken,
 } from '../repositories/userRepository.js';
 import {
     hashPassword,
@@ -194,6 +196,13 @@ router.post('/signup', signupRateLimit, async (req, res) => {
 
         const existing = await getUserByEmail(email);
         if (existing) {
+            // If the account exists but is unverified (e.g. email delivery failed last time),
+            // issue a fresh token and resend — so the user isn't permanently stuck.
+            if (!existing.verified && existing.auth_provider === 'local') {
+                const newToken = crypto.randomBytes(32).toString('hex');
+                await updateVerificationToken(existing.id, hashToken(newToken));
+                await sendVerificationEmail(existing.email, newToken);
+            }
             return res.json({ message: 'If an account exists, a verification email will be sent.' });
         }
 
@@ -201,8 +210,15 @@ router.post('/signup', signupRateLimit, async (req, res) => {
         const verificationToken = crypto.randomBytes(32).toString('hex');
         const verificationTokenHash = hashToken(verificationToken);
 
-        await createUser(email, passwordHash, verificationTokenHash, safeFullName, safeOrganization);
-        await sendVerificationEmail(email, verificationToken);
+        const newUser = await createUser(email, passwordHash, verificationTokenHash, safeFullName, safeOrganization);
+        try {
+            await sendVerificationEmail(email, verificationToken);
+        } catch (emailErr) {
+            // Roll back the user row so the address isn't permanently locked
+            console.error('Verification email failed after createUser — rolling back:', emailErr);
+            await deleteUserById(newUser.id);
+            return res.status(500).json({ error: 'Internal server error' });
+        }
 
         res.json({ message: 'If an account exists, a verification email will be sent.' });
     } catch (error) {

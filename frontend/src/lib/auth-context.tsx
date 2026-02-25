@@ -106,7 +106,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(payload.user);
           return;
         }
-      } else if (res.status === 401) {
+      } else if (res.status === 401 || res.status === 403) {
+        // 401 = no token, 403 = expired/invalid token — both mean: try to refresh
         await refreshSession();
         return;
       }

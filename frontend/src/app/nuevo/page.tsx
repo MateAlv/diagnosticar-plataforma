@@ -66,8 +66,16 @@ const HPO_EXTRACT_ENDPOINT = `${HPO_API_URL.replace(/\/$/, "")}/extract-hpo`;
 const HPO_SEARCH_ENDPOINT = `${HPO_API_URL.replace(/\/$/, "")}/hpo/es/search`;
 const GENPHENAI_API_URL = process.env.NEXT_PUBLIC_GENPHENAI_URL || "http://localhost:18020";
 const GENPHENAI_ENDPOINT = `${GENPHENAI_API_URL.replace(/\/$/, "")}/rank-genes`;
+const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 const GENPHENAI_LOW_CONFIDENCE_THRESHOLD = 0.4;
 const DEMO_BLURRED_GENE_PLACEHOLDERS = 4;
+
+function getCookieValue(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const escaped = name.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+  const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 const countries = [
   "Afganistán",
@@ -299,6 +307,8 @@ function NuevoDiagnosticoScreen() {
   const [genphenSpecialties, setGenphenSpecialties] = useState<GenPhenSpecialties | null>(null);
   const [genphenConfidence, setGenphenConfidence] = useState<number | null>(null);
   const [genphenError, setGenphenError] = useState<string | null>(null);
+  const [extractedPhenotypes, setExtractedPhenotypes] = useState<any[]>([]);
+  const [saveWarning, setSaveWarning] = useState(false);
   const [hpoSuggestions, setHpoSuggestions] = useState<HpoSuggestion[]>([]);
   const [hpoSuggestOpen, setHpoSuggestOpen] = useState(false);
   const [hpoSuggestLoading, setHpoSuggestLoading] = useState(false);
@@ -442,6 +452,7 @@ function NuevoDiagnosticoScreen() {
           throw new Error(detail);
         }
         const phenotypes = Array.isArray(payload?.phenotypes) ? payload.phenotypes : [];
+        setExtractedPhenotypes(phenotypes);
         const byId = new Map<string, Symptom>();
         for (const phenotype of phenotypes) {
           const hpoId = typeof phenotype?.hpo_id === "string" ? phenotype.hpo_id : "";
@@ -514,19 +525,47 @@ function NuevoDiagnosticoScreen() {
         if (payload?.specialties) setGenphenSpecialties(payload.specialties);
         if (typeof payload?.confidence === "number") setGenphenConfidence(payload.confidence);
 
-        // Save diagnostic record to localStorage for dashboard
-        if (typeof window !== "undefined" && !isDemoMode) {
-          const record = {
-            id: Date.now().toString(),
-            nombre: datosBasicos.nombre.trim() || "Paciente",
-            savedAt: new Date().toISOString(),
-            symptoms: symptoms.map((s) => ({ description: s.description, code: s.code })),
-            topSpecialties: payload?.specialties?.top_specialties ?? [],
-            confidence: typeof payload?.confidence === "number" ? payload.confidence : null,
-            topGenes: results.slice(0, 5).map((g: GenPhenResult) => g.gene_symbol),
-          };
-          const existing = JSON.parse(localStorage.getItem("diagnosticar:records") || "[]");
-          localStorage.setItem("diagnosticar:records", JSON.stringify([record, ...existing]));
+        // Save to backend (authenticated) or localStorage (demo / fallback)
+        if (!isDemoMode && user) {
+          try {
+            const csrfToken = getCookieValue("csrf_token");
+            const saveRes = await fetch(`${BACKEND_API_URL}/patients`, {
+              method: "POST",
+              credentials: "include",
+              headers: {
+                "Content-Type": "application/json",
+                ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+              },
+              body: JSON.stringify({
+                nombre: datosBasicos.nombre.trim() || "Paciente",
+                fechaNacimiento: datosBasicos.fechaNacimiento || null,
+                sexo: datosBasicos.sexo || null,
+                localidad: datosBasicos.localidad || null,
+                pais: datosBasicos.pais || null,
+                historiaClinica,
+                symptomsExtracted: symptoms.map((s) => ({ description: s.description, code: s.code })),
+                phenotypes: extractedPhenotypes,
+                genphenGenes: results,
+                genphenSpecialties: payload?.specialties ?? null,
+                genphenConfidence: typeof payload?.confidence === "number" ? payload.confidence : null,
+              }),
+            });
+            if (!saveRes.ok) throw new Error(`HTTP ${saveRes.status}`);
+          } catch {
+            // Backend save failed — fall back to localStorage so data is never lost
+            const record = {
+              id: Date.now().toString(),
+              nombre: datosBasicos.nombre.trim() || "Paciente",
+              savedAt: new Date().toISOString(),
+              symptoms: symptoms.map((s) => ({ description: s.description, code: s.code })),
+              topSpecialties: payload?.specialties?.top_specialties ?? [],
+              confidence: typeof payload?.confidence === "number" ? payload.confidence : null,
+              topGenes: results.slice(0, 5).map((g: GenPhenResult) => g.gene_symbol),
+            };
+            const existing = JSON.parse(localStorage.getItem("diagnosticar:records") || "[]");
+            localStorage.setItem("diagnosticar:records", JSON.stringify([record, ...existing]));
+            setSaveWarning(true);
+          }
         }
 
         localStorage.removeItem(HC_DRAFT_KEY);
@@ -1008,6 +1047,11 @@ function NuevoDiagnosticoScreen() {
                   </div>
                 ) : (
                   <div className="space-y-6">
+                    {saveWarning && (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        No se pudo guardar en tu cuenta. Los datos quedaron guardados localmente en este dispositivo.
+                      </div>
+                    )}
                     {/* Main recommendation card */}
                     <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
                       <div className="flex items-center gap-2 mb-5">

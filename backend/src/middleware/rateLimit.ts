@@ -25,6 +25,12 @@ export function rateLimit(options: RateLimitOptions) {
         const bucket = buckets.get(key);
 
         if (!bucket || bucket.resetAt <= now) {
+            // Evict stale entries periodically to prevent unbounded memory growth
+            if (buckets.size > 10000) {
+                for (const [k, v] of buckets) {
+                    if (v.resetAt <= now) buckets.delete(k);
+                }
+            }
             buckets.set(key, { count: 1, resetAt: now + options.windowMs });
             return next();
         }

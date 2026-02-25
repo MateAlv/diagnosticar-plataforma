@@ -6,6 +6,7 @@ const pool = new Pool({
 });
 
 export const query = (text: string, params?: any[]) => pool.query(text, params);
+export const getClient = () => pool.connect();
 
 export async function migrate() {
     const client = await pool.connect();
@@ -45,9 +46,65 @@ export async function migrate() {
         await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS users_google_id_idx ON users (google_id);
     `);
-        console.log('Migration completed: users table created/verified.');
+        // patients — one per completed diagnosis, tied to the authenticated user
+        await client.query(`
+      CREATE TABLE IF NOT EXISTS patients (
+        id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id               UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_email_snapshot   VARCHAR(255),
+        nombre                VARCHAR(255) NOT NULL,
+        fecha_nacimiento      DATE,
+        sexo                  VARCHAR(50),
+        localidad             VARCHAR(255),
+        pais                  VARCHAR(100),
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+        await client.query(`
+      CREATE INDEX IF NOT EXISTS patients_user_id_idx
+        ON patients (user_id);
+    `);
+        await client.query(`
+      CREATE INDEX IF NOT EXISTS patients_user_email_snapshot_idx
+        ON patients (user_email_snapshot);
+    `);
+
+        // diagnoses — full output, created atomically with the patient row
+        await client.query(`
+      CREATE TABLE IF NOT EXISTS diagnoses (
+        id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id            UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+        user_id               UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_email_snapshot   VARCHAR(255),
+        historia_clinica      TEXT NOT NULL,
+        symptoms_extracted    JSONB NOT NULL DEFAULT '[]',
+        phenotypes            JSONB NOT NULL DEFAULT '[]',
+        genphen_genes         JSONB NOT NULL DEFAULT '[]',
+        genphen_specialties   JSONB,
+        genphen_confidence    DOUBLE PRECISION,
+        source_ip             VARCHAR(45),
+        user_agent            TEXT,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+        await client.query(`
+      CREATE INDEX IF NOT EXISTS diagnoses_patient_id_idx
+        ON diagnoses (patient_id);
+    `);
+        await client.query(`
+      CREATE INDEX IF NOT EXISTS diagnoses_user_id_created
+        ON diagnoses (user_id, created_at DESC);
+    `);
+        await client.query(`
+      CREATE INDEX IF NOT EXISTS diagnoses_user_email_snapshot_idx
+        ON diagnoses (user_email_snapshot);
+    `);
+
+        console.log('Migration completed: users, patients, diagnoses tables created/verified.');
     } catch (err) {
         console.error('Migration failed:', err);
+        throw err;
     } finally {
         client.release();
     }

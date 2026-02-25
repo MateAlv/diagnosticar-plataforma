@@ -34,6 +34,7 @@ type SavedDiagnostic = {
 };
 
 const LS_KEY = "diagnosticar:records";
+const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
 const tabs: Array<{ id: TabId; label: string }> = [
   { id: "overview", label: "Resumen" },
@@ -56,6 +57,37 @@ function formatRelativeTime(isoString: string): string {
   if (mins < 60) return `Hace ${mins} min`;
   if (hours < 24) return `Hace ${hours}h`;
   return `Hace ${days}d`;
+}
+
+type ApiPatient = {
+  id: string;
+  nombre: string;
+  created_at: string;
+  latest_diagnosis: {
+    id: string;
+    genphen_confidence: number | null;
+    genphen_specialties: { top_specialties?: string[] } | null;
+    genphen_genes_top5: Array<{ gene_symbol: string }>;
+    created_at: string;
+  } | null;
+};
+
+function apiPatientToMember(p: ApiPatient): Member {
+  const diag = p.latest_diagnosis;
+  const topSpecialties = diag?.genphen_specialties?.top_specialties ?? [];
+  const diagnostico =
+    topSpecialties.length > 0
+      ? `Especialidad/es recomendada/s: ${topSpecialties.join(", ")}.`
+      : "Sin orientación diagnóstica disponible.";
+  const savedAt = diag?.created_at ?? p.created_at;
+  return {
+    id: p.id,
+    nombre: p.nombre,
+    savedAt,
+    historiaClinica: `Diagnóstico · ${new Date(savedAt).toLocaleDateString("es-AR")}`,
+    sintomas: [],
+    diagnostico,
+  };
 }
 
 function savedToMember(record: SavedDiagnostic): Member {
@@ -90,13 +122,11 @@ export default function DiagnosticarPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
 
-  // Load saved diagnostics from localStorage
+  // Load saved diagnostics — from backend when authenticated, localStorage as fallback
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      const records: SavedDiagnostic[] = raw ? JSON.parse(raw) : [];
-      const loaded = records.map(savedToMember);
+    if (!user) return;
+
+    const applyMembers = (loaded: Member[]) => {
       setMembers(loaded);
       if (loaded.length > 0) {
         setSelectedMemberId(loaded[0].id);
@@ -109,10 +139,27 @@ export default function DiagnosticarPage() {
         setSymptomDrafts(drafts);
         setNewSymptom(inputs);
       }
-    } catch {
-      // ignore corrupted data
-    }
-  }, []);
+    };
+
+    fetch(`${BACKEND_API_URL}/patients`, { credentials: "include" })
+      .then((r) => {
+        if (!r.ok) throw new Error("fetch failed");
+        return r.json();
+      })
+      .then((data: ApiPatient[]) => {
+        applyMembers(data.map(apiPatientToMember));
+      })
+      .catch(() => {
+        // Fallback: read from localStorage
+        try {
+          const raw = localStorage.getItem(LS_KEY);
+          const records: SavedDiagnostic[] = raw ? JSON.parse(raw) : [];
+          applyMembers(records.map(savedToMember));
+        } catch {
+          // ignore corrupted data
+        }
+      });
+  }, [user]);
 
   useEffect(() => {
     if (!loading && !user) {
