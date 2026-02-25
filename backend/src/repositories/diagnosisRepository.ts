@@ -33,7 +33,7 @@ export async function createDiagnosisForPatient(
     sourceIp: string | null,
     userAgent: string | null,
 ): Promise<{ diagnosisId: string }> {
-    const res = await query<{ id: string }>(
+    const res = await query(
         `INSERT INTO diagnoses
            (patient_id, user_id, user_email_snapshot, historia_clinica,
             symptoms_extracted, phenotypes, genphen_genes,
@@ -55,7 +55,12 @@ export async function createDiagnosisForPatient(
         ],
     );
 
-    return { diagnosisId: res.rows[0].id };
+    const inserted = res.rows[0] as { id: string } | undefined;
+    if (!inserted?.id) {
+        throw new Error('Failed to create diagnosis');
+    }
+
+    return { diagnosisId: inserted.id };
 }
 
 /**
