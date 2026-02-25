@@ -81,31 +81,30 @@ function mapSymptoms(rawSymptoms: unknown, memberId: string): Symptom[] {
   if (!Array.isArray(rawSymptoms)) {
     return [];
   }
-  return rawSymptoms
-    .map((item, index) => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
-      const maybe = item as { description?: unknown; code?: unknown };
-      const codigoRaw =
-        typeof maybe.code === "string" && maybe.code.trim()
-          ? maybe.code.trim().toUpperCase()
-          : "";
-      const label =
-        typeof maybe.description === "string" && maybe.description.trim()
-          ? maybe.description.trim()
-          : codigoRaw || null;
-      const codigo = codigoRaw || undefined;
-      if (!label) {
-        return null;
-      }
-      return {
-        id: `${memberId}-${codigo ?? `sym-${index}`}-${index}`,
-        label,
-        codigo,
-      } satisfies Symptom;
-    })
-    .filter((symptom): symptom is Symptom => symptom !== null);
+  const symptoms: Symptom[] = [];
+  rawSymptoms.forEach((item, index) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
+    const maybe = item as { description?: unknown; code?: unknown };
+    const codigoRaw =
+      typeof maybe.code === "string" && maybe.code.trim()
+        ? maybe.code.trim().toUpperCase()
+        : "";
+    const label =
+      typeof maybe.description === "string" && maybe.description.trim()
+        ? maybe.description.trim()
+        : codigoRaw;
+    if (!label) {
+      return;
+    }
+    symptoms.push({
+      id: `${memberId}-${codigoRaw || `sym-${index}`}-${index}`,
+      label,
+      codigo: codigoRaw || undefined,
+    });
+  });
+  return symptoms;
 }
 
 function apiPatientToMember(p: ApiPatient): Member {
