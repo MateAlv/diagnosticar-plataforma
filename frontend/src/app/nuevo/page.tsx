@@ -863,18 +863,6 @@ function NuevoDiagnosticoScreen() {
                       {extractError}
                     </div>
                   )}
-                  <div className="pt-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setExtractError(null);
-                        setStep(3);
-                      }}
-                      className="inline-flex items-center justify-center h-10 px-5 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors"
-                    >
-                      Cargar manualmente
-                    </button>
-                  </div>
                 </div>
               )}
 
@@ -1252,7 +1240,24 @@ function NuevoDiagnosticoScreen() {
             </div>
 
             {step < 4 && (
-              <div className="mt-10 flex justify-end">
+              <div
+                className={[
+                  "mt-10 flex flex-wrap items-center gap-3",
+                  step === 2 ? "justify-between" : "justify-end",
+                ].join(" ")}
+              >
+                {step === 2 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExtractError(null);
+                      setStep(3);
+                    }}
+                    className="inline-flex items-center justify-center h-10 px-5 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors"
+                  >
+                    Cargar manualmente
+                  </button>
+                )}
                 <button
                   type="button"
                   className="inline-flex items-center justify-center h-11 px-8 rounded-xl bg-[var(--lu-green)] text-white font-bold hover:bg-[color-mix(in_oklab,var(--lu-green)_90%,#000)] shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"

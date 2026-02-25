@@ -348,7 +348,7 @@ export default function HomePage() {
                 alt="LUCAI"
                 width={140}
                 height={60}
-                className="h-10 w-auto object-contain opacity-80 hover:opacity-100 transition-opacity"
+                className="h-10 w-auto object-contain invert opacity-80 hover:opacity-100 transition-opacity"
               />
             </div>
           </div>
