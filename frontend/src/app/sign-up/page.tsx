@@ -78,12 +78,12 @@ export default function SignUpPage() {
             <p className="text-xs uppercase tracking-[0.4em] text-[var(--lu-subtle)]">Diagnostic.ar</p>
             <h2 className="mt-3 text-3xl font-semibold text-[var(--lu-text)] md:text-4xl">¡Cuenta creada!</h2>
             <p className="mt-4 text-[color:var(--lu-text)]">
-              Te enviamos un email a <strong>{email}</strong> para verificar tu cuenta.
+              Tu cuenta fue creada correctamente. Serás redirigido automáticamente.
             </p>
             <p className="mt-6 text-sm text-[color:var(--lu-subtle)]">
-              Revisá tu bandeja de entrada (y spam). Una vez verificado, podrás{" "}
+              Si no sos redirigido,{" "}
               <Link href="/login" className="nav-link">
-                iniciar sesión
+                iniciá sesión aquí
               </Link>
               .
             </p>

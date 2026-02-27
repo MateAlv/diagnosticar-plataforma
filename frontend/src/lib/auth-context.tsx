@@ -159,7 +159,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) {
         throw new Error(payload.error ?? payload.detail ?? "register-failed");
       }
-      // Do not set user, wait for verification
+      if (payload.user) {
+        setUser(payload.user);
+      }
     },
     []
   );

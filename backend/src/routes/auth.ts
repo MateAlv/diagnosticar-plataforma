@@ -196,31 +196,34 @@ router.post('/signup', signupRateLimit, async (req, res) => {
 
         const existing = await getUserByEmail(email);
         if (existing) {
-            // If the account exists but is unverified (e.g. email delivery failed last time),
-            // issue a fresh token and resend — so the user isn't permanently stuck.
             if (!existing.verified && existing.auth_provider === 'local') {
-                const newToken = crypto.randomBytes(32).toString('hex');
-                await updateVerificationToken(existing.id, hashToken(newToken));
-                await sendVerificationEmail(existing.email, newToken);
+                // Stuck unverified account — auto-verify and log in
+                await verifyUser(existing.id);
+                const accessToken = signAccessToken(existing);
+                const refreshToken = signRefreshToken(existing);
+                res.cookie('access_token', accessToken, { ...accessCookieOptions, maxAge: ACCESS_TOKEN_MAX_AGE_MS });
+                res.cookie('refresh_token', refreshToken, { ...refreshCookieOptions, maxAge: REFRESH_TOKEN_MAX_AGE_MS });
+                setCsrfCookie(res);
+                return res.json({ user: { id: existing.id, email: existing.email, full_name: existing.full_name, role: existing.role } });
             }
+            // Existing verified account — silent response
             return res.json({ message: 'If an account exists, a verification email will be sent.' });
         }
 
         const passwordHash = await hashPassword(password);
-        const verificationToken = crypto.randomBytes(32).toString('hex');
-        const verificationTokenHash = hashToken(verificationToken);
-
+        const verificationTokenHash = hashToken(crypto.randomBytes(32).toString('hex'));
         const newUser = await createUser(email, passwordHash, verificationTokenHash, safeFullName, safeOrganization);
-        try {
-            await sendVerificationEmail(email, verificationToken);
-        } catch (emailErr) {
-            // Roll back the user row so the address isn't permanently locked
-            console.error('Verification email failed after createUser — rolling back:', emailErr);
-            await deleteUserById(newUser.id);
-            return res.status(500).json({ error: 'Internal server error' });
-        }
 
-        res.json({ message: 'If an account exists, a verification email will be sent.' });
+        // Auto-verify immediately — email verification is handled separately
+        await verifyUser(newUser.id);
+
+        const accessToken = signAccessToken(newUser);
+        const refreshToken = signRefreshToken(newUser);
+        res.cookie('access_token', accessToken, { ...accessCookieOptions, maxAge: ACCESS_TOKEN_MAX_AGE_MS });
+        res.cookie('refresh_token', refreshToken, { ...refreshCookieOptions, maxAge: REFRESH_TOKEN_MAX_AGE_MS });
+        setCsrfCookie(res);
+
+        res.json({ user: { id: newUser.id, email: newUser.email, full_name: newUser.full_name, role: newUser.role } });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Internal server error' });
