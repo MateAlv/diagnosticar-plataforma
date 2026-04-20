@@ -11,6 +11,7 @@ services:
 
   backend:
     restart: unless-stopped
+    init: true
     environment:
       NODE_ENV: production
     labels:
@@ -34,6 +35,7 @@ services:
         NEXT_PUBLIC_HPO_API_URL: ${NEXT_PUBLIC_HPO_API_URL}
         NEXT_PUBLIC_GENPHENAI_URL: ${NEXT_PUBLIC_GENPHENAI_URL}
     restart: unless-stopped
+    init: true
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
