@@ -576,7 +576,7 @@ function NuevoDiagnosticoScreen() {
         const response = await fetch(GENPHENAI_ENDPOINT, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ hpo_ids: hpoIds, top_k: isDemoMode ? 1 : 10 }),
+          body: JSON.stringify({ hpo_ids: hpoIds, top_k: isDemoMode ? 1 : 50 }),
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
