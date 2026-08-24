@@ -6,6 +6,39 @@ El proyecto está dirigido por el Grupo de Genómica Clínica de la Facultad de 
 La plataforma es de acceso libre, permitiendo la participación de cualquier persona interesada.
 Con un enfoque en la innovación, la accesibilidad y la excelencia científica, Diagnostic.ar busca mejorar la calidad de vida de los pacientes con enfermedades poco frecuentes y contribuir al avance de la medicina personalizada en Argentina.
 
+## Descripción general de la arquitectura de software propuesta
+
+Diagnostic.ar se propone como una plataforma web modular, compuesta por una interfaz de usuario, una API de aplicación, una base de datos transaccional y servicios especializados para procesamiento clínico-computacional. La separación por componentes permite evolucionar la experiencia web, la gestión de usuarios y pacientes, y los modelos de análisis de síntomas de forma independiente.
+
+La interfaz web está desarrollada con Next.js, React y TypeScript. Desde esta capa las personas usuarias pueden registrarse, iniciar sesión, cargar síntomas o historia clínica en lenguaje cotidiano, revisar los términos HPO sugeridos, consultar orientaciones computacionales y gestionar distintas personas o sesiones. El frontend se comunica con la API principal para las funciones de autenticación y persistencia, y con servicios especializados para la extracción de HPO y el ranking diagnóstico.
+
+La API principal está desarrollada en Node.js con Express y TypeScript. Esta capa concentra la autenticación, la gestión de usuarios, pacientes y diagnósticos, y la escritura de datos persistentes. El sistema contempla autenticación local con usuario y contraseña, integración opcional con Google OAuth, uso de tokens JWT en cookies, protecciones CSRF/CORS, límites de tasa para endpoints sensibles y envío de correos mediante SMTP cuando corresponda.
+
+La base de datos principal es PostgreSQL. En el estado actual del sistema se almacenan usuarios, pacientes y diagnósticos, incluyendo historia clínica cargada, síntomas extraídos, términos HPO, genes priorizados por GenPhenIA y metadatos básicos de auditoría técnica. En la infraestructura de procesamiento existe además una base PostgreSQL separada para auditoría de extracciones, configurable según la política de retención y privacidad que se defina.
+
+El procesamiento clínico-computacional se organiza en servicios separados, desarrollados principalmente en Python con FastAPI. Estos servicios reciben texto clínico en español, extraen o normalizan síntomas, los mapean a términos HPO y exponen endpoints para consultar el ranking de genes y especialidades sugeridas a partir de GenPhenIA/GenPhenAI. La arquitectura contempla caché con Redis para mejorar tiempos de respuesta y reducir reprocesamientos.
+
+Para el despliegue se utiliza Docker Compose. En producción, según la infraestructura documentada, el sitio web, la API principal y PostgreSQL corren en el nodo público/operativo, mientras que los servicios de procesamiento intensivo y modelos corren en un nodo de cómputo separado. La publicación externa se realiza mediante Traefik con HTTPS, y la comunicación entre nodos se resuelve mediante túneles SSH reversos para exponer de forma controlada los servicios internos de HPO y GenPhenIA hacia la aplicación web.
+
+Stack identificado en la infraestructura actual:
+
+- Frontend: Next.js, React, TypeScript, Tailwind CSS.
+- Backend de aplicación: Node.js, Express, TypeScript.
+- Servicios de procesamiento: Python, FastAPI, spaCy/rapidfuzz/transformers, integración con Ollama/LLM y GenPhenIA.
+- Bases de datos: PostgreSQL para datos de aplicación; PostgreSQL adicional para auditoría de extracciones cuando está habilitada.
+- Cache: Redis en los servicios de procesamiento HPO.
+- Infraestructura: Docker/Docker Compose, Traefik, TLS, túneles SSH reversos entre nodos.
+- Seguridad de aplicación: JWT, cookies httpOnly, CSRF, CORS restringido, Helmet, rate limiting, variables de entorno para secretos.
+
+Detalles a completar o confirmar antes de presentar el informe final:
+
+- COMPLETAR: dominio público definitivo y nombre del ambiente productivo.
+- COMPLETAR: nombres definitivos de los nodos/servidores que se quieren mencionar en el informe, o reemplazarlos por una descripción genérica.
+- COMPLETAR: política de respaldo, retención y eliminación de datos clínicos y auditorías.
+- COMPLETAR: política de acceso administrativo a bases de datos y registros.
+- COMPLETAR: modelo/versión de LLM y versión de GenPhenIA que quedarán fijados para producción.
+- COMPLETAR: alcance exacto de validación clínica del ranking diagnóstico y disclaimers aprobados por el equipo.
+
 # Esquema web:
 ## Landing page (Home)
 Diagnostic.ar: Una nueva forma de acompañar el camino hacia el diagnóstico.
@@ -145,4 +178,4 @@ Estos cuadros suelen ser evaluados por especialistas como médicos endocrinólog
 
 Disclaimer breve: “Este documento no constituye un diagnóstico médico. Es una orientación generada por métodos computacionales.”
 
-### Notas 
+### Notas
