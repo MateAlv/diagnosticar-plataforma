@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../lib/auth-context";
+import GuiaCarga from "../../components/ui/GuiaCarga";
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -78,9 +79,9 @@ type RegenerationDraft = {
 
 const stepsMeta: Array<{ id: Step; title: string }> = [
   { id: 1, title: "Datos básicos" },
-  { id: 2, title: "Historia Clínica" },
+  { id: 2, title: "Contanos el caso" },
   { id: 3, title: "Síntomas" },
-  { id: 4, title: "Diagnóstico Final" },
+  { id: 4, title: "Orientación diagnóstica" },
 ];
 
 const defaultSymptoms: Symptom[] = [
@@ -921,35 +922,44 @@ function NuevoDiagnosticoScreen() {
               )}
 
               {step === 2 && (
-                <div className="space-y-5">
-                  <p className="text-sm text-[var(--lu-subtle)]">
-                    Pegá o escribí la Historia Clínica relevante. Diagnostic.ar analizará el texto y extraerá los síntomas
-                    clave antes de consultar a GenPhenIA.
-                  </p>
-                  <textarea
-                    value={historiaClinica}
-                    onChange={(event) => setHistoriaClinica(event.target.value)}
-                    rows={12}
-                    maxLength={10000}
-                    placeholder="Ej. Paciente con historial de dolor abdominal intermitente..."
-                    className="w-full rounded-2xl border border-[var(--lu-border)] bg-white px-4 py-3 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
-                  />
-                  <div className="text-xs text-[var(--lu-subtle)] text-right mt-1">
-                    {historiaClinica.length.toLocaleString()} / 10.000 caracteres
-                  </div>
-                  {extractError && (
-                    <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                      {extractError}
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+                  <div className="space-y-3">
+                    <p className="text-sm leading-relaxed text-[var(--lu-subtle)]">
+                      Contá qué le pasa al paciente: desde cuándo, con qué frecuencia y qué estudios
+                      se hicieron. Podés pegar un informe médico tal cual, o escribirlo con tus
+                      palabras. Diagnostic.ar va a leer el texto y proponer los síntomas que encuentre.
+                    </p>
+                    <textarea
+                      value={historiaClinica}
+                      onChange={(event) => setHistoriaClinica(event.target.value)}
+                      rows={12}
+                      maxLength={10000}
+                      placeholder="Ej. Nena de 7 años. Desde los 2 años tiene tos productiva casi todos los días, con sibilancias y cuadros respiratorios a repetición. Se cansa más que otros chicos al correr. En el último control pesaba menos de lo esperado para su edad."
+                      className="w-full rounded-2xl border border-[var(--lu-border)] bg-white px-4 py-3 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
+                    />
+                    <div className="text-xs text-[var(--lu-subtle)] text-right">
+                      {historiaClinica.length.toLocaleString()} / 10.000 caracteres
                     </div>
-                  )}
+                    {extractError && (
+                      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        {extractError}
+                      </div>
+                    )}
+                  </div>
+
+                  <GuiaCarga variant="historia" />
                 </div>
               )}
 
               {step === 3 && (
                 <div className="space-y-6">
+                  <GuiaCarga variant="sintomas" />
+
                   <div className="space-y-3">
-                    <p className="text-sm text-[var(--lu-subtle)]">
-                      Editá los síntomas detectados por Diagnostic.ar antes de enviar la consulta a GenPhenIA.
+                    <p className="text-sm leading-relaxed text-[var(--lu-subtle)]">
+                      Esta es la lista con la que vamos a buscar los genes candidatos. Revisala con
+                      cuidado: borrá lo que no corresponda y reemplazá los términos generales por
+                      otros más precisos siempre que puedas.
                     </p>
                     {genphenError && (
                       <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -985,12 +995,12 @@ function NuevoDiagnosticoScreen() {
                   </div>
 
                   <div className="rounded-2xl border border-[var(--lu-border)] bg-white p-6 shadow-sm">
-                    <h2 className="text-sm font-bold text-[var(--lu-text)]">Agregar síntoma manualmente</h2>
+                    <h2 className="text-sm font-bold text-[var(--lu-text)]">Agregar un síntoma</h2>
                     <div className="mt-4 grid gap-4 md:grid-cols-[2fr_1fr_auto]">
                       <div className="relative">
                         <input
                           type="text"
-                          placeholder="Descripción"
+                          placeholder="Escribí un síntoma y elegí de la lista"
                           value={newSymptom.description}
                           onChange={(event) =>
                             setNewSymptom((prev) => ({ ...prev, description: event.target.value }))
@@ -1037,7 +1047,7 @@ function NuevoDiagnosticoScreen() {
                       </div>
                       <input
                         type="text"
-                        placeholder="Código HPO (HP:0001027)"
+                        placeholder="Código HPO (se completa solo)"
                         value={newSymptom.code}
                         onChange={(event) => setNewSymptom((prev) => ({ ...prev, code: event.target.value }))}
                         className="rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
@@ -1357,7 +1367,7 @@ function NuevoDiagnosticoScreen() {
                       }}
                       className="inline-flex items-center justify-center h-10 px-5 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors"
                     >
-                      Cargar manualmente
+                      Elegir síntomas de la lista
                     </button>
                   )}
                   <button
