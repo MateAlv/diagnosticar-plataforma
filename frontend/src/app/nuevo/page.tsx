@@ -329,6 +329,7 @@ function NuevoDiagnosticoScreen() {
     return "";
   });
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
+  const [lastAnalyzedHC, setLastAnalyzedHC] = useState("");
   const [newSymptom, setNewSymptom] = useState({ description: "", code: "" });
   const [extractError, setExtractError] = useState<string | null>(null);
   const [genphenResults, setGenphenResults] = useState<GenPhenResult[]>([]);
@@ -499,6 +500,11 @@ function NuevoDiagnosticoScreen() {
     }
 
     if (step === 2) {
+      // Volver al paso 2 y avanzar sin editar el texto no debe pisar los síntomas editados a mano
+      if (historiaClinica.trim() === lastAnalyzedHC && symptoms.length > 0) {
+        setStep(3);
+        return;
+      }
       setIsLoading(true);
       setLoadingMessage("Analizando historia clínica...");
       setExtractError(null);
@@ -544,6 +550,7 @@ function NuevoDiagnosticoScreen() {
           }
         }
         setSymptoms(Array.from(byId.values()).sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0)));
+        setLastAnalyzedHC(historiaClinica.trim());
         setStep(3);
       } catch (error) {
         const message =
@@ -660,6 +667,14 @@ function NuevoDiagnosticoScreen() {
       }
       return;
     }
+  };
+
+  const firstStep: Step = isDemoMode ? 2 : 1;
+
+  const handleBack = () => {
+    setExtractError(null);
+    setGenphenError(null);
+    setStep((prev) => (prev > firstStep ? ((prev - 1) as Step) : prev));
   };
 
   const handleCancelFlow = () => {
@@ -1304,51 +1319,75 @@ function NuevoDiagnosticoScreen() {
             </div>
 
             {step < 4 && (
-              <div
-                className={[
-                  "mt-10 flex flex-wrap items-center gap-3",
-                  step === 2 ? "justify-between" : "justify-end",
-                ].join(" ")}
-              >
-                {step === 2 && (
+              <div className="mt-10 flex flex-wrap items-center justify-between gap-3">
+                {step > firstStep ? (
                   <button
                     type="button"
-                    onClick={() => {
-                      setExtractError(null);
-                      setStep(3);
-                    }}
-                    className="inline-flex items-center justify-center h-10 px-5 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors"
+                    onClick={handleBack}
+                    disabled={isLoading}
+                    className="inline-flex items-center justify-center h-10 px-5 rounded-xl border border-[var(--lu-border)] text-[var(--lu-subtle)] font-medium hover:bg-[var(--lu-surface)] hover:text-[var(--lu-text)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Cargar manualmente
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                      className="mr-2"
+                    >
+                      <path d="M11 3L5 8l6 5" />
+                    </svg>
+                    Atrás
                   </button>
+                ) : (
+                  <span />
                 )}
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center h-11 px-8 rounded-xl bg-[var(--lu-green)] text-white font-bold hover:bg-[color-mix(in_oklab,var(--lu-green)_90%,#000)] shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
-                  onClick={handleContinue}
-                  disabled={
-                    (step === 1 && !canGoStep1) ||
-                    (step === 2 && !canGoStep2) ||
-                    (step === 3 && !canGoStep3) ||
-                    isLoading
-                  }
-                >
-                  Continuar
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                    className="ml-2"
+
+                <div className="flex flex-wrap items-center gap-3">
+                  {step === 2 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExtractError(null);
+                        setStep(3);
+                      }}
+                      className="inline-flex items-center justify-center h-10 px-5 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors"
+                    >
+                      Cargar manualmente
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center h-11 px-8 rounded-xl bg-[var(--lu-green)] text-white font-bold hover:bg-[color-mix(in_oklab,var(--lu-green)_90%,#000)] shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                    onClick={handleContinue}
+                    disabled={
+                      (step === 1 && !canGoStep1) ||
+                      (step === 2 && !canGoStep2) ||
+                      (step === 3 && !canGoStep3) ||
+                      isLoading
+                    }
                   >
-                    <path d="M5 3l6 5-6 5" />
-                  </svg>
-                </button>
+                    Continuar
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                      className="ml-2"
+                    >
+                      <path d="M5 3l6 5-6 5" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             )}
           </div>
