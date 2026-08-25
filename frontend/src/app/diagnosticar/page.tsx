@@ -107,12 +107,39 @@ function mapSymptoms(rawSymptoms: unknown, memberId: string): Symptom[] {
   return symptoms;
 }
 
+const ESPECIALIDADES_ES: Record<string, string> = {
+  "developmental disorders": "Trastornos del desarrollo",
+  "renal": "Nefrología",
+  "neurology": "Neurología",
+  "cardiology": "Cardiología",
+  "ophthalmology": "Oftalmología",
+  "dermatology": "Dermatología",
+  "endocrinology": "Endocrinología",
+  "immunology": "Inmunología",
+  "hematology": "Hematología",
+  "gastroenterology": "Gastroenterología",
+  "pulmonology": "Neumonología",
+  "musculoskeletal": "Traumatología y ortopedia",
+  "metabolic": "Enfermedades metabólicas",
+  "oncology": "Oncología",
+  "otolaryngology": "Otorrinolaringología",
+  "psychiatry": "Psiquiatría",
+  "rheumatology": "Reumatología",
+  "urology": "Urología",
+  "gynecology": "Ginecología",
+  "craniofacial": "Anomalías craneofaciales",
+};
+
+function traducirEspecialidad(nombre: string): string {
+  return ESPECIALIDADES_ES[nombre.trim().toLowerCase()] ?? nombre;
+}
+
 function apiPatientToMember(p: ApiPatient): Member {
   const diag = p.latest_diagnosis;
   const topSpecialties = diag?.genphen_specialties?.top_specialties ?? [];
   const diagnostico =
     topSpecialties.length > 0
-      ? `Especialidad/es recomendada/s: ${topSpecialties.join(", ")}.`
+      ? `Te sugerimos consultar con: ${topSpecialties.map(traducirEspecialidad).join(", ")}.`
       : "Sin orientación diagnóstica disponible.";
   const savedAt = diag?.created_at ?? p.created_at;
   const historiaClinica =
@@ -137,7 +164,7 @@ function apiPatientToMember(p: ApiPatient): Member {
 function savedToMember(record: SavedDiagnostic): Member {
   const diag =
     record.topSpecialties.length > 0
-      ? `Especialidad/es recomendada/s: ${record.topSpecialties.join(", ")}.`
+      ? `Te sugerimos consultar con: ${record.topSpecialties.map(traducirEspecialidad).join(", ")}.`
       : "Sin orientación diagnóstica disponible.";
 
   return {
@@ -389,7 +416,7 @@ function DiagnosticarContent() {
                     </div>
                   ) : activeMember ? (
                     /* ── Members list + detail ── */
-                    <div className="grid gap-6 lg:grid-cols-[0.42fr_0.58fr]">
+                    <div className="grid gap-6 lg:grid-cols-[minmax(0,0.42fr)_minmax(0,0.58fr)]">
                       <div className="space-y-3">
                         <div className="flex items-center justify-between gap-3">
                           <p className="text-xs uppercase tracking-[0.32em] text-[var(--lu-subtle)]">Selecciona un integrante</p>
@@ -428,7 +455,7 @@ function DiagnosticarContent() {
                         </div>
                       </div>
 
-                      <div className="rounded-[28px] border border-[var(--lu-border)] bg-white p-8 shadow-lg">
+                      <div className="min-w-0 rounded-[28px] border border-[var(--lu-border)] bg-white p-8 shadow-lg">
                         <div className="flex items-center justify-between gap-4">
                           <div>
                             <p className="text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Integrante</p>
@@ -442,18 +469,40 @@ function DiagnosticarContent() {
                         <div className="mt-6 space-y-6 text-sm text-[var(--lu-subtle)]">
                           <div>
                             <p className="mb-1 text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Historia Clínica</p>
-                            <div className="flex items-center gap-2 rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] px-4 py-3">
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16l4-2 4 2 4-2 4 2V8z" />
-                                <polyline points="14 2 14 8 20 8" />
-                              </svg>
-                              <span className="truncate font-medium">{activeMember.historiaClinica}</span>
-                            </div>
+                            <details className="group min-w-0 rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] px-4 py-3">
+                              <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+                                  <path d="M14 2H6a2 2 0 0 0-2 2v16l4-2 4 2 4-2 4 2V8z" />
+                                  <polyline points="14 2 14 8 20 8" />
+                                </svg>
+                                <span className="min-w-0 flex-1 truncate font-medium group-open:hidden">
+                                  {activeMember.historiaClinica}
+                                </span>
+                                <span className="hidden flex-1 font-medium group-open:block">Historia clínica completa</span>
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden="true"
+                                  className="shrink-0 text-[var(--lu-accent)] transition-transform group-open:rotate-180"
+                                >
+                                  <path d="M6 9l6 6 6-6" />
+                                </svg>
+                              </summary>
+                              <p className="mt-3 whitespace-pre-wrap break-words border-t border-[var(--lu-border)] pt-3 leading-relaxed">
+                                {activeMember.historiaClinica}
+                              </p>
+                            </details>
                           </div>
 
                           <div>
                             <p className="mb-2 text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Síntomas reportados</p>
-                            <ul className="flex flex-wrap gap-2">
+                            <ul className="flex min-w-0 flex-wrap gap-2">
                               {activeMember.sintomas.length === 0 ? (
                                 <li className="text-xs text-[var(--lu-subtle)]">No hay síntomas cargados para este diagnóstico.</li>
                               ) : activeMember.sintomas.map((symptom) => (
@@ -467,7 +516,7 @@ function DiagnosticarContent() {
 
                           <div>
                             <p className="mb-2 text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Orientación diagnóstica</p>
-                            <p className="rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-4 text-sm leading-relaxed text-[var(--lu-text)]">
+                            <p className="rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-4 text-sm leading-relaxed text-[var(--lu-text)] break-words">
                               {activeMember.diagnostico}
                             </p>
                             <div className="mt-4 flex flex-wrap gap-3">
