@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import url("/vendor/lucai.scoped.css") layer(vendor);
 
 /* ============== TOKENS (base) ============== */
 :root {
@@ -17,7 +16,7 @@
   --lu-cta-grad: linear-gradient(135deg, var(--lu-amber) 0%, var(--lu-accent) 100%);
   --lu-shadow: 0 20px 60px rgba(0, 0, 0, .35);
   --lu-radius: 28px;
-  --send-w: 130px;
+  --send-w: 110px;
   /* ancho mínimo del botón Send/Enter */
 }
 
@@ -73,82 +72,24 @@ body {
   color: var(--lu-text);
 }
 
-/* Cabecera */
-.header-dark {
-  position: sticky;
-  top: 0;
-  z-index: 20;
+/* ============== Input “píldora” ============== */
+.pill-input {
   width: 100%;
-  backdrop-filter: blur(8px);
-  background: color-mix(in oklab, #000 60%, transparent);
-  border-bottom: 1px solid var(--lu-border);
-}
-
-/* Fondo hexagonal opcional */
-.hex-bg {
-  position: absolute;
-  inset: 0;
-  background:
-    url("/brand/hexagon.png") center / clamp(720px, 70vw, 1200px) no-repeat,
-    var(--lu-bg);
-  opacity: .18;
-  filter: saturate(140%) brightness(.95);
-  pointer-events: none;
-}
-
-/* Panel grande (login/contact) */
-.panel-lg {
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 64px 48px;
-  background: var(--lu-surface);
-  border: 1px solid var(--lu-border);
-  border-radius: var(--lu-radius);
-  box-shadow: var(--lu-shadow);
-}
-
-.kicker {
-  text-align: center;
-  color: var(--lu-subtle);
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  line-height: 1.1;
-  font-size: clamp(28px, 4.2vw, 56px);
-  margin-bottom: 40px;
-}
-
-/* ============== Inputs “píldora” ============== */
-.pill-input,
-.pill-textarea {
-  width: 100%;
+  height: 48px;
+  padding: 0 16px;
+  border: 2px solid var(--lu-accent);
+  border-radius: 9999px;
   color: var(--lu-text);
   background: transparent;
   outline: none;
-  border: 2px solid var(--lu-accent);
   transition: box-shadow .2s ease;
 }
 
-.pill-input {
-  height: 48px;
-  border-radius: 9999px;
-  padding: 0 16px;
-}
-
-.pill-textarea {
-  min-height: 110px;
-  border-radius: 20px;
-  padding: 12px 16px;
-  resize: vertical;
-}
-
-.pill-input::placeholder,
-.pill-textarea::placeholder {
+.pill-input::placeholder {
   color: #9aa3ad;
 }
 
-.pill-input:focus,
-.pill-textarea:focus {
+.pill-input:focus {
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--lu-accent) 35%, transparent);
 }
 
@@ -168,9 +109,7 @@ body {
   background-color: transparent !important;
 }
 
-/* ============== Botones (override vendor) ============== */
-
-/* Outline común (Send / Enter / AI Chat)  */
+/* Outline común */
 #lucai-app .btn-outline {
   all: unset;
   box-sizing: border-box;
@@ -239,34 +178,6 @@ body {
   height: 18px;
 }
 
-#lucai-app .btn-danger-outline {
-  all: unset;
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 44px;
-  min-width: var(--send-w);
-  padding: 0 22px;
-  border-radius: 12px;
-  border: 2px solid #ff3b3b;
-  background: transparent;
-  color: #ff3b3b;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color .2s ease, color .2s ease, transform .06s ease, filter .2s ease;
-}
-
-#lucai-app .btn-danger-outline:hover {
-  background: #ff3b3b;
-  color: #111;
-}
-
-#lucai-app .btn-danger-outline:active {
-  transform: translateY(1px);
-}
-
 #lucai-app .btn-success {
   all: unset;
   box-sizing: border-box;
@@ -299,39 +210,6 @@ body {
   cursor: not-allowed;
 }
 
-#lucai-app select.combo-field {
-  appearance: none !important;
-  -webkit-appearance: none !important;
-  -moz-appearance: none !important;
-  width: 100%;
-  border-radius: 14px;
-  border: 1.5px solid color-mix(in oklab, var(--lu-border) 80%, #3a3a3a);
-  background: color-mix(in oklab, var(--lu-bg) 80%, #161616) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23cdd3db' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 14px center/14px;
-  padding: 0 42px 0 16px;
-  height: 48px;
-  color: var(--lu-text);
-  font: inherit;
-  line-height: 1.4;
-  background-origin: border-box;
-  transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
-  cursor: pointer;
-}
-
-#lucai-app select.combo-field:hover {
-  border-color: color-mix(in oklab, var(--lu-accent) 45%, #3a3a3a);
-}
-
-#lucai-app select.combo-field:focus {
-  border-color: var(--lu-accent);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--lu-accent) 30%, transparent);
-  outline: none;
-}
-
-#lucai-app select.combo-field option {
-  background: #131313;
-  color: var(--lu-text);
-}
-
 #lucai-app input[type="date"] {
   color-scheme: light;
 }
@@ -343,10 +221,6 @@ body {
 
 #lucai-app input[type="date"]::-webkit-calendar-picker-indicator:hover {
   opacity: 0.95;
-}
-
-#lucai-app .btn-enter {
-  margin-left: auto;
 }
 
 /* Ojo por defecto (con marco) */
@@ -376,7 +250,6 @@ body {
   filter: brightness(1.15);
 }
 
-
 #lucai-app .eye-btn:active {
   transform: translateY(-50%) scale(.98);
 }
@@ -384,341 +257,6 @@ body {
 #lucai-app .eye-btn:focus-visible {
   outline: 0;
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--lu-accent) 35%, transparent);
-}
-
-/* “Enter” alineado a la derecha en el login (mismo estilo que Send) */
-#lucai-app .btn-enter {
-  margin-left: auto;
-}
-
-/* ============== Marca ============== */
-.brand-logo {
-  width: clamp(160px, 16vw, 220px);
-  height: auto;
-}
-
-.brand-sphere {
-  width: clamp(96px, 10vw, 140px);
-  height: auto;
-  filter: drop-shadow(0 12px 30px rgba(255, 105, 0, .35));
-}
-
-/* Chat: aún más zoom que Home */
-.hex-zoomed--chat {
-  background:
-    url("/brand/hexagon.png") center/5600px no-repeat,
-    /* más grande que 4200 de Home */
-    var(--lu-bg);
-  opacity: .10;
-  filter: saturate(170%) brightness(.9);
-}
-
-/* Botón “Send” solo texto, posicionado como antes */
-#lucai-app .send-text {
-  all: unset;
-  position: absolute;
-  right: 24px;
-  bottom: 18px;
-  height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 6px;
-  color: var(--lu-accent);
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity .2s ease, transform .06s ease, filter .2s ease;
-}
-
-#lucai-app .send-text:hover {
-  filter: brightness(1.15);
-}
-
-#lucai-app .send-text:active {
-  transform: translateY(1px);
-}
-
-#lucai-app .send-text[disabled] {
-  opacity: .5;
-  cursor: not-allowed;
-}
-
-/* ============== Chat ============== */
-.chat-board {
-  background: color-mix(in oklab, var(--lu-bg) 75%, #1b1e20 25%);
-  border: 1px solid color-mix(in oklab, var(--lu-bg) 65%, #2a2e31);
-  border-radius: var(--lu-radius);
-  padding: 22px 28px;
-  height: clamp(560px, 70vh, 880px);
-  overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #2a2b2e transparent;
-  backdrop-filter: blur(4px);
-}
-
-.chat-board::-webkit-scrollbar {
-  width: 10px;
-}
-
-.chat-board::-webkit-scrollbar-thumb {
-  background: #2a2b2e;
-  border-radius: 10px;
-}
-
-.chat-thread {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 220px;
-}
-
-.bubble {
-  max-width: 85%;
-  padding: 12px 16px;
-  border-radius: 18px;
-}
-
-.bubble-user {
-  margin-left: auto;
-  background: #171717;
-  border: 1px solid var(--lu-border);
-}
-
-.bubble-bot {
-  margin-right: auto;
-  background: #0f1214;
-  border: 1px solid #1d2a22;
-}
-
-.bubble-text {
-  font-size: 0.92rem;
-  line-height: 1.6;
-  color: var(--lu-text);
-  white-space: pre-wrap;
-  margin: 0;
-}
-
-.bubble-text-user {
-  font-weight: 500;
-}
-
-.bubble-content {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-}
-
-.bubble-loading {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  min-height: 1.1rem;
-}
-
-.bubble-loading span {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 50%;
-  background: color-mix(in oklab, var(--lu-accent) 70%, #eef5f1 30%);
-  animation: bubble-dot 1.1s infinite ease-in-out;
-  opacity: 0.25;
-}
-
-.bubble-loading span:nth-child(2) {
-  animation-delay: 0.15s;
-}
-
-.bubble-loading span:nth-child(3) {
-  animation-delay: 0.3s;
-}
-
-.bubble-markdown {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  font-size: 0.92rem;
-  line-height: 1.6;
-  color: var(--lu-text);
-}
-
-.bubble-markdown p {
-  margin: 0;
-}
-
-.bubble-heading {
-  font-size: 1rem;
-  font-weight: 600;
-  margin: 0;
-  color: var(--lu-text);
-}
-
-.bubble-heading+* {
-  margin-top: 0.35rem;
-}
-
-.bubble-content .bubble-text {
-  color: color-mix(in oklab, var(--lu-text) 88%, #d6e6d8 12%);
-}
-
-.bubble-summary {
-  font-size: 0.96rem;
-  font-weight: 600;
-  color: var(--lu-text);
-}
-
-.bubble-list {
-  margin: 0;
-  padding-left: 1.2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  font-size: 0.9rem;
-  color: color-mix(in oklab, var(--lu-text) 85%, #c7f5d6 15%);
-}
-
-.bubble-list li {
-  line-height: 1.55;
-}
-
-.bubble-ordered-list {
-  margin: 0;
-  padding-left: 1.2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  font-size: 0.9rem;
-  color: color-mix(in oklab, var(--lu-text) 85%, #c7f5d6 15%);
-}
-
-.bubble-list-item {
-  line-height: 1.55;
-}
-
-.bubble-code {
-  font-size: 0.86rem;
-  font-family: "Fira Code", "JetBrains Mono", "Menlo", monospace;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 14px;
-  padding: 10px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: color-mix(in oklab, var(--lu-text) 75%, #cdd3db 25%);
-  overflow-x: auto;
-  white-space: pre-wrap;
-}
-
-.bubble-inline-code {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.1rem 0.35rem;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  font-family: "Fira Code", "JetBrains Mono", "Menlo", monospace;
-  font-size: 0.85rem;
-  color: color-mix(in oklab, var(--lu-text) 78%, #e9f0f1 22%);
-}
-
-.bubble-steps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  align-items: center;
-}
-
-.bubble-steps-label {
-  font-weight: 600;
-  color: var(--lu-amber);
-}
-
-.bubble-blockquote {
-  margin: 0;
-  padding-left: 1rem;
-  border-left: 3px solid color-mix(in oklab, var(--lu-accent) 60%, #1a3325);
-  color: color-mix(in oklab, var(--lu-text) 80%, #d7f5e3 20%);
-  font-style: italic;
-}
-
-.bubble-link {
-  color: var(--lu-accent);
-  text-decoration: underline;
-  text-decoration-thickness: 0.08em;
-  text-underline-offset: 0.22em;
-}
-
-.bubble-link:hover {
-  filter: brightness(1.1);
-}
-
-.bubble-table-wrapper {
-  overflow-x: auto;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.bubble-table-wrapper table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-  min-width: 420px;
-}
-
-.bubble-table-header {
-  background: rgba(255, 255, 255, 0.08);
-  text-align: left;
-  padding: 0.6rem 0.75rem;
-  font-weight: 600;
-  color: color-mix(in oklab, var(--lu-text) 85%, #e2f5e9 15%);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.bubble-table-cell {
-  padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  color: color-mix(in oklab, var(--lu-text) 78%, #e9f0f1 22%);
-}
-
-.bubble-table-wrapper tr:last-child .bubble-table-cell {
-  border-bottom: none;
-}
-
-.bubble-action {
-  align-self: flex-start;
-  padding: 0.4rem 0.9rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in oklab, var(--lu-accent) 70%, #0f1d16 30%);
-  background: color-mix(in oklab, var(--lu-accent) 25%, #121a16 75%);
-  color: color-mix(in oklab, var(--lu-text) 90%, #f0fff7 10%);
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform .15s ease, filter .2s ease;
-}
-
-.bubble-action:hover {
-  filter: brightness(1.12);
-}
-
-.bubble-action:active {
-  transform: translateY(1px);
-}
-
-.bubble-action:disabled {
-  opacity: .6;
-  cursor: not-allowed;
-}
-
-@keyframes bubble-dot {
-
-  0%,
-  80%,
-  100% {
-    opacity: 0.25;
-    transform: translateY(0);
-  }
-
-  40% {
-    opacity: 1;
-    transform: translateY(-4px);
-  }
 }
 
 .lu-modal-overlay {
@@ -807,88 +345,6 @@ body {
   padding: 1rem 1.4rem;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
   background: rgba(12, 15, 14, 0.9);
-}
-
-.lu-modal-footer-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.8rem 1.4rem;
-  font-size: 0.85rem;
-  color: color-mix(in oklab, var(--lu-text) 78%, #dff5ea 22%);
-}
-
-.lu-modal-footer-meta span:last-child {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.lu-modal-summary {
-  font-size: 0.95rem;
-  color: color-mix(in oklab, var(--lu-text) 92%, #f0fff8 8%);
-  font-weight: 600;
-}
-
-.lu-modal-editor {
-  position: relative;
-}
-
-.lu-sql-textarea {
-  min-height: 140px;
-  padding-right: calc(var(--sql-send-w, 96px) + 22px);
-  padding-bottom: 28px;
-}
-
-.lu-sql-execute {
-  all: unset;
-  position: absolute;
-  top: 50%;
-  right: 26px;
-  transform: translateY(-50%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 44px;
-  padding: 0 6px;
-  color: var(--lu-accent);
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity .2s ease, transform .06s ease, filter .2s ease;
-}
-
-.lu-sql-execute:hover {
-  filter: brightness(1.15);
-}
-
-.lu-sql-execute:active {
-  transform: translateY(-50%) translateY(1px);
-}
-
-.lu-sql-execute[disabled] {
-  opacity: .5;
-  cursor: not-allowed;
-  filter: none;
-}
-
-.lu-modal-error {
-  padding: 0.75rem 1rem;
-  border-radius: 14px;
-  background: rgba(255, 89, 100, 0.12);
-  border: 1px solid rgba(255, 89, 100, 0.3);
-  color: #ffb3b8;
-  font-size: 0.85rem;
-}
-
-.lu-modal-table {
-  min-height: 320px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(11, 15, 14, 0.85);
-  padding: 0.8rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
 }
 
 .lu-table-wrapper {
@@ -987,84 +443,6 @@ body {
 
   to {
     opacity: 1;
-  }
-}
-
-.input-dock {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 20;
-  padding: 14px 0 calc(env(safe-area-inset-bottom) + 18px);
-  background: linear-gradient(180deg, rgba(11, 11, 11, 0) 0%, rgba(11, 11, 11, .92) 40%, rgba(11, 11, 11, 1) 100%);
-  backdrop-filter: blur(6px);
-}
-
-#lucai-app .input-dock form {
-  position: relative !important;
-}
-
-#lucai-app .dock-textarea {
-  padding-right: calc(var(--send-w) + 12px);
-}
-
-#lucai-app .send-btn {
-  position: absolute;
-  right: 24px;
-  bottom: 18px;
-  height: 44px;
-  min-width: var(--send-w);
-  z-index: 1;
-}
-
-/* ====== Home: fondo hex zoomed-out tipo “wireframe” ====== */
-/* super zoomed-out hex */
-.hex-zoomed {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background:
-    url("/brand/hexagon.png") center/4200px no-repeat,
-    var(--lu-bg);
-  opacity: 0.12;
-  filter: saturate(160%) brightness(0.9);
-}
-
-.hex-zoomed::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at 80% 30%, rgba(0, 255, 0, 0.08), transparent 70%);
-  mix-blend-mode: screen;
-}
-
-/* ====== Header nav ====== */
-.nav-link {
-  color: var(--lu-subtle);
-  font-weight: 600;
-  letter-spacing: .02em;
-  transition: color .2s ease, opacity .2s ease;
-}
-
-.nav-link:hover {
-  color: var(--lu-text);
-}
-
-/* ====== Hero ====== */
-.hero-grid {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: 1.05fr .95fr;
-  gap: clamp(24px, 4vw, 48px);
-  align-items: center;
-}
-
-@media (max-width: 1024px) {
-  .hero-grid {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -1186,74 +564,6 @@ body {
   }
 }
 
-/* versión “full gradiente” ya mencionada en tus notas */
-#lucai-app .btn-cta-block {
-  all: unset;
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 44px;
-  padding: 0 20px;
-  border-radius: 12px;
-  background: var(--lu-cta-grad);
-  color: #111;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform .06s ease, filter .2s ease;
-}
-
-#lucai-app .btn-cta-block:hover {
-  filter: brightness(1.02);
-}
-
-#lucai-app .btn-cta-block:active {
-  transform: translateY(1px);
-}
-
-/* esfera grande (lado derecho del hero) */
-.brand-sphere-large {
-  filter: drop-shadow(0 24px 80px rgba(255, 105, 0, .25));
-  transform: translateY(6px);
-}
-
-/* badges finos */
-.badge-dot {
-  position: relative;
-  padding-left: 14px;
-}
-
-.badge-dot::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--lu-accent);
-}
-
-/* ====== placeholder ====== */
-.section-soft {
-  position: relative;
-  z-index: 1;
-  border-top: 1px solid var(--lu-border);
-  padding: 56px 20px;
-}
-
-.section-title {
-  font-size: clamp(22px, 3vw, 28px);
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.section-p {
-  color: var(--lu-subtle);
-  max-width: 70ch;
-}
-
 /* Layout raíz en columna: empuja el footer al final */
 .page-root {
   min-height: 100dvh;
@@ -1267,16 +577,7 @@ body {
   flex: 1 1 auto;
 }
 
-/* Footer estilo section, todo abajo */
-.footer-soft {
-  position: relative;
-  z-index: 1;
-  border-top: 1px solid var(--lu-border);
-  padding: 56px 20px;
-  width: 100%;
-}
-
-/* Reutilizamos .nav-link para botones de texto (Logout) */
+/* ====== Header nav (también botones de texto, ej. Logout) ====== */
 .nav-link {
   color: var(--lu-subtle);
   font-weight: 600;
@@ -1310,11 +611,6 @@ body {
   #lucai-app .user-badge {
     max-width: 160px;
   }
-}
-
-/* Opcional: reduce min-width de btn-outline para CTA del header */
-:root {
-  --send-w: 110px;
 }
 
 /* Headings con Sora */
