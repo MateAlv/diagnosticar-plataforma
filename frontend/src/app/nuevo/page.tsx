@@ -7,12 +7,13 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../lib/auth-context";
 import GuiaCarga from "../../components/ui/GuiaCarga";
 
-type Step = 1 | 2 | 3 | 4;
+type Step = 1 | 2 | 3;
 
 type Symptom = {
   description: string;
   code: string;
   confidence?: number;
+  source?: "texto" | "manual";
 };
 
 type GenPhenResult = {
@@ -79,9 +80,8 @@ type RegenerationDraft = {
 
 const stepsMeta: Array<{ id: Step; title: string }> = [
   { id: 1, title: "Datos básicos" },
-  { id: 2, title: "Contanos el caso" },
-  { id: 3, title: "Síntomas" },
-  { id: 4, title: "Orientación diagnóstica" },
+  { id: 2, title: "Síntomas del paciente" },
+  { id: 3, title: "Orientación diagnóstica" },
 ];
 
 const defaultSymptoms: Symptom[] = [
@@ -312,6 +312,7 @@ function NuevoDiagnosticoScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [datosBasicos, setDatosBasicos] = useState({
@@ -333,6 +334,7 @@ function NuevoDiagnosticoScreen() {
   const [lastAnalyzedHC, setLastAnalyzedHC] = useState("");
   const [newSymptom, setNewSymptom] = useState({ description: "", code: "" });
   const [extractError, setExtractError] = useState<string | null>(null);
+  const [extractInfo, setExtractInfo] = useState<string | null>(null);
   const [genphenResults, setGenphenResults] = useState<GenPhenResult[]>([]);
   const [genphenSpecialties, setGenphenSpecialties] = useState<GenPhenSpecialties | null>(null);
   const [genphenConfidence, setGenphenConfidence] = useState<number | null>(null);
@@ -354,8 +356,9 @@ function NuevoDiagnosticoScreen() {
     );
   }, [datosBasicos]);
 
-  const canGoStep2 = historiaClinica.trim().length > 12;
-  const canGoStep3 = symptoms.length > 0;
+  const canGoStep2 = symptoms.length > 0;
+  const puedeAnalizarTexto =
+    historiaClinica.trim().length > 12 && historiaClinica.trim() !== lastAnalyzedHC;
   const isLowConfidenceResult =
     genphenConfidence !== null && genphenConfidence < GENPHENAI_LOW_CONFIDENCE_THRESHOLD;
   const topSpecialtiesDisplayed = (genphenSpecialties?.top_specialties ?? []).slice(0, 3);
@@ -388,8 +391,8 @@ function NuevoDiagnosticoScreen() {
 
   useEffect(() => {
     const targetStep = searchParams.get("step");
-    if (targetStep === "3") {
-      setStep(3);
+    if (targetStep === "3" || targetStep === "2") {
+      setStep(2);
       if (typeof window !== "undefined") {
         const stored = window.sessionStorage.getItem("diagnosticar:newDiagDraft");
         if (stored) {
@@ -494,179 +497,194 @@ function NuevoDiagnosticoScreen() {
     };
   }, [newSymptom.description]);
 
+  const extraerSintomasDelTexto = async () => {
+    const texto = historiaClinica.trim();
+    if (!texto) return;
+    setIsLoading(true);
+    setLoadingMessage("Buscando síntomas en el texto...");
+    setExtractError(null);
+    setExtractInfo(null);
+    try {
+      const response = await fetch(HPO_EXTRACT_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text_es: texto, patient_locale: "es-AR" }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = payload?.detail || payload?.error || "No pudimos analizar el texto.";
+        throw new Error(detail);
+      }
+      const phenotypes = Array.isArray(payload?.phenotypes) ? payload.phenotypes : [];
+      setExtractedPhenotypes((prev) => {
+        const seen = new Set(prev.map((item) => item.hpo_id));
+        return [...prev, ...phenotypes.filter((item: PhenotypeItem) => !seen.has(item?.hpo_id))];
+      });
+
+      const byId = new Map<string, Symptom>();
+      for (const phenotype of phenotypes) {
+        const hpoId = typeof phenotype?.hpo_id === "string" ? phenotype.hpo_id : "";
+        if (!hpoId) continue;
+        if (phenotype?.negated) continue;
+        // Prefer official HPO Spanish label over extracted span
+        const rawLabel = typeof phenotype?.label_es === "string" && phenotype.label_es.trim()
+          ? phenotype.label_es.trim()
+          : typeof phenotype?.span_es === "string" && phenotype.span_es.trim()
+            ? phenotype.span_es.trim()
+            : typeof phenotype?.label === "string" && phenotype.label.trim()
+              ? phenotype.label.trim()
+              : typeof phenotype?.span_en === "string" && phenotype.span_en.trim()
+                ? phenotype.span_en.trim()
+                : hpoId;
+        const confidence = typeof phenotype?.confidence === "number" ? phenotype.confidence : 0;
+        const existing = byId.get(hpoId);
+        if (!existing || (existing.confidence ?? 0) < confidence) {
+          byId.set(hpoId, { description: rawLabel, code: hpoId, confidence, source: "texto" });
+        }
+      }
+
+      const detectados = Array.from(byId.values()).sort(
+        (a, b) => (b.confidence ?? 0) - (a.confidence ?? 0)
+      );
+
+      let agregados = 0;
+      setSymptoms((prev) => {
+        const existentes = new Set(prev.map((item) => item.code.trim().toUpperCase()));
+        const nuevos = detectados.filter((item) => !existentes.has(item.code.trim().toUpperCase()));
+        agregados = nuevos.length;
+        return [...prev, ...nuevos];
+      });
+
+      setLastAnalyzedHC(texto);
+      setExtractInfo(
+        agregados > 0
+          ? `Agregamos ${agregados} ${agregados === 1 ? "síntoma" : "síntomas"} a la lista.`
+          : detectados.length > 0
+            ? "Los síntomas detectados ya estaban en la lista."
+            : "No encontramos síntomas en el texto. Podés agregarlos buscándolos abajo."
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "No pudimos analizar el texto. Reintentá en unos segundos.";
+      setExtractError(message);
+    } finally {
+      setIsLoading(false);
+      setLoadingMessage("");
+    }
+  };
+
+  const consultarGenPhen = async () => {
+    setShowConfirmModal(false);
+    setIsLoading(true);
+    setLoadingMessage("Consultando a GenPhenAI...");
+    setGenphenError(null);
+    setGenphenResults([]);
+    setGenphenSpecialties(null);
+    setGenphenConfidence(null);
+    try {
+      const hpoIds = symptoms
+        .map((symptom) => symptom.code.trim().toUpperCase())
+        .filter((code) => /^HP:\d+$/.test(code));
+      if (hpoIds.length === 0) {
+        setGenphenError("Agregá al menos un código HPO válido para consultar GenPhenIA.");
+        return;
+      }
+      const response = await fetch(GENPHENAI_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hpo_ids: hpoIds, top_k: isDemoMode ? 1 : 50 }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = payload?.detail || payload?.error || "No pudimos consultar GenPhenIA.";
+        throw new Error(detail);
+      }
+      const results = Array.isArray(payload?.results) ? payload.results : [];
+      setGenphenResults(results);
+
+      // Specialties and confidence come directly from the genphenai response
+      if (payload?.specialties) setGenphenSpecialties(payload.specialties);
+      if (typeof payload?.confidence === "number") setGenphenConfidence(payload.confidence);
+
+      // Save to backend (authenticated) or localStorage (demo / fallback)
+      if (!isDemoMode && user) {
+        try {
+          const csrfToken = getCookieValue("csrf_token");
+          const historiaClinicaToSave =
+            historiaClinica.trim() || "Carga manual de síntomas sin historia clínica detallada.";
+          const diagnosisPayload = {
+            historiaClinica: historiaClinicaToSave,
+            symptomsExtracted: symptoms.map((s) => ({ description: s.description, code: s.code })),
+            phenotypes: extractedPhenotypes,
+            genphenGenes: results,
+            genphenSpecialties: payload?.specialties ?? null,
+            genphenConfidence: typeof payload?.confidence === "number" ? payload.confidence : null,
+          };
+          const saveUrl = regenerationPatientId
+            ? `${BACKEND_API_URL}/patients/${regenerationPatientId}/diagnoses`
+            : `${BACKEND_API_URL}/patients`;
+          const saveBody = regenerationPatientId
+            ? diagnosisPayload
+            : {
+                nombre: datosBasicos.nombre.trim() || "Paciente",
+                fechaNacimiento: datosBasicos.fechaNacimiento || null,
+                sexo: datosBasicos.sexo || null,
+                localidad: datosBasicos.localidad || null,
+                pais: datosBasicos.pais || null,
+                ...diagnosisPayload,
+              };
+
+          const saveRes = await fetch(saveUrl, {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+              ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+            },
+            body: JSON.stringify(saveBody),
+          });
+          if (!saveRes.ok) throw new Error(`HTTP ${saveRes.status}`);
+          setRegenerationPatientId(null);
+        } catch {
+          // Backend save failed — fall back to localStorage so data is never lost
+          const record = {
+            id: Date.now().toString(),
+            nombre: datosBasicos.nombre.trim() || "Paciente",
+            savedAt: new Date().toISOString(),
+            symptoms: symptoms.map((s) => ({ description: s.description, code: s.code })),
+            topSpecialties: payload?.specialties?.top_specialties ?? [],
+            confidence: typeof payload?.confidence === "number" ? payload.confidence : null,
+            topGenes: results.slice(0, 5).map((g: GenPhenResult) => g.gene_symbol),
+          };
+          const existing = JSON.parse(localStorage.getItem("diagnosticar:records") || "[]");
+          localStorage.setItem("diagnosticar:records", JSON.stringify([record, ...existing]));
+          setSaveWarning(true);
+        }
+      }
+
+      localStorage.removeItem(HC_DRAFT_KEY);
+      setStep(3);
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "No pudimos consultar GenPhenIA. Reintentá en unos segundos.";
+      setGenphenError(message);
+    } finally {
+      setIsLoading(false);
+      setLoadingMessage("");
+    }
+  };
+
   const handleContinue = async () => {
     if (step === 1) {
       setStep(2);
       return;
     }
-
     if (step === 2) {
-      // Volver al paso 2 y avanzar sin editar el texto no debe pisar los síntomas editados a mano
-      if (historiaClinica.trim() === lastAnalyzedHC && symptoms.length > 0) {
-        setStep(3);
-        return;
-      }
-      setIsLoading(true);
-      setLoadingMessage("Analizando historia clínica...");
-      setExtractError(null);
-      try {
-        const response = await fetch(HPO_EXTRACT_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text_es: historiaClinica.trim(),
-            patient_locale: "es-AR",
-          }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const detail = payload?.detail || payload?.error || "No pudimos analizar el texto.";
-          throw new Error(detail);
-        }
-        const phenotypes = Array.isArray(payload?.phenotypes) ? payload.phenotypes : [];
-        setExtractedPhenotypes(phenotypes);
-        const byId = new Map<string, Symptom>();
-        for (const phenotype of phenotypes) {
-          const hpoId = typeof phenotype?.hpo_id === "string" ? phenotype.hpo_id : "";
-          if (!hpoId) continue;
-          if (phenotype?.negated) continue;
-          // Prefer official HPO Spanish label over extracted span
-          const rawLabel = typeof phenotype?.label_es === "string" && phenotype.label_es.trim()
-            ? phenotype.label_es.trim()
-            : typeof phenotype?.span_es === "string" && phenotype.span_es.trim()
-              ? phenotype.span_es.trim()
-              : typeof phenotype?.label === "string" && phenotype.label.trim()
-                ? phenotype.label.trim()
-                : typeof phenotype?.span_en === "string" && phenotype.span_en.trim()
-                  ? phenotype.span_en.trim()
-                  : hpoId;
-          const confidence = typeof phenotype?.confidence === "number" ? phenotype.confidence : 0;
-          const existing = byId.get(hpoId);
-          if (!existing || (existing.confidence ?? 0) < confidence) {
-            byId.set(hpoId, {
-              description: rawLabel,
-              code: hpoId,
-              confidence,
-            });
-          }
-        }
-        setSymptoms(Array.from(byId.values()).sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0)));
-        setLastAnalyzedHC(historiaClinica.trim());
-        setStep(3);
-      } catch (error) {
-        const message =
-          error instanceof Error && error.message
-            ? error.message
-            : "No pudimos analizar la historia clínica. Reintentá en unos segundos.";
-        setExtractError(message);
-      } finally {
-        setIsLoading(false);
-        setLoadingMessage("");
-      }
-      return;
-    }
-
-    if (step === 3) {
-      setIsLoading(true);
-      setLoadingMessage("Consultando a GenPhenAI...");
-      setGenphenError(null);
-      setGenphenResults([]);
-      setGenphenSpecialties(null);
-      setGenphenConfidence(null);
-      try {
-        const hpoIds = symptoms
-          .map((symptom) => symptom.code.trim().toUpperCase())
-          .filter((code) => /^HP:\d+$/.test(code));
-        if (hpoIds.length === 0) {
-          setGenphenError("Agregá al menos un código HPO válido para consultar GenPhenIA.");
-          return;
-        }
-        const response = await fetch(GENPHENAI_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ hpo_ids: hpoIds, top_k: isDemoMode ? 1 : 50 }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const detail = payload?.detail || payload?.error || "No pudimos consultar GenPhenIA.";
-          throw new Error(detail);
-        }
-        const results = Array.isArray(payload?.results) ? payload.results : [];
-        setGenphenResults(results);
-
-        // Specialties and confidence come directly from the genphenai response
-        if (payload?.specialties) setGenphenSpecialties(payload.specialties);
-        if (typeof payload?.confidence === "number") setGenphenConfidence(payload.confidence);
-
-        // Save to backend (authenticated) or localStorage (demo / fallback)
-        if (!isDemoMode && user) {
-          try {
-            const csrfToken = getCookieValue("csrf_token");
-            const historiaClinicaToSave =
-              historiaClinica.trim() || "Carga manual de síntomas sin historia clínica detallada.";
-            const diagnosisPayload = {
-              historiaClinica: historiaClinicaToSave,
-              symptomsExtracted: symptoms.map((s) => ({ description: s.description, code: s.code })),
-              phenotypes: extractedPhenotypes,
-              genphenGenes: results,
-              genphenSpecialties: payload?.specialties ?? null,
-              genphenConfidence: typeof payload?.confidence === "number" ? payload.confidence : null,
-            };
-            const saveUrl = regenerationPatientId
-              ? `${BACKEND_API_URL}/patients/${regenerationPatientId}/diagnoses`
-              : `${BACKEND_API_URL}/patients`;
-            const saveBody = regenerationPatientId
-              ? diagnosisPayload
-              : {
-                  nombre: datosBasicos.nombre.trim() || "Paciente",
-                  fechaNacimiento: datosBasicos.fechaNacimiento || null,
-                  sexo: datosBasicos.sexo || null,
-                  localidad: datosBasicos.localidad || null,
-                  pais: datosBasicos.pais || null,
-                  ...diagnosisPayload,
-                };
-
-            const saveRes = await fetch(saveUrl, {
-              method: "POST",
-              credentials: "include",
-              headers: {
-                "Content-Type": "application/json",
-                ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
-              },
-              body: JSON.stringify(saveBody),
-            });
-            if (!saveRes.ok) throw new Error(`HTTP ${saveRes.status}`);
-            setRegenerationPatientId(null);
-          } catch {
-            // Backend save failed — fall back to localStorage so data is never lost
-            const record = {
-              id: Date.now().toString(),
-              nombre: datosBasicos.nombre.trim() || "Paciente",
-              savedAt: new Date().toISOString(),
-              symptoms: symptoms.map((s) => ({ description: s.description, code: s.code })),
-              topSpecialties: payload?.specialties?.top_specialties ?? [],
-              confidence: typeof payload?.confidence === "number" ? payload.confidence : null,
-              topGenes: results.slice(0, 5).map((g: GenPhenResult) => g.gene_symbol),
-            };
-            const existing = JSON.parse(localStorage.getItem("diagnosticar:records") || "[]");
-            localStorage.setItem("diagnosticar:records", JSON.stringify([record, ...existing]));
-            setSaveWarning(true);
-          }
-        }
-
-        localStorage.removeItem(HC_DRAFT_KEY);
-        setStep(4);
-      } catch (error) {
-        const message =
-          error instanceof Error && error.message
-            ? error.message
-            : "No pudimos consultar GenPhenIA. Reintentá en unos segundos.";
-        setGenphenError(message);
-      } finally {
-        setIsLoading(false);
-        setLoadingMessage("");
-      }
-      return;
+      setShowConfirmModal(true);
     }
   };
 
@@ -685,20 +703,14 @@ function NuevoDiagnosticoScreen() {
     router.push(isDemoMode ? "/home" : "/diagnosticar");
   };
 
-  const handleAddSymptom = () => {
-    if (!newSymptom.description.trim() || !newSymptom.code.trim()) return;
-    setSymptoms((prev) => [
-      ...prev,
-      {
-        description: newSymptom.description.trim(),
-        code: newSymptom.code.trim().toUpperCase(),
-      },
-    ]);
-    setNewSymptom({ description: "", code: "" });
-  };
-
   const handlePickSuggestion = (suggestion: HpoSuggestion) => {
-    setNewSymptom({ description: suggestion.label_es, code: suggestion.hpo_id });
+    const code = suggestion.hpo_id.trim().toUpperCase();
+    setSymptoms((prev) =>
+      prev.some((symptom) => symptom.code.trim().toUpperCase() === code)
+        ? prev
+        : [...prev, { description: suggestion.label_es, code, source: "manual" }]
+    );
+    setNewSymptom({ description: "", code: "" });
     setHpoSuggestOpen(false);
     setHpoSuggestions([]);
   };
@@ -922,82 +934,77 @@ function NuevoDiagnosticoScreen() {
               )}
 
               {step === 2 && (
-                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-                  <div className="space-y-3">
-                    <p className="text-sm leading-relaxed text-[var(--lu-subtle)]">
-                      Contá qué le pasa al paciente: desde cuándo, con qué frecuencia y qué estudios
-                      se hicieron. Podés pegar un informe médico tal cual, o escribirlo con tus
-                      palabras. Diagnostic.ar va a leer el texto y proponer los síntomas que encuentre.
-                    </p>
-                    <textarea
-                      value={historiaClinica}
-                      onChange={(event) => setHistoriaClinica(event.target.value)}
-                      rows={12}
-                      maxLength={10000}
-                      placeholder="Ej. Nena de 7 años. Desde los 2 años tiene tos productiva casi todos los días, con sibilancias y cuadros respiratorios a repetición. Se cansa más que otros chicos al correr. En el último control pesaba menos de lo esperado para su edad."
-                      className="w-full rounded-2xl border border-[var(--lu-border)] bg-white px-4 py-3 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
-                    />
-                    <div className="text-xs text-[var(--lu-subtle)] text-right">
-                      {historiaClinica.length.toLocaleString()} / 10.000 caracteres
-                    </div>
-                    {extractError && (
-                      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                        {extractError}
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
+                  {/* Columna izquierda: texto libre */}
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-[var(--lu-border)] bg-white p-5 shadow-sm">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <h2 className="text-sm font-bold text-[var(--lu-text)]">
+                          Pegá o escribí el relato clínico
+                        </h2>
+                        <span className="text-xs text-[var(--lu-subtle)]">Opcional</span>
                       </div>
-                    )}
-                  </div>
-
-                  <GuiaCarga variant="historia" />
-                </div>
-              )}
-
-              {step === 3 && (
-                <div className="space-y-6">
-                  <GuiaCarga variant="sintomas" />
-
-                  <div className="space-y-3">
-                    <p className="text-sm leading-relaxed text-[var(--lu-subtle)]">
-                      Esta es la lista con la que vamos a buscar los genes candidatos. Revisala con
-                      cuidado: borrá lo que no corresponda y reemplazá los términos generales por
-                      otros más precisos siempre que puedas.
-                    </p>
-                    {genphenError && (
-                      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                        {genphenError}
-                      </div>
-                    )}
-                    {symptoms.length === 0 && (
-                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                        No detectamos síntomas en el texto. Podés agregarlos manualmente.
-                      </div>
-                    )}
-                    <div className="flex flex-wrap gap-3">
-                      {symptoms.map((symptom) => (
-                        <span
-                          key={symptom.code}
-                          className="inline-flex items-center gap-3 rounded-full border border-[var(--lu-border)] bg-white px-4 py-1.5 text-sm text-[var(--lu-text)] shadow-sm"
-                        >
-                          <span className="font-semibold">{symptom.description}</span>
-                          {symptom.code && (
-                            <span className="text-xs text-[var(--lu-subtle)]">{symptom.code}</span>
-                          )}
-                          <button
-                            type="button"
-                            className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full border border-[var(--lu-border)] text-xs text-[var(--lu-subtle)] hover:text-[var(--lu-accent)] hover:border-[var(--lu-accent)] transition-colors"
-                            onClick={() => handleRemoveSymptom(symptom.code)}
-                            aria-label={`Eliminar ${symptom.description}`}
-                          >
-                            ×
-                          </button>
+                      <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
+                        Buscamos los síntomas en el texto y los sumamos a la lista. Podés analizar
+                        varias veces: siempre agregamos, nunca borramos lo que ya cargaste.
+                      </p>
+                      <textarea
+                        value={historiaClinica}
+                        onChange={(event) => setHistoriaClinica(event.target.value)}
+                        rows={11}
+                        maxLength={10000}
+                        placeholder="Ej. Nena de 7 años. Desde los 2 años tiene tos productiva casi todos los días, con sibilancias y cuadros respiratorios a repetición. Se cansa más que otros chicos al correr. En el último control pesaba menos de lo esperado para su edad."
+                        className="mt-3 w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3 text-sm text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
+                      />
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                        <span className="text-xs text-[var(--lu-subtle)]">
+                          {historiaClinica.length.toLocaleString()} / 10.000
                         </span>
-                      ))}
+                        <button
+                          type="button"
+                          onClick={extraerSintomasDelTexto}
+                          disabled={!puedeAnalizarTexto || isLoading}
+                          className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[var(--lu-accent)] text-white text-sm font-semibold hover:bg-[color-mix(in_oklab,var(--lu-accent)_88%,#000)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <circle cx="11" cy="11" r="7" />
+                            <path d="M21 21l-4.3-4.3" />
+                          </svg>
+                          {lastAnalyzedHC ? "Analizar de nuevo" : "Buscar síntomas en el texto"}
+                        </button>
+                      </div>
+                      {extractError && (
+                        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">
+                          {extractError}
+                        </div>
+                      )}
+                      {extractInfo && !extractError && (
+                        <div className="mt-3 rounded-xl border border-[var(--lu-border)] bg-[var(--lu-surface)] px-4 py-2.5 text-xs text-[var(--lu-subtle)]">
+                          {extractInfo}
+                        </div>
+                      )}
                     </div>
+
+                    <GuiaCarga variant="historia" />
                   </div>
 
-                  <div className="rounded-2xl border border-[var(--lu-border)] bg-white p-6 shadow-sm">
-                    <h2 className="text-sm font-bold text-[var(--lu-text)]">Agregar un síntoma</h2>
-                    <div className="mt-4 grid gap-4 md:grid-cols-[2fr_1fr_auto]">
-                      <div className="relative">
+                  {/* Columna derecha: lista viva de síntomas */}
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-[var(--lu-border)] bg-white p-5 shadow-sm">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <h2 className="text-sm font-bold text-[var(--lu-text)]">
+                          Síntomas del paciente
+                        </h2>
+                        <span className="rounded-full bg-[var(--lu-accent-light)] px-2.5 py-0.5 text-xs font-bold text-[var(--lu-accent)]">
+                          {symptoms.length}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
+                        Buscá cada síntoma y elegilo de la lista. Con estos términos vamos a buscar
+                        los genes candidatos.
+                      </p>
+
+                      <div className="relative mt-3">
                         <input
                           type="text"
                           placeholder="Escribí un síntoma y elegí de la lista"
@@ -1013,10 +1020,10 @@ function NuevoDiagnosticoScreen() {
                           onBlur={() => {
                             setTimeout(() => setHpoSuggestOpen(false), 120);
                           }}
-                          className="rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all w-full"
+                          className="w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3 text-sm text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
                         />
                         {hpoSuggestOpen && (
-                          <div className="absolute z-20 mt-2 w-full max-h-[72vh] overflow-y-auto rounded-xl border border-[var(--lu-border)] bg-white shadow-lg">
+                          <div className="absolute z-20 mt-2 w-full max-h-[52vh] overflow-y-auto rounded-xl border border-[var(--lu-border)] bg-white shadow-lg">
                             {hpoSuggestLoading ? (
                               <div className="px-4 py-3 text-sm text-[var(--lu-subtle)]">Buscando...</div>
                             ) : hpoSuggestions.length === 0 ? (
@@ -1025,46 +1032,97 @@ function NuevoDiagnosticoScreen() {
                               </div>
                             ) : (
                               <ul className="divide-y divide-[var(--lu-border)]">
-                                {hpoSuggestions.map((item) => (
-                                  <li key={item.hpo_id}>
-                                    <button
-                                      type="button"
-                                      className="w-full px-4 py-2 text-left hover:bg-[var(--lu-accent-light)] transition-colors"
-                                      onMouseDown={(e) => { e.preventDefault(); handlePickSuggestion(item); }}
-                                    >
-                                      <div className="text-sm font-semibold text-[var(--lu-text)]">{item.label_es}</div>
-                                      <div className="text-xs text-[var(--lu-subtle)]">
-                                        {item.hpo_id}
-                                        {item.label_en ? ` · ${item.label_en}` : ""}
-                                      </div>
-                                    </button>
-                                  </li>
-                                ))}
+                                {hpoSuggestions.map((item) => {
+                                  const yaEsta = symptoms.some(
+                                    (symptom) => symptom.code.trim().toUpperCase() === item.hpo_id.toUpperCase()
+                                  );
+                                  return (
+                                    <li key={item.hpo_id}>
+                                      <button
+                                        type="button"
+                                        disabled={yaEsta}
+                                        className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left transition-colors hover:bg-[var(--lu-accent-light)] disabled:cursor-default disabled:opacity-55 disabled:hover:bg-transparent"
+                                        onMouseDown={(e) => { e.preventDefault(); handlePickSuggestion(item); }}
+                                      >
+                                        <span className="min-w-0">
+                                          <span className="block text-sm font-semibold text-[var(--lu-text)]">{item.label_es}</span>
+                                          <span className="block text-xs text-[var(--lu-subtle)]">
+                                            {item.hpo_id}
+                                            {item.label_en ? ` · ${item.label_en}` : ""}
+                                          </span>
+                                        </span>
+                                        {yaEsta && (
+                                          <span className="shrink-0 text-xs font-semibold text-[var(--lu-accent)]">
+                                            Ya está
+                                          </span>
+                                        )}
+                                      </button>
+                                    </li>
+                                  );
+                                })}
                               </ul>
                             )}
                           </div>
                         )}
                       </div>
-                      <input
-                        type="text"
-                        placeholder="Código HPO (se completa solo)"
-                        value={newSymptom.code}
-                        onChange={(event) => setNewSymptom((prev) => ({ ...prev, code: event.target.value }))}
-                        className="rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
-                      />
-                      <button
-                        type="button"
-                        className="inline-flex items-center justify-center h-11 px-6 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors"
-                        onClick={handleAddSymptom}
-                      >
-                        Agregar
-                      </button>
+
+                      <div className="mt-4 border-t border-[var(--lu-border)] pt-4">
+                        {symptoms.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-[var(--lu-border)] px-4 py-8 text-center">
+                            <p className="text-sm font-medium text-[var(--lu-text)]">
+                              Todavía no hay síntomas cargados
+                            </p>
+                            <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
+                              Buscalos arriba, o pegá el relato clínico a la izquierda para que los
+                              detectemos por vos.
+                            </p>
+                          </div>
+                        ) : (
+                          <ul className="flex flex-wrap gap-2">
+                            {symptoms.map((symptom) => (
+                              <li
+                                key={symptom.code}
+                                className="group inline-flex items-center gap-2 rounded-full border border-[var(--lu-border)] bg-white py-1.5 pl-3 pr-1.5 text-sm text-[var(--lu-text)] shadow-sm"
+                              >
+                                <span
+                                  className={[
+                                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                                    symptom.source === "texto" ? "bg-[var(--lu-accent)]" : "bg-[var(--lu-border)]",
+                                  ].join(" ")}
+                                  title={symptom.source === "texto" ? "Detectado en el texto" : "Agregado a mano"}
+                                  aria-hidden
+                                />
+                                <span className="font-semibold">{symptom.description}</span>
+                                {symptom.code && (
+                                  <span className="text-xs text-[var(--lu-subtle)]">{symptom.code}</span>
+                                )}
+                                <button
+                                  type="button"
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[var(--lu-subtle)] transition-colors hover:bg-red-50 hover:text-red-600"
+                                  onClick={() => handleRemoveSymptom(symptom.code)}
+                                  aria-label={`Eliminar ${symptom.description}`}
+                                >
+                                  ×
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+
+                      {genphenError && (
+                        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">
+                          {genphenError}
+                        </div>
+                      )}
                     </div>
+
+                    <GuiaCarga variant="sintomas" />
                   </div>
                 </div>
               )}
 
-              {step === 4 &&
+              {step === 3 &&
                 (isDemoMode ? (
                   <div className="space-y-6">
                     <div className="flex justify-start">
@@ -1167,9 +1225,9 @@ function NuevoDiagnosticoScreen() {
                           <button
                             type="button"
                             className="mt-4 inline-flex items-center justify-center h-10 px-5 rounded-xl border border-amber-300 text-amber-900 font-medium hover:bg-amber-100 transition-colors"
-                            onClick={() => setStep(3)}
+                            onClick={() => setStep(2)}
                           >
-                            Volver al paso 3: cargar síntomas
+                            Volver a editar los síntomas
                           </button>
                         </div>
                       ) : genphenSpecialties && topSpecialtiesDisplayed.length > 0 ? (
@@ -1328,7 +1386,7 @@ function NuevoDiagnosticoScreen() {
                 ))}
             </div>
 
-            {step < 4 && (
+            {step < 3 && (
               <div className="mt-10 flex flex-wrap items-center justify-between gap-3">
                 {step > firstStep ? (
                   <button
@@ -1377,11 +1435,10 @@ function NuevoDiagnosticoScreen() {
                     disabled={
                       (step === 1 && !canGoStep1) ||
                       (step === 2 && !canGoStep2) ||
-                      (step === 3 && !canGoStep3) ||
                       isLoading
                     }
                   >
-                    Continuar
+                    {step === 2 ? "Revisar y continuar" : "Continuar"}
                     <svg
                       width="16"
                       height="16"
@@ -1403,6 +1460,51 @@ function NuevoDiagnosticoScreen() {
           </div>
         </section>
       </div>
+
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm px-5 animate-in fade-in duration-200">
+          <div className="max-w-lg w-full rounded-[28px] border border-[var(--lu-border)] bg-white p-8 shadow-2xl">
+            <h2 className="text-xl font-bold text-[var(--lu-text)]">Confirmá los síntomas</h2>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--lu-subtle)]">
+              Vamos a buscar genes candidatos a partir de{" "}
+              <strong className="font-semibold text-[var(--lu-text)]">
+                {symptoms.length} {symptoms.length === 1 ? "síntoma" : "síntomas"}
+              </strong>
+              . Revisá que la lista esté completa: cuantos más síntomas específicos incluyas, mejor
+              es el resultado.
+            </p>
+
+            <ul className="mt-5 flex max-h-64 flex-wrap gap-2 overflow-y-auto">
+              {symptoms.map((symptom) => (
+                <li
+                  key={symptom.code}
+                  className="inline-flex items-center gap-2 rounded-full border border-[var(--lu-border)] bg-[var(--lu-surface)] px-3 py-1.5 text-sm text-[var(--lu-text)]"
+                >
+                  <span className="font-semibold">{symptom.description}</span>
+                  <span className="text-xs text-[var(--lu-subtle)]">{symptom.code}</span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-8 flex flex-wrap gap-3 justify-end">
+              <button
+                type="button"
+                className="inline-flex items-center justify-center h-10 px-5 rounded-xl border border-[var(--lu-border)] text-[var(--lu-text)] font-medium hover:bg-[var(--lu-surface)] transition-colors"
+                onClick={() => setShowConfirmModal(false)}
+              >
+                Seguir editando
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center h-10 px-5 rounded-xl bg-[var(--lu-green)] text-white font-bold hover:bg-[color-mix(in_oklab,var(--lu-green)_90%,#000)] shadow-md transition-all"
+                onClick={consultarGenPhen}
+              >
+                Buscar genes candidatos
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showCancelModal && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm px-5 animate-in fade-in duration-200">
