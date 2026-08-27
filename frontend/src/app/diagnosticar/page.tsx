@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
+import { traducirEspecialidad } from "../../lib/especialidades";
 
 type TabId = "overview" | "integrantes";
 
@@ -107,32 +108,6 @@ function mapSymptoms(rawSymptoms: unknown, memberId: string): Symptom[] {
   return symptoms;
 }
 
-const ESPECIALIDADES_ES: Record<string, string> = {
-  "developmental disorders": "Trastornos del desarrollo",
-  "renal": "Nefrología",
-  "neurology": "Neurología",
-  "cardiology": "Cardiología",
-  "ophthalmology": "Oftalmología",
-  "dermatology": "Dermatología",
-  "endocrinology": "Endocrinología",
-  "immunology": "Inmunología",
-  "hematology": "Hematología",
-  "gastroenterology": "Gastroenterología",
-  "pulmonology": "Neumonología",
-  "musculoskeletal": "Traumatología y ortopedia",
-  "metabolic": "Enfermedades metabólicas",
-  "oncology": "Oncología",
-  "otolaryngology": "Otorrinolaringología",
-  "psychiatry": "Psiquiatría",
-  "rheumatology": "Reumatología",
-  "urology": "Urología",
-  "gynecology": "Ginecología",
-  "craniofacial": "Anomalías craneofaciales",
-};
-
-function traducirEspecialidad(nombre: string): string {
-  return ESPECIALIDADES_ES[nombre.trim().toLowerCase()] ?? nombre;
-}
 
 function apiPatientToMember(p: ApiPatient): Member {
   const diag = p.latest_diagnosis;

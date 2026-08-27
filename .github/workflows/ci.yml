@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Vulnerabilities appear without anyone pushing; check every Monday 06:00 UTC.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: Unit tests
+        run: npm test
+
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace: [frontend, backend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Runtime dependencies gate the build; dev-only findings are reported
+      # but never block, since they never reach the deployed image.
+      - name: npm audit (runtime deps)
+        working-directory: ${{ matrix.workspace }}
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: npm audit (dev deps, informational)
+        working-directory: ${{ matrix.workspace }}
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  headers:
+    name: Security headers
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Assert headers on a running server
+        run: |
+          npx next start -p 3000 &
+          for i in $(seq 1 30); do
+            curl -sf -o /dev/null http://127.0.0.1:3000/ && break
+            sleep 1
+          done
+
+          headers=$(curl -sI http://127.0.0.1:3000/)
+          echo "$headers"
+
+          fail=0
+          check() {
+            if echo "$headers" | grep -qi "^$1:"; then
+              echo "ok   $1"
+            else
+              echo "FAIL missing $1"; fail=1
+            fi
+          }
+          check "X-Frame-Options"
+          check "X-Content-Type-Options"
+          check "Referrer-Policy"
+          check "Permissions-Policy"
+          check "Strict-Transport-Security"
+
+          if echo "$headers" | grep -qi "^X-Powered-By:"; then
+            echo "FAIL X-Powered-By is exposed"; fail=1
+          else
+            echo "ok   X-Powered-By absent"
+          fi
+
+          exit $fail
