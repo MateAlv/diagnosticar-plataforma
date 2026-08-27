@@ -314,6 +314,7 @@ function NuevoDiagnosticoScreen() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const sintomaInputRef = useRef<HTMLInputElement | null>(null);
 
   const [datosBasicos, setDatosBasicos] = useState({
     nombre: "",
@@ -690,6 +691,15 @@ function NuevoDiagnosticoScreen() {
 
   const firstStep: Step = isDemoMode ? 2 : 1;
 
+  const maxReachableStep: Step = genphenResults.length > 0 ? 3 : symptoms.length > 0 ? 2 : firstStep;
+
+  const irAlPaso = (destino: Step) => {
+    if (destino < firstStep || destino > maxReachableStep || destino === step) return;
+    setExtractError(null);
+    setGenphenError(null);
+    setStep(destino);
+  };
+
   const handleBack = () => {
     setExtractError(null);
     setGenphenError(null);
@@ -801,7 +811,7 @@ function NuevoDiagnosticoScreen() {
       </header>
 
       <div className="content-wrap relative z-10">
-        <section className="mx-auto max-w-5xl w-full px-5 pt-12 pb-24 flex-1">
+        <section className="mx-auto max-w-[1400px] w-full px-6 lg:px-10 pt-12 pb-24 flex-1">
           {isDemoMode && (
             <div className="mb-6 rounded-xl bg-blue-50 border border-blue-100 p-4 flex items-start gap-3">
               <div className="text-blue-500 mt-0.5">
@@ -813,7 +823,7 @@ function NuevoDiagnosticoScreen() {
               </div>
             </div>
           )}
-          <div className="rounded-[32px] border border-[var(--lu-border)] bg-[var(--lu-surface)] px-8 py-10 shadow-[var(--lu-shadow)] relative">
+          <div className="rounded-[32px] border border-[var(--lu-border)] bg-[var(--lu-surface)] px-8 py-10 lg:px-12 lg:py-12 shadow-[var(--lu-shadow)] relative">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--lu-border)] pb-8">
               <div className="space-y-2">
                 <span className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-[var(--lu-accent)] font-semibold">
@@ -828,20 +838,29 @@ function NuevoDiagnosticoScreen() {
                   const isActive = step === meta.id;
                   const isCompleted = step > meta.id;
                   const stepLabel = isDemoMode ? index + 1 : meta.id;
+                  const habilitado = meta.id <= maxReachableStep && meta.id >= firstStep;
                   return (
-                    <span
+                    <button
                       key={meta.id}
+                      type="button"
+                      onClick={() => irAlPaso(meta.id)}
+                      disabled={!habilitado || isActive}
+                      aria-current={isActive ? "step" : undefined}
+                      title={habilitado ? `Ir a ${meta.title}` : undefined}
                       className={[
-                        "flex h-10 w-10 items-center justify-center rounded-full border text-sm font-bold transition-all duration-200",
+                        "flex h-11 w-11 items-center justify-center rounded-full border text-base font-bold transition-all duration-200",
                         isActive
                           ? "border-[var(--lu-accent)] bg-[var(--lu-accent)] text-white shadow-md"
                           : isCompleted
                             ? "border-[var(--lu-accent)] bg-white text-[var(--lu-accent)]"
                             : "border-[var(--lu-border)] bg-white text-[var(--lu-subtle)]",
+                        habilitado && !isActive
+                          ? "cursor-pointer hover:border-[var(--lu-accent)] hover:bg-[var(--lu-accent-light)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--lu-accent)]"
+                          : "cursor-default",
                       ].join(" ")}
                     >
                       {stepLabel}
-                    </span>
+                    </button>
                   );
                 })}
               </div>
@@ -939,12 +958,12 @@ function NuevoDiagnosticoScreen() {
                   <div className="space-y-4">
                     <div className="rounded-2xl border border-[var(--lu-border)] bg-white p-5 shadow-sm">
                       <div className="flex items-baseline justify-between gap-3">
-                        <h2 className="text-sm font-bold text-[var(--lu-text)]">
+                        <h2 className="text-lg font-bold text-[var(--lu-text)]">
                           Pegá o escribí el relato clínico
                         </h2>
-                        <span className="text-xs text-[var(--lu-subtle)]">Opcional</span>
+                        <span className="text-sm text-[var(--lu-subtle)]">Opcional</span>
                       </div>
-                      <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
+                      <p className="mt-2 text-base leading-relaxed text-[var(--lu-subtle)]">
                         Buscamos los síntomas en el texto y los sumamos a la lista. Podés analizar
                         varias veces: siempre agregamos, nunca borramos lo que ya cargaste.
                       </p>
@@ -954,7 +973,7 @@ function NuevoDiagnosticoScreen() {
                         rows={11}
                         maxLength={10000}
                         placeholder="Ej. Nena de 7 años. Desde los 2 años tiene tos productiva casi todos los días, con sibilancias y cuadros respiratorios a repetición. Se cansa más que otros chicos al correr. En el último control pesaba menos de lo esperado para su edad."
-                        className="mt-3 w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3 text-sm text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
+                        className="mt-4 w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3.5 text-base leading-relaxed text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
                       />
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                         <span className="text-xs text-[var(--lu-subtle)]">
@@ -992,20 +1011,21 @@ function NuevoDiagnosticoScreen() {
                   <div className="space-y-4">
                     <div className="rounded-2xl border border-[var(--lu-border)] bg-white p-5 shadow-sm">
                       <div className="flex items-baseline justify-between gap-3">
-                        <h2 className="text-sm font-bold text-[var(--lu-text)]">
+                        <h2 className="text-lg font-bold text-[var(--lu-text)]">
                           Síntomas del paciente
                         </h2>
-                        <span className="rounded-full bg-[var(--lu-accent-light)] px-2.5 py-0.5 text-xs font-bold text-[var(--lu-accent)]">
+                        <span className="rounded-full bg-[var(--lu-accent-light)] px-3 py-1 text-sm font-bold text-[var(--lu-accent)]">
                           {symptoms.length}
                         </span>
                       </div>
-                      <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
+                      <p className="mt-2 text-base leading-relaxed text-[var(--lu-subtle)]">
                         Buscá cada síntoma y elegilo de la lista. Con estos términos vamos a buscar
                         los genes candidatos.
                       </p>
 
                       <div className="relative mt-3">
                         <input
+                          ref={sintomaInputRef}
                           type="text"
                           placeholder="Escribí un síntoma y elegí de la lista"
                           value={newSymptom.description}
@@ -1020,7 +1040,7 @@ function NuevoDiagnosticoScreen() {
                           onBlur={() => {
                             setTimeout(() => setHpoSuggestOpen(false), 120);
                           }}
-                          className="w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3 text-sm text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
+                          className="w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3.5 text-base text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
                         />
                         {hpoSuggestOpen && (
                           <div className="absolute z-20 mt-2 w-full max-h-[52vh] overflow-y-auto rounded-xl border border-[var(--lu-border)] bg-white shadow-lg">
@@ -1069,10 +1089,10 @@ function NuevoDiagnosticoScreen() {
                       <div className="mt-4 border-t border-[var(--lu-border)] pt-4">
                         {symptoms.length === 0 ? (
                           <div className="rounded-xl border border-dashed border-[var(--lu-border)] px-4 py-8 text-center">
-                            <p className="text-sm font-medium text-[var(--lu-text)]">
+                            <p className="text-base font-semibold text-[var(--lu-text)]">
                               Todavía no hay síntomas cargados
                             </p>
-                            <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
+                            <p className="mt-2 text-sm leading-relaxed text-[var(--lu-subtle)]">
                               Buscalos arriba, o pegá el relato clínico a la izquierda para que los
                               detectemos por vos.
                             </p>
@@ -1082,11 +1102,11 @@ function NuevoDiagnosticoScreen() {
                             {symptoms.map((symptom) => (
                               <li
                                 key={symptom.code}
-                                className="group inline-flex items-center gap-2 rounded-full border border-[var(--lu-border)] bg-white py-1.5 pl-3 pr-1.5 text-sm text-[var(--lu-text)] shadow-sm"
+                                className="group inline-flex items-center gap-2 rounded-full border border-[var(--lu-border)] bg-white py-2 pl-4 pr-2 text-base text-[var(--lu-text)] shadow-sm"
                               >
                                 <span
                                   className={[
-                                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                                    "h-2 w-2 shrink-0 rounded-full",
                                     symptom.source === "texto" ? "bg-[var(--lu-accent)]" : "bg-[var(--lu-border)]",
                                   ].join(" ")}
                                   title={symptom.source === "texto" ? "Detectado en el texto" : "Agregado a mano"}
@@ -1094,11 +1114,11 @@ function NuevoDiagnosticoScreen() {
                                 />
                                 <span className="font-semibold">{symptom.description}</span>
                                 {symptom.code && (
-                                  <span className="text-xs text-[var(--lu-subtle)]">{symptom.code}</span>
+                                  <span className="text-sm text-[var(--lu-subtle)]">{symptom.code}</span>
                                 )}
                                 <button
                                   type="button"
-                                  className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[var(--lu-subtle)] transition-colors hover:bg-red-50 hover:text-red-600"
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-lg leading-none text-[var(--lu-subtle)] transition-colors hover:bg-red-50 hover:text-red-600"
                                   onClick={() => handleRemoveSymptom(symptom.code)}
                                   aria-label={`Eliminar ${symptom.description}`}
                                 >
@@ -1386,7 +1406,7 @@ function NuevoDiagnosticoScreen() {
                 ))}
             </div>
 
-            {step < 3 && (
+            {(step < 3 || step > firstStep) && (
               <div className="mt-10 flex flex-wrap items-center justify-between gap-3">
                 {step > firstStep ? (
                   <button
@@ -1421,13 +1441,15 @@ function NuevoDiagnosticoScreen() {
                       type="button"
                       onClick={() => {
                         setExtractError(null);
-                        setStep(3);
+                        sintomaInputRef.current?.focus();
+                        sintomaInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
                       }}
                       className="inline-flex items-center justify-center h-10 px-5 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors"
                     >
                       Elegir síntomas de la lista
                     </button>
                   )}
+                  {step < 3 && (
                   <button
                     type="button"
                     className="inline-flex items-center justify-center h-11 px-8 rounded-xl bg-[var(--lu-green)] text-white font-bold hover:bg-[color-mix(in_oklab,var(--lu-green)_90%,#000)] shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
@@ -1454,6 +1476,7 @@ function NuevoDiagnosticoScreen() {
                       <path d="M5 3l6 5-6 5" />
                     </svg>
                   </button>
+                  )}
                 </div>
               </div>
             )}
@@ -1481,7 +1504,7 @@ function NuevoDiagnosticoScreen() {
                   className="inline-flex items-center gap-2 rounded-full border border-[var(--lu-border)] bg-[var(--lu-surface)] px-3 py-1.5 text-sm text-[var(--lu-text)]"
                 >
                   <span className="font-semibold">{symptom.description}</span>
-                  <span className="text-xs text-[var(--lu-subtle)]">{symptom.code}</span>
+                  <span className="text-sm text-[var(--lu-subtle)]">{symptom.code}</span>
                 </li>
               ))}
             </ul>

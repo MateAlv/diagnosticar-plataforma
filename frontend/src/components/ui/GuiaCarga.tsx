@@ -31,9 +31,9 @@ function Desplegable({ titulo, children }: { titulo: string; children: React.Rea
         type="button"
         onClick={() => setAbierto((prev) => !prev)}
         aria-expanded={abierto}
-        className="flex w-full items-center justify-between gap-3 px-5 py-3 text-left transition-colors hover:bg-white"
+        className="flex w-full items-center justify-between gap-3 px-6 py-4 text-left transition-colors hover:bg-white"
       >
-        <span className="text-xs font-semibold text-[var(--lu-accent)]">{titulo}</span>
+        <span className="text-sm font-semibold text-[var(--lu-accent)]">{titulo}</span>
         <svg
           className={[
             "h-4 w-4 shrink-0 text-[var(--lu-accent)] transition-transform duration-200",
@@ -50,7 +50,7 @@ function Desplegable({ titulo, children }: { titulo: string; children: React.Rea
           <path d="M6 9l6 6 6-6" />
         </svg>
       </button>
-      {abierto && <div className="px-5 pb-5">{children}</div>}
+      {abierto && <div className="px-6 pb-6">{children}</div>}
     </div>
   );
 }
@@ -59,18 +59,18 @@ function Encabezado({ titulo, children }: { titulo: string; children: React.Reac
   return (
     <div className="flex items-start gap-3">
       <span
-        className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--lu-accent-light)] text-[var(--lu-accent)]"
+        className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--lu-accent-light)] text-[var(--lu-accent)]"
         aria-hidden
       >
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="9" />
           <path d="M12 16v-4" />
           <path d="M12 8h.01" />
         </svg>
       </span>
       <div className="min-w-0">
-        <h2 className="text-sm font-bold text-[var(--lu-text)]">{titulo}</h2>
-        <div className="mt-1 text-sm leading-relaxed text-[var(--lu-subtle)]">{children}</div>
+        <h2 className="text-lg font-bold text-[var(--lu-text)]">{titulo}</h2>
+        <div className="mt-1.5 text-base leading-relaxed text-[var(--lu-subtle)]">{children}</div>
       </div>
     </div>
   );
@@ -79,7 +79,7 @@ function Encabezado({ titulo, children }: { titulo: string; children: React.Reac
 function GuiaSintomas() {
   return (
     <aside className="rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] overflow-hidden">
-      <div className="px-5 py-4">
+      <div className="px-6 py-5">
         <Encabezado titulo="Elegí el síntoma más preciso que corresponda">
           Buscá cada síntoma y seleccionalo de la lista. Cuanto más específico sea el término,
           mejor funciona el sistema: uno preciso descarta muchas más enfermedades que uno general.
@@ -98,10 +98,10 @@ function GuiaSintomas() {
                         : `color-mix(in oklab, var(--lu-accent) ${25 + index * 25}%, var(--lu-border))`,
                   }}
                 />
-                <p className="text-[10px] uppercase tracking-wide text-[var(--lu-subtle)]">{item.nivel}</p>
+                <p className="text-[11px] uppercase tracking-wide text-[var(--lu-subtle)]">{item.nivel}</p>
                 <p
                   className={[
-                    "text-[11px] leading-snug",
+                    "text-sm leading-snug",
                     index === escalaEspecificidad.length - 1
                       ? "font-semibold text-[var(--lu-text)]"
                       : "text-[var(--lu-subtle)]",
@@ -115,10 +115,10 @@ function GuiaSintomas() {
         </div>
 
         <div className="mt-4 rounded-xl border border-dashed border-[var(--lu-border)] bg-white px-4 py-3">
-          <p className="text-xs font-semibold text-[var(--lu-text)]">
+          <p className="text-base font-semibold text-[var(--lu-text)]">
             ¿No encontrás el síntoma en la lista?
           </p>
-          <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
+          <p className="mt-1 text-sm leading-relaxed text-[var(--lu-subtle)]">
             Si el término que buscás no aparece, o preferís partir de una historia clínica ya
             escrita, usá <strong className="font-semibold text-[var(--lu-text)]">Contanos el caso</strong>:
             pegás el texto y detectamos los síntomas automáticamente. Después vas a poder revisarlos
@@ -128,15 +128,15 @@ function GuiaSintomas() {
       </div>
 
       <Desplegable titulo="¿Qué es un término HPO?">
-        <p className="text-xs leading-relaxed text-[var(--lu-subtle)]">
+        <p className="text-sm leading-relaxed text-[var(--lu-subtle)]">
           El <strong className="font-semibold text-[var(--lu-text)]">HPO (Human Phenotype Ontology)</strong> es
           el vocabulario médico internacional que se usa para nombrar signos y síntomas de forma
           estandarizada. Cada término tiene un código como{" "}
-          <code className="rounded bg-[var(--lu-surface)] px-1 py-0.5 text-[11px]">HP:0031245</code>, y
+          <code className="rounded bg-[var(--lu-surface)] px-1 py-0.5 text-xs">HP:0031245</code>, y
           eso es lo que permite comparar este caso con bases genéticas de todo el mundo: el sistema
           no entiende &quot;tos con flema&quot;, pero sí entiende su término HPO.
         </p>
-        <p className="mt-2 text-xs leading-relaxed text-[var(--lu-subtle)]">
+        <p className="mt-2 text-sm leading-relaxed text-[var(--lu-subtle)]">
           Los términos están organizados de lo general a lo particular, como un árbol. Por eso
           conviene bajar todo lo que se pueda en esa escala, y sumar varios síntomas específicos
           en vez de cargar uno solo.
@@ -149,7 +149,7 @@ function GuiaSintomas() {
 function GuiaHistoria() {
   return (
     <aside className="rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] overflow-hidden">
-      <div className="px-5 py-4">
+      <div className="px-6 py-5">
         <Encabezado titulo="Qué va en este campo">
           Escribí o pegá el relato clínico del paciente: qué le pasa, desde cuándo y qué estudios
           se hicieron. No hace falta lenguaje técnico. Vamos a leer el texto y proponerte los
@@ -171,7 +171,7 @@ function GuiaHistoria() {
               >
                 <path d="M20 6L9 17l-5-5" />
               </svg>
-              <p className="text-xs leading-snug text-[var(--lu-subtle)]">
+              <p className="text-sm leading-snug text-[var(--lu-subtle)]">
                 <span className="font-semibold text-[var(--lu-text)]">{item.titulo}. </span>
                 {item.detalle}
               </p>
@@ -180,10 +180,10 @@ function GuiaHistoria() {
         </ul>
 
         <div className="mt-4 rounded-xl border border-dashed border-[var(--lu-border)] bg-white px-4 py-3">
-          <p className="text-xs font-semibold text-[var(--lu-text)]">
+          <p className="text-base font-semibold text-[var(--lu-text)]">
             Si ya sabés qué síntomas cargar, es mejor elegirlos vos
           </p>
-          <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
+          <p className="mt-1 text-sm leading-relaxed text-[var(--lu-subtle)]">
             Este campo es útil cuando partís de una historia clínica escrita. Pero la detección
             automática puede equivocarse o quedarse en términos poco precisos: si ya tenés claros
             los síntomas, usá{" "}
@@ -200,7 +200,7 @@ function GuiaHistoria() {
               key={ejemplo.vago}
               className="grid gap-2 rounded-xl border border-[var(--lu-border)] bg-white p-3 sm:grid-cols-[1fr_auto_1.4fr] sm:items-center"
             >
-              <span className="text-xs text-[var(--lu-subtle)] line-through decoration-[var(--lu-border)]">
+              <span className="text-sm text-[var(--lu-subtle)] line-through decoration-[var(--lu-border)]">
                 {ejemplo.vago}
               </span>
               <svg
@@ -215,7 +215,7 @@ function GuiaHistoria() {
               >
                 <path d="M5 12h14M13 6l6 6-6 6" />
               </svg>
-              <span className="text-xs font-semibold text-[var(--lu-text)]">{ejemplo.preciso}</span>
+              <span className="text-base font-semibold text-[var(--lu-text)]">{ejemplo.preciso}</span>
             </li>
           ))}
         </ul>
