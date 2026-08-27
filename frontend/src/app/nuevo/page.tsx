@@ -828,7 +828,7 @@ function NuevoDiagnosticoScreen() {
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--lu-border)] pb-8">
               <div className="space-y-2">
                 <span className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-[var(--lu-accent)] font-semibold">
-                  <span className="inline-flex h-2 w-2 rounded-full bg-[var(--lu-accent)]" aria-hidden />
+                  <span className="dot-pulse inline-flex h-2 w-2 shrink-0 rounded-full bg-current text-[var(--lu-accent)]" aria-hidden />
                   {isDemoMode ? "Prueba rápida" : "Nuevo diagnóstico"}
                 </span>
                 <h1 className="text-3xl font-bold text-[var(--lu-text)] leading-tight">{stepTitle}</h1>
