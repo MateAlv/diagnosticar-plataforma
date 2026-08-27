@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../lib/auth-context";
 import GuiaCarga from "../../components/ui/GuiaCarga";
+import AyudaPopover from "../../components/ui/AyudaPopover";
 
 type Step = 1 | 2 | 3;
 
@@ -957,11 +958,16 @@ function NuevoDiagnosticoScreen() {
                   {/* Columna izquierda: texto libre */}
                   <div className="space-y-4">
                     <div className="rounded-2xl border border-[var(--lu-border)] bg-white p-5 shadow-sm">
-                      <div className="flex items-baseline justify-between gap-3">
+                      <div className="flex items-start justify-between gap-3">
                         <h2 className="text-lg font-bold text-[var(--lu-text)]">
                           Pegá o escribí el relato clínico
                         </h2>
-                        <span className="text-sm text-[var(--lu-subtle)]">Opcional</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-[var(--lu-subtle)]">Opcional</span>
+                          <AyudaPopover etiqueta="¿Qué escribo acá?" align="right">
+                            <GuiaCarga variant="historia" />
+                          </AyudaPopover>
+                        </div>
                       </div>
                       <p className="mt-2 text-base leading-relaxed text-[var(--lu-subtle)]">
                         Buscamos los síntomas en el texto y los sumamos a la lista. Podés analizar
@@ -1003,20 +1009,23 @@ function NuevoDiagnosticoScreen() {
                         </div>
                       )}
                     </div>
-
-                    <GuiaCarga variant="historia" />
                   </div>
 
                   {/* Columna derecha: lista viva de síntomas */}
                   <div className="space-y-4">
                     <div className="rounded-2xl border border-[var(--lu-border)] bg-white p-5 shadow-sm">
-                      <div className="flex items-baseline justify-between gap-3">
+                      <div className="flex items-start justify-between gap-3">
                         <h2 className="text-lg font-bold text-[var(--lu-text)]">
                           Síntomas del paciente
                         </h2>
-                        <span className="rounded-full bg-[var(--lu-accent-light)] px-3 py-1 text-sm font-bold text-[var(--lu-accent)]">
-                          {symptoms.length}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <AyudaPopover etiqueta="¿Qué es un término HPO?" align="right">
+                            <GuiaCarga variant="sintomas" />
+                          </AyudaPopover>
+                          <span className="rounded-full bg-[var(--lu-accent-light)] px-3 py-1 text-sm font-bold text-[var(--lu-accent)]">
+                            {symptoms.length}
+                          </span>
+                        </div>
                       </div>
                       <p className="mt-2 text-base leading-relaxed text-[var(--lu-subtle)]">
                         Buscá cada síntoma y elegilo de la lista. Con estos términos vamos a buscar
@@ -1136,8 +1145,6 @@ function NuevoDiagnosticoScreen() {
                         </div>
                       )}
                     </div>
-
-                    <GuiaCarga variant="sintomas" />
                   </div>
                 </div>
               )}

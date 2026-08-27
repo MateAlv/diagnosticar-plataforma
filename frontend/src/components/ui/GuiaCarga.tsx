@@ -26,12 +26,12 @@ const queContar: Array<{ titulo: string; detalle: string }> = [
 function Desplegable({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   const [abierto, setAbierto] = useState(false);
   return (
-    <div className="border-t border-[var(--lu-border)]">
+    <div className="mt-4 border-t border-[var(--lu-border)]">
       <button
         type="button"
         onClick={() => setAbierto((prev) => !prev)}
         aria-expanded={abierto}
-        className="flex w-full items-center justify-between gap-3 px-6 py-4 text-left transition-colors hover:bg-white"
+        className="flex w-full items-center justify-between gap-3 px-0 py-3 text-left transition-colors"
       >
         <span className="text-sm font-semibold text-[var(--lu-accent)]">{titulo}</span>
         <svg
@@ -50,7 +50,7 @@ function Desplegable({ titulo, children }: { titulo: string; children: React.Rea
           <path d="M6 9l6 6 6-6" />
         </svg>
       </button>
-      {abierto && <div className="px-6 pb-6">{children}</div>}
+      {abierto && <div className="pb-1">{children}</div>}
     </div>
   );
 }
@@ -78,8 +78,8 @@ function Encabezado({ titulo, children }: { titulo: string; children: React.Reac
 
 function GuiaSintomas() {
   return (
-    <aside className="rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] overflow-hidden">
-      <div className="px-6 py-5">
+    <div className="overflow-hidden">
+      <div className="px-0 py-0">
         <Encabezado titulo="Elegí el síntoma más preciso que corresponda">
           Buscá cada síntoma y seleccionalo de la lista. Cuanto más específico sea el término,
           mejor funciona el sistema: uno preciso descarta muchas más enfermedades que uno general.
@@ -142,14 +142,14 @@ function GuiaSintomas() {
           en vez de cargar uno solo.
         </p>
       </Desplegable>
-    </aside>
+    </div>
   );
 }
 
 function GuiaHistoria() {
   return (
-    <aside className="rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] overflow-hidden">
-      <div className="px-6 py-5">
+    <div className="overflow-hidden">
+      <div className="px-0 py-0">
         <Encabezado titulo="Qué va en este campo">
           Escribí o pegá el relato clínico del paciente: qué le pasa, desde cuándo y qué estudios
           se hicieron. No hace falta lenguaje técnico. Vamos a leer el texto y proponerte los
@@ -220,7 +220,7 @@ function GuiaHistoria() {
           ))}
         </ul>
       </Desplegable>
-    </aside>
+    </div>
   );
 }
 
