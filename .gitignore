@@ -10,3 +10,8 @@ frontend/out/
 
 # Node.js
 backend/node_modules/
+
+# Build output
+backend/dist/
+frontend/next-env.d.ts
+frontend/tsconfig.tsbuildinfo
