@@ -324,31 +324,42 @@ export default function HomePage() {
           </p>
 
           {/* Institution logos */}
-          <div className="border-t border-[var(--lu-border)] pt-12">
-            <p className="text-center text-xs font-bold uppercase tracking-[0.2em] text-[var(--lu-subtle)] mb-10">
+          <div className="border-t border-[var(--lu-border)] pt-16">
+            <p className="text-center text-sm font-bold uppercase tracking-[0.2em] text-[var(--lu-subtle)] mb-12">
               En colaboración con
             </p>
-            <div className="flex flex-wrap justify-center items-center gap-12">
+            {/* Breaks out of the section's max-w-3xl so four enlarged logos sit
+                on one row instead of wrapping. Heights are tuned per mark rather
+                than uniform: the wordmarks (LUCAI, BITGENIA) read far wider than
+                the round seals at the same height. */}
+            <div className="relative left-1/2 -translate-x-1/2 w-[min(64rem,92vw)] flex flex-wrap justify-center items-center gap-x-14 gap-y-10">
               <Image
                 src="/brand/logo_uba.jpg"
                 alt="Universidad de Buenos Aires"
-                width={120}
-                height={60}
-                className="h-14 w-auto object-contain opacity-80 hover:opacity-100 transition-opacity"
+                width={240}
+                height={240}
+                className="h-24 w-auto object-contain opacity-80 hover:opacity-100 transition-opacity"
               />
               <Image
                 src="/brand/iquibicen-logo.png"
                 alt="IQUIBICEN"
-                width={180}
-                height={60}
-                className="h-12 w-auto object-contain opacity-80 hover:opacity-100 transition-opacity"
+                width={360}
+                height={240}
+                className="h-20 w-auto object-contain opacity-80 hover:opacity-100 transition-opacity"
               />
               <Image
                 src="/brand/logo.png"
                 alt="LUCAI"
-                width={140}
-                height={60}
-                className="h-10 w-auto object-contain invert opacity-80 hover:opacity-100 transition-opacity"
+                width={280}
+                height={120}
+                className="h-14 w-auto object-contain invert opacity-80 hover:opacity-100 transition-opacity"
+              />
+              <Image
+                src="/brand/bitgenia-logo.svg"
+                alt="Bitgenia"
+                width={240}
+                height={46}
+                className="h-9 w-auto object-contain opacity-80 hover:opacity-100 transition-opacity"
               />
             </div>
           </div>

@@ -11,8 +11,6 @@ import {
     verifyUser,
     updateUserTokenVersion,
     getUserByVerificationToken,
-    deleteUserById,
-    updateVerificationToken,
 } from '../repositories/userRepository.js';
 import {
     hashPassword,
@@ -22,11 +20,11 @@ import {
     verifyRefreshToken,
     verifyAccessToken,
 } from '../services/authService.js';
-import { sendVerificationEmail } from '../services/emailService.js';
 import { authenticate, AuthRequest, requireFreshAccessToken } from '../middleware/authMiddleware.js';
 import { CSRF_COOKIE_NAME } from '../middleware/csrfMiddleware.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { hashToken } from '../utils/tokens.js';
+import { stripNullBytes } from '../utils/sanitize.js';
 import { GOOGLE_AUTH_ENABLED, GOOGLE_REDIRECT_URL, IS_PRODUCTION } from '../config.js';
 import passport from 'passport';
 import { GoogleProfile } from '../services/googleAuth.js';
@@ -190,7 +188,7 @@ router.post('/signup', signupRateLimit, async (req, res) => {
         if (!parsed.success) {
             return res.status(400).json({ error: 'Invalid payload' });
         }
-        const { email, password, fullName, name, organization } = parsed.data;
+        const { email, password, fullName, name, organization } = stripNullBytes(parsed.data);
         const safeFullName = fullName ?? name ?? undefined;
         const safeOrganization = organization ?? undefined;
 
@@ -291,7 +289,7 @@ router.get('/me', authenticate, requireFreshAccessToken, async (req: AuthRequest
         const user = req.userRecord ?? (req.user?.sub ? await getUserById(req.user.sub) : null);
         if (!user) return res.status(404).json({ error: 'User not found' });
         res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role } });
-    } catch (error) {
+    } catch {
         res.status(500).json({ error: 'Error' });
     }
 });
@@ -324,7 +322,7 @@ router.post('/refresh', async (req, res) => {
         setCsrfCookie(res);
 
         res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role } });
-    } catch (error) {
+    } catch {
         res.status(500).json({ error: 'Error' });
     }
 });

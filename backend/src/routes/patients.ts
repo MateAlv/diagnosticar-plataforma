@@ -1,4 +1,4 @@
-import { Router, type Response } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { authenticate, requireFreshAccessToken, type AuthRequest } from '../middleware/authMiddleware.js';
 import {
@@ -12,15 +12,36 @@ import {
     getDiagnosesByPatient,
     getDiagnosisById,
 } from '../repositories/diagnosisRepository.js';
+import { stripNullBytes } from '../utils/sanitize.js';
 
 const router = Router();
+
+const uuidSchema = z.string().uuid();
+
+/**
+ * `id` and `diagId` are interpolated into UUID columns. Postgres raises 22P02
+ * on anything that is not a UUID, which the route handlers would surface as a
+ * 500. A non-UUID can never name a row that exists, so it is a 404 — that also
+ * keeps malformed input out of the error log.
+ */
+function rejectNonUuid(req: Request, res: Response, next: NextFunction, value: string) {
+    if (!uuidSchema.safeParse(value).success) {
+        return res.status(404).json({ error: 'Not found' });
+    }
+    return next();
+}
+
+router.param('id', rejectNonUuid);
+router.param('diagId', rejectNonUuid);
 
 const historiaClinicaSchema = z
     .string()
     .optional()
     .nullable()
     .transform((value) => {
-        const normalized = typeof value === 'string' ? value.trim() : '';
+        // Strip before trimming so a paste of pure NUL bytes falls back to the
+        // placeholder rather than storing an empty historia clínica.
+        const normalized = typeof value === 'string' ? stripNullBytes(value).trim() : '';
         return normalized.length > 0
             ? normalized
             : 'Carga manual de síntomas sin historia clínica detallada.';
@@ -62,9 +83,11 @@ router.post(
             return res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
         }
 
+        // The HPO/GenPhenAI arrays land in jsonb, which rejects NUL as hard as
+        // text does, so the whole payload is scrubbed rather than just the free text.
         const { nombre, fechaNacimiento, sexo, localidad, pais,
                 historiaClinica, symptomsExtracted, phenotypes,
-                genphenGenes, genphenSpecialties, genphenConfidence } = parsed.data;
+                genphenGenes, genphenSpecialties, genphenConfidence } = stripNullBytes(parsed.data);
 
         const userId = req.userRecord!.id;
         const userEmail = req.userRecord!.email ?? null;
@@ -117,7 +140,7 @@ router.post(
                 genphenGenes,
                 genphenSpecialties,
                 genphenConfidence,
-            } = parsed.data;
+            } = stripNullBytes(parsed.data);
 
             const result = await createDiagnosisForPatient(
                 req.params.id,

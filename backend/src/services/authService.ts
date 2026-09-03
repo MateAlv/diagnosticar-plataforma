@@ -37,7 +37,7 @@ export function signRefreshToken(user: User): string {
 export function verifyAccessToken(token: string) {
     try {
         return jwt.verify(token, JWT_ACCESS_SECRET, { algorithms: ['HS256'] });
-    } catch (e) {
+    } catch {
         return null;
     }
 }
@@ -45,7 +45,7 @@ export function verifyAccessToken(token: string) {
 export function verifyRefreshToken(token: string) {
     try {
         return jwt.verify(token, JWT_REFRESH_SECRET, { algorithms: ['HS256'] });
-    } catch (e) {
+    } catch {
         return null;
     }
 }

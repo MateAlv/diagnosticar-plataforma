@@ -7,6 +7,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../lib/auth-context";
 import GuiaCarga from "../../components/ui/GuiaCarga";
 import AyudaPopover from "../../components/ui/AyudaPopover";
+import { traducirEspecialidad } from "../../lib/especialidades";
 
 type Step = 1 | 2 | 3;
 
@@ -363,7 +364,10 @@ function NuevoDiagnosticoScreen() {
     historiaClinica.trim().length > 12 && historiaClinica.trim() !== lastAnalyzedHC;
   const isLowConfidenceResult =
     genphenConfidence !== null && genphenConfidence < GENPHENAI_LOW_CONFIDENCE_THRESHOLD;
-  const topSpecialtiesDisplayed = (genphenSpecialties?.top_specialties ?? []).slice(0, 3);
+  // GenPhenAI returns specialty names in English; the whole product is Spanish.
+  const topSpecialtiesDisplayed = (genphenSpecialties?.top_specialties ?? [])
+    .slice(0, 3)
+    .map(traducirEspecialidad);
   const visibleGeneResults = genphenResults;
   const demoPrimaryGene = isDemoMode ? genphenResults[0] : null;
   const demoBlurredGeneRows =
@@ -1323,7 +1327,7 @@ function NuevoDiagnosticoScreen() {
                             <tbody className="divide-y divide-[var(--lu-border)]">
                               {genphenSpecialties.specialty_ranking.map((row) => (
                                 <tr key={row.specialty}>
-                                  <td className="py-2 pr-6 font-medium text-[var(--lu-text)]">{row.specialty}</td>
+                                  <td className="py-2 pr-6 font-medium text-[var(--lu-text)]">{traducirEspecialidad(row.specialty)}</td>
                                   <td className="py-2 pr-6 text-right text-[var(--lu-subtle)]">
                                     {row.matched_genes_count}
                                   </td>
