@@ -1,0 +1,71 @@
+{
+  "_comment": "Single source of truth for stubbed HPO/GenPhenAI responses. Consumed by mocks/server.mjs (dev mode) and e2e/fixtures/services.ts (Playwright). Shapes mirror diagnostic.ar-api: services/api-gateway/app/schemas.py and services/genphenai/app/main.py. If either service changes its response, change it here once.",
+
+  "extract": {
+    "symptoms_extracted": ["infecciones respiratorias recurrentes", "bajo peso"],
+    "model": {
+      "symptom_extractor": "ollama/qwen2.5",
+      "translator": "nllb-200",
+      "phenotyper": "es-index-v1"
+    },
+    "phenotypes": [
+      {
+        "hpo_id": "HP:0002205",
+        "label": "Recurrent respiratory infections",
+        "label_es": "Infecciones respiratorias recurrentes",
+        "span_es": "cuadros respiratorios a repetición",
+        "span_en": "recurrent respiratory infections",
+        "start_es": 74, "end_es": 108, "start_en": 70, "end_en": 101,
+        "negated": false, "confidence": 0.91, "matched_by": "es-index"
+      },
+      {
+        "hpo_id": "HP:0004322",
+        "label": "Short stature",
+        "label_es": "Talla baja",
+        "span_es": "pesaba menos de lo esperado",
+        "span_en": "weighed less than expected",
+        "start_es": 74, "end_es": 108, "start_en": 70, "end_en": 101,
+        "negated": false, "confidence": 0.76, "matched_by": "es-index"
+      },
+      {
+        "hpo_id": "HP:0001250",
+        "label": "Seizure",
+        "label_es": "Convulsiones",
+        "span_es": "sin convulsiones",
+        "span_en": "no seizures",
+        "start_es": 74, "end_es": 108, "start_en": 70, "end_en": 101,
+        "negated": true, "confidence": 0.88, "matched_by": "es-index"
+      }
+    ]
+  },
+
+  "rank": {
+    "results": [
+      { "gene_id": "CFTR",  "gene_symbol": "CFTR",  "score": 0.412, "matched_hpo_ids": [], "matched_count": 0, "input_count": 2, "coverage": 0, "precision": 0 },
+      { "gene_id": "DNAH5", "gene_symbol": "DNAH5", "score": 0.201, "matched_hpo_ids": [], "matched_count": 0, "input_count": 2, "coverage": 0, "precision": 0 },
+      { "gene_id": "SCNN1A","gene_symbol": "SCNN1A","score": 0.087, "matched_hpo_ids": [], "matched_count": 0, "input_count": 2, "coverage": 0, "precision": 0 }
+    ],
+    "specialties": {
+      "top_specialty": "Pulmonology",
+      "top_specialties": ["Pulmonology", "Gastroenterology"],
+      "specialty_ranking": [
+        { "specialty": "Pulmonology", "matched_genes_count": 2, "probability_mass": 0.61, "genes": ["CFTR", "DNAH5"], "fraction_of_selected_genes": 0.67 },
+        { "specialty": "Gastroenterology", "matched_genes_count": 1, "probability_mass": 0.09, "genes": ["SCNN1A"], "fraction_of_selected_genes": 0.33 }
+      ],
+      "selected_gene_count": 3,
+      "unmapped_genes": [],
+      "unmapped_gene_count": 0
+    },
+    "confidence": 0.78
+  },
+
+  "search": {
+    "results": [
+      { "hpo_id": "HP:0002205", "label_es": "Infecciones respiratorias recurrentes", "label_en": "Recurrent respiratory infections" },
+      { "hpo_id": "HP:0002094", "label_es": "Disnea", "label_en": "Dyspnea" },
+      { "hpo_id": "HP:0012378", "label_es": "Fatiga", "label_en": "Fatigue" },
+      { "hpo_id": "HP:0002027", "label_es": "Dolor abdominal", "label_en": "Abdominal pain" },
+      { "hpo_id": "HP:0001508", "label_es": "Retraso del crecimiento", "label_en": "Failure to thrive" }
+    ]
+  }
+}

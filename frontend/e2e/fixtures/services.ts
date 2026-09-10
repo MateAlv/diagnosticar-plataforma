@@ -1,4 +1,5 @@
 import type { Page, Route } from "@playwright/test";
+import fixtures from "../../mocks/fixtures.json";
 
 /**
  * Stand-ins for the three services the browser talks to:
@@ -7,8 +8,9 @@ import type { Page, Route } from "@playwright/test";
  *   - GenPhenAI on brainy         (POST /rank-genes)
  *   - the Express API on nodo0    (/api/*)
  *
- * Shapes are copied from diagnostic.ar-api (`services/api-gateway/app/schemas.py`
- * and `services/genphenai/app/main.py`) so a contract drift on either side shows
+ * Response bodies come from mocks/fixtures.json, which mirrors diagnostic.ar-api
+ * (`services/api-gateway/app/schemas.py`, `services/genphenai/app/main.py`) and is
+ * shared with the `npm run dev:mock` server. A contract drift on either side shows
  * up as a failing test here rather than a blank screen in production. CI has no
  * route to brainy and no GPU, so these are the only way the wizard is testable.
  */
@@ -22,101 +24,13 @@ export type ServiceOverrides = {
     latencyMs?: number;
 };
 
-export const PHENOTYPE_FIXTURE = {
-    hpo_id: "HP:0002205",
-    label: "Recurrent respiratory infections",
-    label_es: "Infecciones respiratorias recurrentes",
-    span_es: "cuadros respiratorios a repetición",
-    span_en: "recurrent respiratory infections",
-    start_es: 74,
-    end_es: 108,
-    start_en: 70,
-    end_en: 101,
-    negated: false,
-    confidence: 0.91,
-    matched_by: "es-index",
-};
-
-export const NEGATED_PHENOTYPE_FIXTURE = {
-    ...PHENOTYPE_FIXTURE,
-    hpo_id: "HP:0001250",
-    label: "Seizure",
-    label_es: "Convulsiones",
-    span_es: "sin convulsiones",
-    span_en: "no seizures",
-    negated: true,
-    confidence: 0.88,
-};
-
-export const EXTRACT_FIXTURE = {
-    symptoms_extracted: ["infecciones respiratorias recurrentes", "bajo peso"],
-    model: {
-        symptom_extractor: "ollama/qwen2.5",
-        translator: "nllb-200",
-        phenotyper: "es-index-v1",
-    },
-    phenotypes: [
-        PHENOTYPE_FIXTURE,
-        {
-            ...PHENOTYPE_FIXTURE,
-            hpo_id: "HP:0004322",
-            label: "Short stature",
-            label_es: "Talla baja",
-            span_es: "pesaba menos de lo esperado",
-            confidence: 0.76,
-        },
-        NEGATED_PHENOTYPE_FIXTURE,
-    ],
-};
-
-export const RANK_FIXTURE = {
-    results: [
-        {
-            gene_id: "CFTR",
-            gene_symbol: "CFTR",
-            score: 0.412,
-            matched_hpo_ids: [],
-            matched_count: 0,
-            input_count: 2,
-            coverage: 0,
-            precision: 0,
-        },
-        {
-            gene_id: "DNAH5",
-            gene_symbol: "DNAH5",
-            score: 0.201,
-            matched_hpo_ids: [],
-            matched_count: 0,
-            input_count: 2,
-            coverage: 0,
-            precision: 0,
-        },
-    ],
-    specialties: {
-        top_specialty: "Pulmonology",
-        top_specialties: ["Pulmonology", "Gastroenterology"],
-        specialty_ranking: [
-            {
-                specialty: "Pulmonology",
-                matched_genes_count: 2,
-                probability_mass: 0.61,
-                genes: ["CFTR", "DNAH5"],
-                fraction_of_selected_genes: 1,
-            },
-        ],
-        selected_gene_count: 2,
-        unmapped_genes: [],
-        unmapped_gene_count: 0,
-    },
-    confidence: 0.78,
-};
-
-export const SEARCH_FIXTURE = {
-    results: [
-        { hpo_id: "HP:0002205", label_es: "Infecciones respiratorias recurrentes", label_en: "Recurrent respiratory infections" },
-        { hpo_id: "HP:0002094", label_es: "Disnea", label_en: "Dyspnea" },
-    ],
-};
+// Fixture data lives in mocks/fixtures.json so the dev mock server and this
+// suite cannot drift apart. Change a service response there, once.
+export const PHENOTYPE_FIXTURE = fixtures.extract.phenotypes[0];
+export const NEGATED_PHENOTYPE_FIXTURE = fixtures.extract.phenotypes.find((p) => p.negated)!;
+export const EXTRACT_FIXTURE = fixtures.extract;
+export const RANK_FIXTURE = fixtures.rank;
+export const SEARCH_FIXTURE = fixtures.search;
 
 const json = (route: Route, status: number, body: unknown) =>
     route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });

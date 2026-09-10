@@ -39,6 +39,17 @@ Detalles a completar o confirmar antes de presentar el informe final:
 - COMPLETAR: modelo/versión de LLM y versión de GenPhenIA que quedarán fijados para producción.
 - COMPLETAR: alcance exacto de validación clínica del ranking diagnóstico y disclaimers aprobados por el equipo.
 
+## Desarrollo local
+
+```bash
+cd frontend && npm install
+npm run dev:mock     # frontend en :3000 con la API simulada en :4500
+```
+
+No requiere backend, base de datos ni GPU. Ingresá con cualquier email y una
+contraseña de 8+ caracteres. Ver [TESTING.md](TESTING.md) para el detalle, y
+[CI_CD.md](CI_CD.md) para el pipeline y el despliegue.
+
 # Esquema web:
 ## Landing page (Home)
 Diagnostic.ar: Una nueva forma de acompañar el camino hacia el diagnóstico.
