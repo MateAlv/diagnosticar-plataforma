@@ -44,7 +44,7 @@ export async function requireFreshAccessToken(req: AuthRequest, res: Response, n
 
         req.userRecord = user;
         return next();
-    } catch (error) {
+    } catch {
         return res.status(500).json({ error: 'Error' });
     }
 }
