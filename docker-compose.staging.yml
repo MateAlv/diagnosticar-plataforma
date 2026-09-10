@@ -1,0 +1,74 @@
+# Staging stack for nodo0 — a full copy of production on the same node.
+#
+# Runs beside prod under a separate compose project (see ops/staging.sh), with
+# its own database volume and its own Traefik host, so nothing here can touch a
+# real family's records. It shares brainy's HPO/GenPhenAI services through the
+# same reverse SSH tunnels, which is the point: it is the only place the real
+# model services get exercised before production does.
+#
+# Rule: synthetic data only. Never restore a production dump into staging —
+# that would put clinical data on a host with weaker access control.
+
+services:
+  db:
+    restart: unless-stopped
+    # Distinct volume name; a shared volume would let a staging migration
+    # corrupt production data.
+    volumes:
+      - staging_postgres_data:/var/lib/postgresql/data
+    ports: !reset []
+
+  backend:
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      # Staging issues its own tokens; a cookie from staging must never
+      # authenticate against production.
+      JWT_ACCESS_SECRET: ${STAGING_JWT_ACCESS_SECRET:?set STAGING_JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${STAGING_JWT_REFRESH_SECRET:?set STAGING_JWT_REFRESH_SECRET}
+      FRONTEND_URL: https://${STAGING_HOST:?set STAGING_HOST}
+    ports: !reset []
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
+      - "traefik.http.services.diagnosticar-staging-backend.loadbalancer.server.port=4000"
+      - "traefik.http.routers.diagnosticar-staging-backend.rule=Host(`${STAGING_HOST}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.diagnosticar-staging-backend.entrypoints=websecure"
+      - "traefik.http.routers.diagnosticar-staging-backend.tls=true"
+      - "traefik.http.routers.diagnosticar-staging-backend.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
+      - "traefik.http.routers.diagnosticar-staging-backend.priority=220"
+      # Staging is not for the public. Basic auth keeps it out of search results
+      # and away from families who might mistake it for the real service.
+      - "traefik.http.routers.diagnosticar-staging-backend.middlewares=diagnosticar-staging-auth"
+      - "traefik.http.middlewares.diagnosticar-staging-auth.basicauth.users=${STAGING_BASIC_AUTH:?set STAGING_BASIC_AUTH (htpasswd format)}"
+    networks:
+      - default
+      - traefik_net
+
+  frontend:
+    restart: unless-stopped
+    init: true
+    ports: !reset []
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
+      - "traefik.http.services.diagnosticar-staging-frontend.loadbalancer.server.port=3000"
+      - "traefik.http.routers.diagnosticar-staging-frontend.rule=Host(`${STAGING_HOST}`)"
+      - "traefik.http.routers.diagnosticar-staging-frontend.entrypoints=websecure"
+      - "traefik.http.routers.diagnosticar-staging-frontend.tls=true"
+      - "traefik.http.routers.diagnosticar-staging-frontend.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
+      - "traefik.http.routers.diagnosticar-staging-frontend.priority=100"
+      - "traefik.http.routers.diagnosticar-staging-frontend.middlewares=diagnosticar-staging-auth,diagnosticar-staging-noindex"
+      - "traefik.http.middlewares.diagnosticar-staging-noindex.headers.customresponseheaders.X-Robots-Tag=noindex, nofollow"
+    networks:
+      - default
+      - traefik_net
+
+networks:
+  traefik_net:
+    external: true
+    name: ${TRAEFIK_NETWORK:-internal-nodo0-web}
+
+volumes:
+  staging_postgres_data:

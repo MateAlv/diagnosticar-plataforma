@@ -1,0 +1,25 @@
+[Unit]
+Description=Diagnostic.ar pull-based deploy
+Documentation=https://github.com/LUCAI-Bioinformatics/diagnostic.ar/blob/main/CI_CD.md
+After=network-online.target docker.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/diagnostic.ar
+ExecStart=/opt/diagnostic.ar/ops/deploy.sh
+
+# Read-only, root-owned. Never put the token in the repo or in .env.
+Environment=DEPLOY_STATE_DIR=/var/lib/diagnosticar
+Environment=GITHUB_REPO=LUCAI-Bioinformatics/diagnostic.ar
+
+# A deploy that hangs must not block the next timer firing forever.
+TimeoutStartSec=900
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=diagnosticar-deploy
+
+[Install]
+WantedBy=multi-user.target

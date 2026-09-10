@@ -1,0 +1,14 @@
+[Unit]
+Description=Check for a new Diagnostic.ar release
+Documentation=https://github.com/LUCAI-Bioinformatics/diagnostic.ar/blob/main/CI_CD.md
+
+[Timer]
+# Every 10 minutes, offset randomly so a release does not land on every node at
+# the same second. Persistent=true catches up after the node has been offline.
+OnBootSec=5min
+OnUnitActiveSec=10min
+RandomizedDelaySec=120
+Persistent=true
+
+[Install]
+WantedBy=timers.target

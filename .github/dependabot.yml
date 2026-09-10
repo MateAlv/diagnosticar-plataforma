@@ -1,0 +1,54 @@
+version: 2
+
+# Diagnostic.ar holds clinical data, so dependency drift is a security concern
+# rather than housekeeping. Updates are grouped so the team reviews a handful of
+# PRs a week instead of thirty, but security fixes are never grouped away —
+# Dependabot always opens those separately and immediately.
+updates:
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Argentina/Buenos_Aires
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Next major versions change build output and the standalone layout the
+      # Dockerfile and deploy script depend on. Upgrade deliberately.
+      - dependency-name: next
+        update-types: [version-update:semver-major]
+      - dependency-name: react
+        update-types: [version-update:semver-major]
+      - dependency-name: react-dom
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Argentina/Buenos_Aires
+    open-pull-requests-limit: 5
+    groups:
+      backend-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+
+  # A compromised third-party action runs with repository credentials.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

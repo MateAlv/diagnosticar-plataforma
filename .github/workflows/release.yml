@@ -1,0 +1,82 @@
+name: Release
+
+# Publishes immutable images to GHCR on a version tag. The nodes never run a
+# build: nodo0 pulls a digest that CI already tested, so a deploy cannot pick up
+# a half-finished commit and there is always a previous digest to roll back to.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit or tag to release
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  publish:
+    name: Build & publish ${{ matrix.workspace }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - workspace: frontend
+            image: diagnosticar-frontend
+          - workspace: backend
+            image: diagnosticar-backend
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.workspace }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.workspace }}
+          # NEXT_PUBLIC_* values are baked into the client bundle at build time,
+          # so the public URLs must be supplied here, not at container start.
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL }}
+            NEXT_PUBLIC_HPO_API_URL=${{ vars.NEXT_PUBLIC_HPO_API_URL }}
+            NEXT_PUBLIC_GENPHENAI_URL=${{ vars.NEXT_PUBLIC_GENPHENAI_URL }}
+
+      - name: Scan the published image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.ref_name }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL
