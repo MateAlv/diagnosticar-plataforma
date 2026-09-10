@@ -8,9 +8,24 @@ export const pool = new Pool({
 export const query = (text: string, params?: any[]) => pool.query(text, params);
 export const getClient = () => pool.connect();
 
+// Arbitrary but fixed: any caller using the same key serialises against the
+// others. Changing it would defeat the lock.
+const MIGRATION_LOCK_ID = 8_472_001;
+
 export async function migrate() {
     const client = await pool.connect();
+    let locked = false;
     try {
+        // `CREATE TABLE IF NOT EXISTS` is not safe to run concurrently: two
+        // backends starting at the same moment (a rolling restart, `compose
+        // scale`, or parallel test files) both see the table missing, both
+        // insert into pg_type, and one dies with
+        // "duplicate key value violates unique constraint pg_type_typname_nsp_index".
+        // The advisory lock makes the whole migration one-at-a-time; it is
+        // released automatically if the connection drops mid-way.
+        await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_ID]);
+        locked = true;
+
         await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -106,6 +121,11 @@ export async function migrate() {
         console.error('Migration failed:', err);
         throw err;
     } finally {
+        if (locked) {
+            // Best effort: if this fails the connection is already broken, and
+            // Postgres drops the lock when the session ends.
+            await client.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_ID]).catch(() => {});
+        }
         client.release();
     }
 }
