@@ -49,9 +49,15 @@ npm run dev:mock     # frontend en :3000 con la API simulada en :4500
 No requiere backend, base de datos ni GPU. Ingresá con cualquier email y una
 contraseña de 8+ caracteres.
 
-Ver [CONTRIBUTING.md](CONTRIBUTING.md) para el setup completo (requiere Node 22),
-[TESTING.md](TESTING.md) para las pruebas y [CI_CD.md](CI_CD.md) para el pipeline
-y el despliegue.
+### Documentación
+
+| Archivo | Contenido |
+|---|---|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Setup en una máquina nueva (requiere Node 22) |
+| [TESTING.md](TESTING.md) | Estrategia de pruebas, modo mock, deuda de accesibilidad |
+| [CI_CD.md](CI_CD.md) | Pipeline, releases, despliegue en nodo0 y staging |
+| [HANDOFF.md](HANDOFF.md) | Estado actual y próximos pasos |
+| [CLAUDE.md](CLAUDE.md) | Contexto para agentes de IA |
 
 # Esquema web:
 ## Landing page (Home)

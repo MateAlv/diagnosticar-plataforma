@@ -139,7 +139,7 @@ CI is only a gate if it cannot be bypassed. On `main`, require:
 
 ## Known gaps
 
-- **No automated restore test.** `deploy.sh` takes a backup before every deploy,
+- **No automated restore test.** `ops/deploy.sh` takes a backup before every deploy,
   but nothing verifies one can be restored. A quarterly manual restore into
   staging is the cheapest way to close this.
 - **Actions are pinned to tags, not commit SHAs.** Dependabot watches them. For

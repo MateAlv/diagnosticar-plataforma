@@ -63,7 +63,7 @@ both the dev mock and the E2E tests follow.
 
 | Layer | Where | Needs | What it protects |
 |---|---|---|---|
-| Unit (backend) | `backend/tests/tokens.test.mjs`, `config.test.mjs`, `security.test.mjs` | nothing | JWT signing/verification, password hashing, CSRF and origin checks, rate limiting, config guard rails |
+| Unit (backend) | `backend/tests/tokens.test.mjs`, `backend/tests/config.test.mjs`, `backend/tests/security.test.mjs` | nothing | JWT signing/verification, password hashing, CSRF and origin checks, rate limiting, config guard rails |
 | Integration (backend) | `backend/tests/api-*.test.mjs` | Postgres | Real routes over the real middleware chain against the real schema |
 | Unit (frontend) | `frontend/tests/*.test.mjs` | nothing | Pure logic, e.g. specialty translation |
 | E2E | `frontend/e2e/*.spec.ts` | production build | Rendering, the wizard end to end, accessibility, security headers |
@@ -73,14 +73,14 @@ both the dev mock and the E2E tests follow.
 They connect to `TEST_DATABASE_URL` (falling back to `DATABASE_URL`). **When
 Postgres is unreachable they skip rather than fail**, so `npm test` still works
 on a laptop with no database. CI treats a skip as a failure — see the "Fail if
-the integration tests silently skipped" step in `ci.yml`, which exists precisely
+the integration tests silently skipped" step in `.github/workflows/ci.yml`, which exists precisely
 because a broken service container would otherwise look like a green build.
 
 Each `api-*.test.mjs` file runs in its own process, which matters: the rate
 limiter keeps state in a module-level `Map`, so tests that deliberately exhaust
 the signup limit would otherwise poison every other test in the run.
 
-`api-ownership.test.mjs` is the file to read first. Every route that takes an
+`backend/tests/api-ownership.test.mjs` is the file to read first. Every route that takes an
 `:id` is probed with a well-formed id belonging to a different user, and the
 expected answer is always `404` — never `403`, which would confirm the record
 exists.
@@ -93,12 +93,13 @@ not support `next start` with standalone output, and testing it would test an
 artifact that never ships.
 
 The HPO gateway and GenPhenAI live on **brainy** and need a GPU, so CI stubs
-them via `e2e/fixtures/services.ts`, which reads `mocks/fixtures.json` — the same
+them via `frontend/e2e/fixtures/services.ts`, which reads
+`frontend/mocks/fixtures.json` — the same
 file the dev mock server uses. Those shapes mirror `diagnostic.ar-api`
 (`services/api-gateway/app/schemas.py`, `services/genphenai/app/main.py`), so a
 contract change on that side shows up here as a failing test instead of a blank
 screen in production. **If you change either service's response shape, update
-`mocks/fixtures.json` in the same week.**
+`frontend/mocks/fixtures.json` in the same week.**
 
 Two projects run: `chromium` (desktop) and `mobile` (Pixel 7). The desktop
 navigation is `hidden md:flex`, so nav assertions skip on mobile by design.
@@ -135,7 +136,7 @@ or would break silently:
 
 ## Accessibility debt
 
-`e2e/a11y.spec.ts` gates on serious and critical WCAG A/AA violations, with one
+`frontend/e2e/a11y.spec.ts` gates on serious and critical WCAG A/AA violations, with one
 documented exception in `KNOWN_A11Y_DEBT`:
 
 > **`color-contrast`** — the accent colour used for outline buttons, secondary
@@ -152,8 +153,9 @@ screen reader — this is worth scheduling rather than carrying indefinitely.
 
 ## Adding tests
 
-- A new API route needs an entry in `api-ownership.test.mjs` proving it is not
-  readable across tenants, and one in `api-hardening.test.mjs` proving a
+- A new API route needs an entry in `backend/tests/api-ownership.test.mjs`
+  proving it is not readable across tenants, and one in
+  `backend/tests/api-hardening.test.mjs` proving a
   malformed `:id` returns 404.
 - A new user-visible screen needs a render check and an axe scan.
 - A change to an HPO/GenPhenAI response shape needs the fixture updated.
