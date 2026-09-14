@@ -213,7 +213,7 @@ jobs:
       - name: Assert no .env file is tracked
         # .env holds the JWT secrets and the SMTP password.
         run: |
-          tracked=$(git ls-files | grep -E '(^|/)\.env($|\.[^e])' || true)
+          tracked=$(git ls-files | grep -E '(^|/)\.env(\.[A-Za-z0-9_-]+)*$' | grep -v '\.example$' || true)
           if [ -n "$tracked" ]; then
             echo "::error::Environment files are committed: $tracked"
             exit 1
@@ -256,7 +256,7 @@ jobs:
             NEXT_PUBLIC_GENPHENAI_URL=https://example.invalid/genphenai
 
       - name: Scan image for known vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ matrix.image }}:ci
           format: table

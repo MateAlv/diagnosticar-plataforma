@@ -73,7 +73,7 @@ jobs:
             NEXT_PUBLIC_GENPHENAI_URL=${{ vars.NEXT_PUBLIC_GENPHENAI_URL }}
 
       - name: Scan the published image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.ref_name }}
           format: table
