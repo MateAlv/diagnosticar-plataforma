@@ -15,12 +15,16 @@ COPY . .
 RUN npm run build
 
 FROM node:22-alpine AS runner
+# The base image lags Alpine's security updates; without this the image ships
+# known-vulnerable openssl and the CI scan fails.
+RUN apk upgrade --no-cache
 WORKDIR /app
 ENV NODE_ENV=production
 # Production dependencies only: dev tooling in a running container is extra
 # attack surface for no benefit.
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 COPY --from=builder --chown=node:node /app/dist ./dist
 
 EXPOSE 4000

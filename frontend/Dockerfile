@@ -31,6 +31,9 @@ COPY . .
 RUN npm run build
 
 FROM node:22-alpine AS runner
+# The base image lags Alpine's security updates; without this the image ships
+# known-vulnerable openssl and the CI scan fails.
+RUN apk upgrade --no-cache
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_API_BASE_URL
 ARG NEXT_PUBLIC_MICROIN_URL
@@ -47,7 +50,10 @@ ENV NEXT_PUBLIC_GENPHENAI_URL=${NEXT_PUBLIC_GENPHENAI_URL}
 COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
-RUN mkdir -p .next/cache && chown -R node:node .next
+# The standalone server runs on node alone; npm is only build tooling and its
+# bundled dependencies are the entire image CVE surface.
+RUN mkdir -p .next/cache && chown -R node:node .next \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 EXPOSE 3000
 USER node
 # Force bind on all interfaces so Traefik can reach the app through Docker networks.
