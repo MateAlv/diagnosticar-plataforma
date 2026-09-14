@@ -10,7 +10,7 @@ Guia actualizada segun el codigo real de `diagnostic.ar` y `diagnostic.ar-api`.
 
 Host publico:
 
-- `https://diagnosticar.infa.cluster.qb.fcen.uba.ar`
+- `https://diagnosticar.infra.cluster.qb.fcen.uba.ar`
 
 Ruteo en `nodo0` (Traefik):
 
@@ -62,7 +62,7 @@ cp -n .env.example .env
 
 Variables minimas en `~/apps/diagnostic.ar-api/.env`:
 
-- `CORS_ORIGINS=https://diagnosticar.infa.cluster.qb.fcen.uba.ar`
+- `CORS_ORIGINS=https://diagnosticar.infra.cluster.qb.fcen.uba.ar`
 - `API_BIND_IP=127.0.0.1`
 - `GENPHENAI_BIND_IP=127.0.0.1`
 - `AUDIT_DB_PASSWORD=<password-fuerte>`
@@ -167,7 +167,7 @@ cp -n .env.example .env
 
 Variables clave en `~/apps/diagnostic.ar/.env`:
 
-- `DIAGNOSTICAR_HOST=diagnosticar.infa.cluster.qb.fcen.uba.ar`
+- `DIAGNOSTICAR_HOST=diagnosticar.infra.cluster.qb.fcen.uba.ar`
 - `TRAEFIK_NETWORK=internal-nodo0-web` (o la red real de tu Traefik)
 - `JWT_ACCESS_SECRET` y `JWT_REFRESH_SECRET` (>=32 chars)
 - `POSTGRES_PASSWORD` y `DATABASE_URL` consistentes
@@ -206,10 +206,10 @@ curl -sS http://127.0.0.1:4000/health
 Desde cualquier cliente:
 
 ```bash
-curl -i https://diagnosticar.infa.cluster.qb.fcen.uba.ar/
-curl -i https://diagnosticar.infa.cluster.qb.fcen.uba.ar/hpo-api/healthz
-curl -i https://diagnosticar.infa.cluster.qb.fcen.uba.ar/genphenai/healthz
-curl -i https://diagnosticar.infa.cluster.qb.fcen.uba.ar/api/auth/me
+curl -i https://diagnosticar.infra.cluster.qb.fcen.uba.ar/
+curl -i https://diagnosticar.infra.cluster.qb.fcen.uba.ar/hpo-api/healthz
+curl -i https://diagnosticar.infra.cluster.qb.fcen.uba.ar/genphenai/healthz
+curl -i https://diagnosticar.infra.cluster.qb.fcen.uba.ar/api/auth/me
 ```
 
 Esperado:
