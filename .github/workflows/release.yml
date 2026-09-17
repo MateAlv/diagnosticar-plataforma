@@ -27,6 +27,10 @@ jobs:
       contents: read
       packages: write
     strategy:
+      # Without this, one image failing cancels the other mid-push and the
+      # release is left half-published — the frontend on the registry and the
+      # backend absent, or the reverse.
+      fail-fast: false
       matrix:
         include:
           - workspace: frontend
@@ -56,12 +60,16 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=long
 
-      - name: Build and push
+      # Build into the local daemon first. Pushing before the scan would put a
+      # vulnerable image on the registry and only then fail the job, leaving a
+      # tag that nodo0 could pull.
+      - name: Build
         uses: docker/build-push-action@v6
         with:
           context: ./${{ matrix.workspace }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          push: false
+          load: true
+          tags: ${{ matrix.image }}:candidate
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.workspace }}
           # NEXT_PUBLIC_* values are baked into the client bundle at build time,
@@ -72,11 +80,39 @@ jobs:
             NEXT_PUBLIC_HPO_API_URL=${{ vars.NEXT_PUBLIC_HPO_API_URL }}
             NEXT_PUBLIC_GENPHENAI_URL=${{ vars.NEXT_PUBLIC_GENPHENAI_URL }}
 
-      - name: Scan the published image
+      - name: Scan the candidate image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.ref_name }}
+          image-ref: ${{ matrix.image }}:candidate
           format: table
           exit-code: "1"
           ignore-unfixed: true
-          severity: CRITICAL
+          # Matches the CI gate. Releasing at a looser threshold than CI would
+          # let a HIGH that blocked every pull request ship in a release.
+          severity: HIGH,CRITICAL
+          vuln-type: os,library
+
+      - name: Assert the image does not run as root
+        run: |
+          user=$(docker image inspect ${{ matrix.image }}:candidate --format '{{.Config.User}}')
+          if [ -z "$user" ] || [ "$user" = "root" ] || [ "$user" = "0" ]; then
+            echo "::error::${{ matrix.image }} runs as root; add a USER directive to its Dockerfile."
+            exit 1
+          fi
+          echo "ok — runs as $user"
+
+      # Only now, with a scanned image, publish it. Re-running the build is
+      # free: every layer is already in the local cache.
+      - name: Push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.workspace }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.workspace }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL }}
+            NEXT_PUBLIC_HPO_API_URL=${{ vars.NEXT_PUBLIC_HPO_API_URL }}
+            NEXT_PUBLIC_GENPHENAI_URL=${{ vars.NEXT_PUBLIC_GENPHENAI_URL }}
