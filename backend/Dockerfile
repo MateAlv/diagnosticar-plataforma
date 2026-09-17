@@ -20,6 +20,15 @@ FROM node:22-alpine AS runner
 RUN apk upgrade --no-cache
 WORKDIR /app
 ENV NODE_ENV=production
+# Recorded at build time so the running container can report which release it
+# is. /api/admin/release reads these; unset means "not built by the release
+# workflow", which is itself worth knowing.
+ARG RELEASE_VERSION=dev
+ARG RELEASE_COMMIT=unknown
+ARG RELEASE_BUILT_AT=unknown
+ENV RELEASE_VERSION=$RELEASE_VERSION \
+    RELEASE_COMMIT=$RELEASE_COMMIT \
+    RELEASE_BUILT_AT=$RELEASE_BUILT_AT
 # Production dependencies only: dev tooling in a running container is extra
 # attack surface for no benefit.
 COPY package.json package-lock.json ./

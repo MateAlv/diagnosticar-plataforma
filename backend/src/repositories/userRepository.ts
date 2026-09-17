@@ -15,6 +15,7 @@ export type User = {
     verified: boolean;
     password_hash: string;
     verification_token?: string | null;
+    must_change_password?: boolean;
 };
 
 export async function getUserByEmail(email: string): Promise<User | null> {
@@ -104,4 +105,69 @@ export async function deleteUserById(id: string) {
 
 export async function updateVerificationToken(id: string, tokenHash: string) {
     await query('UPDATE users SET verification_token = $1 WHERE id = $2', [tokenHash, id]);
+}
+
+/**
+ * Creates an account on someone else's behalf, from the backoffice.
+ *
+ * `verified` is true because an admin vouching for the address is the
+ * verification — there is no email to click, and `sendVerificationEmail`
+ * currently has no callers anyway. `must_change_password` is the important
+ * part: the inviter chose this password and therefore knows it, so the account
+ * is unusable for anything else until the invitee replaces it.
+ */
+export async function createInvitedUser(
+    email: string,
+    passwordHash: string,
+    role: string,
+    fullName: string | null,
+    organization: string | null,
+) {
+    const res = await query(
+        `INSERT INTO users (email, password_hash, full_name, organization, role, verified, must_change_password)
+     VALUES ($1, $2, $3, $4, $5, TRUE, TRUE)
+     RETURNING *`,
+        [email, passwordHash, fullName, organization, role],
+    );
+    return res.rows[0];
+}
+
+/**
+ * Replaces the password and clears the forced-change flag.
+ *
+ * Bumps `token_version` in the same statement, which invalidates every existing
+ * session for this user. If the temporary password leaked — and it travelled
+ * out of band, so assume it might have — any session an attacker opened with it
+ * dies here.
+ */
+export async function setPassword(id: string, passwordHash: string) {
+    await query(
+        `UPDATE users
+        SET password_hash = $1,
+            must_change_password = FALSE,
+            token_version = token_version + 1,
+            updated_at = now()
+      WHERE id = $2`,
+        [passwordHash, id],
+    );
+}
+
+export async function listStaff(): Promise<User[]> {
+    const res = await query(
+        `SELECT id, email, full_name, organization, role, status, verified,
+            must_change_password, created_at, last_login_at
+       FROM users
+      WHERE role = 'admin'
+      ORDER BY created_at ASC`,
+    );
+    return res.rows;
+}
+
+export async function setUserRole(id: string, role: string) {
+    // Bumping token_version makes the change take effect immediately rather
+    // than whenever the target's current access token happens to expire.
+    await query(
+        `UPDATE users SET role = $1, token_version = token_version + 1, updated_at = now() WHERE id = $2`,
+        [role, id],
+    );
 }

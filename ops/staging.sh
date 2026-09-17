@@ -20,7 +20,41 @@ ENV_FILE="${STAGING_ENV_FILE:-$REPO_ROOT/.env.staging}"
 # shellcheck disable=SC1090
 set -a; source "$ENV_FILE"; set +a
 
-COMPOSE=(docker compose -p diagnosticar-staging --env-file "$ENV_FILE"
+PROJECT=diagnosticar-staging
+
+# nodo0 is a shared host: 57 containers across 13 compose projects, and
+# production diagnostic.ar runs there as project "diagnosticar" — one suffix
+# away from ours. These assertions make the difference impossible to get wrong
+# by accident, rather than merely documented. See ops/NODO0_SAFETY.md.
+
+# 1. Never operate out of production's deployment directory.
+case "$REPO_ROOT" in
+  */<usuario>/*)
+    echo "REFUSING: $REPO_ROOT is production's deployment directory." >&2
+    echo "Run staging from your own checkout." >&2
+    exit 1
+    ;;
+esac
+
+# 2. Never load production's environment file.
+case "$(basename "$ENV_FILE")" in
+  .env.staging) ;;
+  *)
+    echo "REFUSING: $ENV_FILE is not .env.staging." >&2
+    echo "Loading production's .env would point staging at production's database." >&2
+    exit 1
+    ;;
+esac
+
+# 3. Staging must carry its own secrets. Sharing production's would let a
+#    staging session authenticate against production.
+if [ -z "${STAGING_JWT_ACCESS_SECRET:-}" ] || [ -z "${STAGING_JWT_REFRESH_SECRET:-}" ]; then
+  echo "REFUSING: STAGING_JWT_* secrets are not set in $ENV_FILE." >&2
+  echo "Generate them with ops/make-staging-env.sh." >&2
+  exit 1
+fi
+
+COMPOSE=(docker compose -p "$PROJECT" --env-file "$ENV_FILE"
          -f docker-compose.yml -f docker-compose.staging.yml)
 
 case "${1:-up}" in
@@ -48,9 +82,27 @@ case "${1:-up}" in
       "$REPO_ROOT/ops/smoke.sh"
     ;;
   reset-db)
-    # Safe by construction: only ever touches the staging project's volume.
-    read -rp "Wipe the STAGING database? [y/N] " confirm
-    [ "$confirm" = "y" ] || exit 0
+    # The only destructive path in this repo. It runs `down -v`, which deletes a
+    # volume permanently — so it proves which volume before asking, rather than
+    # trusting that the project name is right.
+    volume="$("${COMPOSE[@]}" config --format json 2>/dev/null \
+      | grep -o '"name": *"[^"]*postgres_data"' | head -1 | sed 's/.*: *"//; s/"//')"
+
+    case "$volume" in
+      diagnosticar-staging_*)
+        ;;
+      *)
+        echo "REFUSING: resolved volume is '${volume:-unknown}', not a staging volume." >&2
+        echo "Production's volume is diagnosticar_postgres_data and holds clinical records." >&2
+        exit 1
+        ;;
+    esac
+
+    echo "This permanently deletes the staging volume:"
+    echo "    $volume"
+    echo "Production's volume (diagnosticar_postgres_data) is NOT affected."
+    read -rp "Type the word 'staging' to confirm: " confirm
+    [ "$confirm" = "staging" ] || { echo "Aborted."; exit 0; }
     "${COMPOSE[@]}" down -v
     "${COMPOSE[@]}" up -d
     echo "Staging database recreated empty; migrations run on backend boot."

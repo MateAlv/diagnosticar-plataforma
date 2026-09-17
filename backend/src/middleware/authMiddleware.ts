@@ -48,3 +48,23 @@ export async function requireFreshAccessToken(req: AuthRequest, res: Response, n
         return res.status(500).json({ error: 'Error' });
     }
 }
+
+/**
+ * Refuses every request from an account that still holds an admin-issued
+ * temporary password.
+ *
+ * Mounted on the protected routers rather than left to the frontend: hiding the
+ * UI stops nobody who can use curl, and the whole point of the flag is that
+ * someone other than the account holder knows this password.
+ *
+ * `/api/auth/change-password` is deliberately not behind this — it is the exit.
+ */
+export function blockUntilPasswordChanged(req: AuthRequest, res: Response, next: NextFunction) {
+    if (req.userRecord?.must_change_password) {
+        return res.status(403).json({
+            error: 'Password change required',
+            code: 'PASSWORD_CHANGE_REQUIRED',
+        });
+    }
+    return next();
+}

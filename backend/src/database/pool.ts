@@ -61,6 +61,13 @@ export async function migrate() {
         await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS users_google_id_idx ON users (google_id);
     `);
+        // Set when an admin creates an account for someone else. That account
+        // holds a password the inviter chose and therefore knows, so it can do
+        // nothing but change it until the invitee replaces it.
+        await client.query(`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
         // patients — one per completed diagnosis, tied to the authenticated user
         await client.query(`
       CREATE TABLE IF NOT EXISTS patients (

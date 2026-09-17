@@ -11,6 +11,7 @@ import {
     verifyUser,
     updateUserTokenVersion,
     getUserByVerificationToken,
+    setPassword,
 } from '../repositories/userRepository.js';
 import {
     hashPassword,
@@ -22,7 +23,7 @@ import {
 } from '../services/authService.js';
 import { authenticate, AuthRequest, requireFreshAccessToken } from '../middleware/authMiddleware.js';
 import { CSRF_COOKIE_NAME } from '../middleware/csrfMiddleware.js';
-import { rateLimit } from '../middleware/rateLimit.js';
+import { rateLimit, userRateLimit } from '../middleware/rateLimit.js';
 import { hashToken } from '../utils/tokens.js';
 import { stripNullBytes } from '../utils/sanitize.js';
 import { GOOGLE_AUTH_ENABLED, GOOGLE_REDIRECT_URL, IS_PRODUCTION } from '../config.js';
@@ -80,6 +81,25 @@ const csrfCookieOptions = {
 const signupRateLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 5 });
 const loginRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
 const googleRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
+const passwordChangeRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });
+// /verify consumes a token from a URL; without a limit it can be brute-forced.
+const verifyRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
+// /refresh is called by every open tab on a timer, so this is generous — it is
+// a ceiling on abuse, not a quota for normal use.
+const refreshRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 60 });
+const sessionReadRateLimit = userRateLimit({ windowMs: 60 * 1000, max: 60 });
+const logoutRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
+
+const changePasswordSchema = z
+    .object({
+        currentPassword: z.string().min(1).max(200),
+        // Longer than the 8 signup requires: these accounts administer the
+        // platform, and the password being replaced was chosen by someone else.
+        newPassword: z.string().min(12).max(200),
+    })
+    .refine((v) => v.currentPassword !== v.newPassword, {
+        message: 'The new password must differ from the current one',
+    });
 
 function setCsrfCookie(res: Response) {
     const token = crypto.randomBytes(32).toString('hex');
@@ -113,6 +133,7 @@ router.get('/oauth/google', googleRateLimit, (req, res, next) => {
 
 router.get(
     '/oauth/google/callback',
+    googleRateLimit,
     (req, res, next) => {
         if (!GOOGLE_AUTH_ENABLED) {
             return googleAuthUnavailable(res);
@@ -256,14 +277,75 @@ router.post('/login', loginRateLimit, async (req, res) => {
         });
         setCsrfCookie(res);
 
-        res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role } });
+        res.json({
+            user: {
+                id: user.id,
+                email: user.email,
+                full_name: user.full_name,
+                role: user.role,
+                // Drives the forced redirect to /admin/change-password. The
+                // server enforces it independently; this only saves the client
+                // from discovering it by being refused.
+                must_change_password: Boolean(user.must_change_password),
+            },
+        });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-router.post('/verify', async (req, res) => {
+/**
+ * Change your own password. Also the exit from an invited account's
+ * `must_change_password` state, so it must be reachable by a user who is
+ * otherwise restricted — it sits in auth, not admin, for that reason.
+ *
+ * Requires the current password even though the session is already
+ * authenticated: without that, a borrowed browser tab is enough to take over
+ * the account permanently.
+ */
+router.post(
+    '/change-password',
+    passwordChangeRateLimit,
+    authenticate,
+    requireFreshAccessToken,
+    async (req: AuthRequest, res) => {
+        try {
+            const user = req.userRecord;
+            if (!user) {
+                return res.status(401).json({ error: 'Unauthorized' });
+            }
+
+            const parsed = changePasswordSchema.safeParse(req.body);
+            if (!parsed.success) {
+                return res.status(400).json({
+                    error: 'The new password must be at least 12 characters and differ from the current one',
+                });
+            }
+            const { currentPassword, newPassword } = parsed.data;
+
+            if (!(await verifyPassword(currentPassword, user.password_hash))) {
+                return res.status(401).json({ error: 'Invalid credentials' });
+            }
+
+            await setPassword(user.id, await hashPassword(newPassword));
+
+            // setPassword bumped token_version, so every session — including
+            // this one — is now invalid. Clearing the cookies here makes that
+            // visible as a clean sign-out rather than as confusing 403s.
+            res.clearCookie('access_token', accessCookieOptions);
+            res.clearCookie('refresh_token', refreshCookieOptions);
+
+            console.warn('[auth] password changed', { userId: user.id });
+            res.json({ ok: true, reauthenticate: true });
+        } catch (error) {
+            console.error('[auth] change-password failed', (error as Error)?.message);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    },
+);
+
+router.post('/verify', verifyRateLimit, async (req, res) => {
     try {
         const parsed = verifySchema.safeParse(req.body);
         if (!parsed.success) {
@@ -284,7 +366,7 @@ router.post('/verify', async (req, res) => {
     }
 });
 
-router.get('/me', authenticate, requireFreshAccessToken, async (req: AuthRequest, res) => {
+router.get('/me', sessionReadRateLimit, authenticate, requireFreshAccessToken, async (req: AuthRequest, res) => {
     try {
         const user = req.userRecord ?? (req.user?.sub ? await getUserById(req.user.sub) : null);
         if (!user) return res.status(404).json({ error: 'User not found' });
@@ -294,7 +376,7 @@ router.get('/me', authenticate, requireFreshAccessToken, async (req: AuthRequest
     }
 });
 
-router.post('/refresh', async (req, res) => {
+router.post('/refresh', refreshRateLimit, async (req, res) => {
     try {
         const refreshToken = req.cookies?.['refresh_token'];
         if (!refreshToken) return res.status(401).json({ error: 'No refresh token' });
@@ -327,7 +409,7 @@ router.post('/refresh', async (req, res) => {
     }
 });
 
-router.post('/logout', async (req, res) => {
+router.post('/logout', logoutRateLimit, async (req, res) => {
     try {
         const refreshToken = req.cookies?.['refresh_token'];
         const accessTokenHeader = req.headers.authorization;

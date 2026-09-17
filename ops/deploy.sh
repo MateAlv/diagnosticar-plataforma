@@ -19,7 +19,7 @@ cd "$REPO_ROOT"
 STATE_DIR="${DEPLOY_STATE_DIR:-/var/lib/diagnosticar}"
 CURRENT_FILE="$STATE_DIR/current-tag"
 PREVIOUS_FILE="$STATE_DIR/previous-tag"
-GITHUB_REPO="${GITHUB_REPO:-LUCAI-Bioinformatics/diagnostic.ar}"
+GITHUB_REPO="${GITHUB_REPO:-MateAlv/diagnostic.ar}"
 ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env}"
 
 COMPOSE=(docker compose --env-file "$ENV_FILE"
@@ -75,7 +75,7 @@ fi
 
 log "Deploying $TARGET_TAG (currently $([ -n "$CURRENT_TAG" ] && echo "$CURRENT_TAG" || echo "unknown"))"
 export RELEASE_TAG="$TARGET_TAG"
-export GHCR_OWNER="${GHCR_OWNER:-lucai-bioinformatics}"
+export GHCR_OWNER="${GHCR_OWNER:-matealv}"
 
 # ---------------------------------------------------------------------------
 # Back up the database before anything restarts.

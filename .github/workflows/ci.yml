@@ -200,6 +200,14 @@ jobs:
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
+    # On a pull request, gitleaks-action asks the API which commits the PR
+    # contains, which the workflow-wide `contents: read` does not cover. Without
+    # this the job dies with "Resource not accessible by integration" — and only
+    # ever on PRs, so it stayed hidden until the first one ran.
+    # Scoped to this job rather than the whole workflow: nothing else needs it.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:

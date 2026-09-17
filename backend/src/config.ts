@@ -69,3 +69,11 @@ export const GOOGLE_CALLBACK_URL =
     process.env.GOOGLE_CALLBACK_URL || `${BACKEND_URL}/api/auth/oauth/google/callback`;
 export const GOOGLE_REDIRECT_URL = process.env.GOOGLE_REDIRECT_URL || `${FRONTEND_URL}/login`;
 export const GOOGLE_AUTH_ENABLED = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+
+// Baked in at image build time by .github/workflows/release.yml. The running
+// container is the only thing that knows which release it actually is — the
+// deploy tag on nodo0 is a file, and a hand-started container would not match
+// it. Unset outside a released image, which is itself informative.
+export const RELEASE_VERSION = process.env.RELEASE_VERSION || 'dev';
+export const RELEASE_COMMIT = process.env.RELEASE_COMMIT || 'unknown';
+export const RELEASE_BUILT_AT = process.env.RELEASE_BUILT_AT || 'unknown';

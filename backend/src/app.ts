@@ -6,7 +6,9 @@ import passport from 'passport';
 import { FRONTEND_URL } from './config.js';
 import authRouter from './routes/auth.js';
 import patientsRouter from './routes/patients.js';
+import adminRouter from './routes/admin.js';
 import { enforceCsrf, enforceOrigin } from './middleware/csrfMiddleware.js';
+import { globalRateLimit } from './middleware/rateLimit.js';
 
 /**
  * Builds the Express app without binding a port or touching the network.
@@ -34,6 +36,10 @@ export function createApp() {
         },
         credentials: true
     }));
+    // Coarse ceiling ahead of routing, so a route added later without its own
+    // limiter is never completely unprotected. The per-route limits are the
+    // real policy; this should never fire for a person using the site.
+    app.use(globalRateLimit);
     app.use(cookieParser());
     app.use(express.json({ limit: '1mb' }));
     app.use(enforceOrigin);
@@ -42,6 +48,7 @@ export function createApp() {
 
     app.use('/api/auth', authRouter);
     app.use('/api/patients', patientsRouter);
+    app.use('/api/admin', adminRouter);
 
     app.get('/health', async (req, res) => {
         try {

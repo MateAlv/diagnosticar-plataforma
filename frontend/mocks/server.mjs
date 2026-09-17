@@ -42,6 +42,22 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // In-memory store, seeded so the app has something to show on first load.
 // ---------------------------------------------------------------------------
 const users = new Map();   // email -> user
+
+// Backoffice staff, in-memory like everything else here. Seeded with a couple
+// of entries so the team screen has something to render on a cold start.
+const adminStaff = [
+  {
+    id: crypto.randomUUID(), email: "admin@diagnosticar.ar", fullName: "Equipo Diagnostic.ar",
+    organization: "FCEN-UBA", status: "active", mustChangePassword: false,
+    createdAt: new Date(Date.now() - 86400000 * 210).toISOString(),
+    lastLoginAt: new Date(Date.now() - 3600000 * 5).toISOString(),
+  },
+  {
+    id: crypto.randomUUID(), email: "coordinacion.admin@iquibicen.ar", fullName: "Coordinación clínica",
+    organization: "IQUIBICEN/CONICET", status: "active", mustChangePassword: true,
+    createdAt: new Date(Date.now() - 86400000 * 4).toISOString(), lastLoginAt: null,
+  },
+];
 const sessions = new Map(); // access_token -> email
 const patients = new Map(); // id -> patient (with diagnoses[])
 
@@ -268,6 +284,129 @@ const server = http.createServer(async (req, res) => {
   if (pathname === "/api/auth/verify" && method === "POST") {
     log("200 verified");
     return send(res, 200, { message: "Verified" });
+  }
+
+  // --- Express API: admin (backoffice) -------------------------------------
+  // Faithful to the real thing in the way that matters: a caller without the
+  // admin role gets 404, not 403, so the panel is invisible rather than merely
+  // forbidden. Sign in as an address containing "admin" to get the role.
+  if (pathname.startsWith("/api/admin")) {
+    const user = currentUser(cookies);
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+    if (!user.email.includes("admin")) {
+      log("404 (not an admin)");
+      return send(res, 404, { error: "Not found" });
+    }
+
+    const days = Math.min(Math.max(parseInt(new URL(req.url, "http://x").searchParams.get("days") ?? "30", 10) || 30, 1), 365);
+    const series = (n, base, spread) =>
+      Array.from({ length: n }, (_, i) => {
+        const d = new Date(Date.now() - (n - 1 - i) * 86400000);
+        // Deterministic pseudo-noise with a weekly dip, so the charts look like
+        // real traffic instead of a straight line.
+        const weekday = d.getUTCDay();
+        const weekend = weekday === 0 || weekday === 6 ? 0.45 : 1;
+        const wobble = (Math.sin(i * 1.7) + Math.sin(i * 0.6)) * spread;
+        return { day: d.toISOString().slice(0, 10), count: Math.max(0, Math.round((base + wobble) * weekend)) };
+      });
+
+    if (pathname === "/api/admin/overview") {
+      log("200 overview");
+      return send(res, 200, {
+        totals: {
+          users: 1284, usersLast30d: 96, activeLast30d: 412,
+          patients: 1731, diagnoses: 2140, diagnosesLast30d: 288, diagnosesLast24h: 11,
+        },
+        diagnosesPerDay: series(days, 9, 4),
+        signupsPerDay: series(days, 3, 2),
+        authProviders: [ { label: "local", count: 921 }, { label: "google", count: 363 } ],
+        days,
+      });
+    }
+
+    if (pathname === "/api/admin/insights") {
+      log("200 insights");
+      return send(res, 200, {
+        specialties: [
+          { label: "Neurología", count: 412 }, { label: "Genética médica", count: 388 },
+          { label: "Endocrinología", count: 241 }, { label: "Neumonología", count: 187 },
+          { label: "Cardiología", count: 156 }, { label: "Oftalmología", count: 132 },
+          { label: "Nefrología", count: 98 }, { label: "Dermatología", count: 74 },
+        ],
+        phenotypes: [
+          { label: "Retraso del desarrollo", count: 531 }, { label: "Hipotonía", count: 402 },
+          { label: "Convulsiones", count: 377 }, { label: "Talla baja", count: 298 },
+          { label: "Dismorfia facial", count: 254 }, { label: "Microcefalia", count: 201 },
+          { label: "Ataxia", count: 164 }, { label: "Pérdida auditiva", count: 121 },
+        ],
+        confidence: [
+          { label: "0.0–0.1", count: 18 }, { label: "0.1–0.2", count: 34 },
+          { label: "0.2–0.3", count: 61 }, { label: "0.3–0.4", count: 118 },
+          { label: "0.4–0.5", count: 196 }, { label: "0.5–0.6", count: 287 },
+          { label: "0.6–0.7", count: 341 }, { label: "0.7–0.8", count: 262 },
+          { label: "0.8–0.9", count: 148 }, { label: "0.9–1.0", count: 57 },
+        ],
+        countries: [
+          { label: "Argentina", count: 1489 }, { label: "Uruguay", count: 87 },
+          { label: "Chile", count: 64 }, { label: "Paraguay", count: 41 },
+          { label: "Sin especificar", count: 29 },
+        ],
+      });
+    }
+
+    if (pathname === "/api/admin/release") {
+      log("200 release");
+      return send(res, 200, {
+        version: "dev", commit: "mock0000000000000000000000000000000000000",
+        builtAt: "unknown", environment: "development",
+        startedAt: new Date(Date.now() - 4200_000).toISOString(),
+        uptimeSeconds: 4200, node: process.version,
+      });
+    }
+
+    if (pathname === "/api/admin/staff" && method === "GET") {
+      log("200 staff");
+      return send(res, 200, { staff: adminStaff });
+    }
+
+    if (pathname === "/api/admin/staff" && method === "POST") {
+      const body = await readBody(req);
+      const email = String(body.email ?? "").trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        log("400 bad email");
+        return send(res, 400, { error: "A valid email is required" });
+      }
+      if (adminStaff.some((m) => m.email === email)) {
+        log("409 duplicate");
+        return send(res, 409, { error: "An account with that email already exists" });
+      }
+      const member = {
+        id: crypto.randomUUID(), email, fullName: body.fullName ?? null,
+        organization: null, status: "active", mustChangePassword: true,
+        createdAt: new Date().toISOString(), lastLoginAt: null,
+      };
+      adminStaff.push(member);
+      log(`201 invited ${email}`);
+      return send(res, 201, {
+        user: { id: member.id, email: member.email, fullName: member.fullName },
+        temporaryPassword: Array.from({ length: 20 }, () =>
+          "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"[Math.floor(Math.random() * 56)]).join(""),
+        notice: "Share this password out of band.",
+      });
+    }
+
+    const revoke = pathname.match(/^\/api\/admin\/staff\/([^/]+)\/revoke$/);
+    if (revoke && method === "POST") {
+      const idx = adminStaff.findIndex((m) => m.id === revoke[1]);
+      if (idx === -1) { log("404 unknown member"); return send(res, 404, { error: "Not found" }); }
+      if (adminStaff.length <= 1) { log("400 last admin"); return send(res, 400, { error: "Refusing to remove the last admin" }); }
+      adminStaff.splice(idx, 1);
+      log("200 revoked");
+      return send(res, 200, { ok: true });
+    }
+
+    log("404");
+    return send(res, 404, { error: "Not found" });
   }
 
   // --- Express API: patients ----------------------------------------------
