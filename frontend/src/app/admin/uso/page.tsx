@@ -28,9 +28,8 @@ export default function AdminUsagePage() {
                     Qué está consultando la plataforma
                 </h1>
                 <p className="mt-1 max-w-3xl text-sm leading-relaxed text-[var(--lu-subtle)]">
-                    Agregados sobre las salidas del modelo. Los grupos con menos de cinco registros se omiten, y la
-                    geografía se informa sólo a nivel país: en enfermedades poco frecuentes, una localidad con un
-                    único caso puede identificar a una familia.
+                    Agregados sobre las salidas del modelo. La geografía se informa sólo a nivel país: en
+                    enfermedades poco frecuentes, una localidad con un único caso puede identificar a una familia.
                 </p>
             </div>
 

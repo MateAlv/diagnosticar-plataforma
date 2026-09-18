@@ -69,6 +69,22 @@ export default function HomePage() {
                 <Link href="/diagnosticar" className="btn-primary inline-flex items-center justify-center h-9 px-4 rounded-md text-sm">
                   Ir a la App
                 </Link>
+                {user.role === "admin" && (
+                  <Link
+                    href="/admin"
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-[var(--lu-accent)] px-3 text-sm font-medium text-[var(--lu-accent)] transition hover:bg-[color-mix(in_oklab,var(--lu-accent)_8%,white)]"
+                  >
+                    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" aria-hidden>
+                      <path
+                        d="M8 1.5 2.5 4v3.5c0 3.2 2.3 6.2 5.5 7 3.2-.8 5.5-3.8 5.5-7V4L8 1.5Z"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    Administración
+                  </Link>
+                )}
                 {displayName && (
                   <span className="user-badge truncate">
                     {displayName}

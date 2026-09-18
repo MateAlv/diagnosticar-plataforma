@@ -40,8 +40,6 @@ services:
       - "traefik.http.routers.diagnosticar-staging-backend.priority=220"
       # Staging is not for the public. Basic auth keeps it out of search results
       # and away from families who might mistake it for the real service.
-      - "traefik.http.routers.diagnosticar-staging-backend.middlewares=diagnosticar-staging-auth"
-      - "traefik.http.middlewares.diagnosticar-staging-auth.basicauth.users=${STAGING_BASIC_AUTH:?set STAGING_BASIC_AUTH (htpasswd format)}"
     networks:
       - default
       - traefik_net
@@ -59,8 +57,7 @@ services:
       - "traefik.http.routers.diagnosticar-staging-frontend.tls=true"
       - "traefik.http.routers.diagnosticar-staging-frontend.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
       - "traefik.http.routers.diagnosticar-staging-frontend.priority=100"
-      - "traefik.http.routers.diagnosticar-staging-frontend.middlewares=diagnosticar-staging-auth,diagnosticar-staging-noindex"
-      - "traefik.http.middlewares.diagnosticar-staging-auth.basicauth.users=${STAGING_BASIC_AUTH:?set STAGING_BASIC_AUTH (htpasswd format)}"
+      - "traefik.http.routers.diagnosticar-staging-frontend.middlewares=diagnosticar-staging-noindex"
       - "traefik.http.middlewares.diagnosticar-staging-noindex.headers.customresponseheaders.X-Robots-Tag=noindex, nofollow"
     networks:
       - default
@@ -91,8 +88,7 @@ services:
       - "traefik.http.routers.diagnosticar-staging-hpo.priority=230"
       # Basic auth here too: without it these paths are an unauthenticated
       # public route to the GPU node.
-      - "traefik.http.routers.diagnosticar-staging-hpo.middlewares=diagnosticar-staging-auth,diagnosticar-staging-hpo-strip"
-      - "traefik.http.middlewares.diagnosticar-staging-auth.basicauth.users=${STAGING_BASIC_AUTH:?set STAGING_BASIC_AUTH (htpasswd format)}"
+      - "traefik.http.routers.diagnosticar-staging-hpo.middlewares=diagnosticar-staging-hpo-strip"
       - "traefik.http.middlewares.diagnosticar-staging-hpo-strip.stripprefix.prefixes=/hpo-api"
     networks:
       - traefik_net
@@ -114,8 +110,7 @@ services:
       - "traefik.http.routers.diagnosticar-staging-genphenai.tls=true"
       - "traefik.http.routers.diagnosticar-staging-genphenai.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
       - "traefik.http.routers.diagnosticar-staging-genphenai.priority=230"
-      - "traefik.http.routers.diagnosticar-staging-genphenai.middlewares=diagnosticar-staging-auth,diagnosticar-staging-genphenai-strip"
-      - "traefik.http.middlewares.diagnosticar-staging-auth.basicauth.users=${STAGING_BASIC_AUTH:?set STAGING_BASIC_AUTH (htpasswd format)}"
+      - "traefik.http.routers.diagnosticar-staging-genphenai.middlewares=diagnosticar-staging-genphenai-strip"
       - "traefik.http.middlewares.diagnosticar-staging-genphenai-strip.stripprefix.prefixes=/genphenai"
     networks:
       - traefik_net

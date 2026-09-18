@@ -136,7 +136,7 @@ export function RankedBars({
 }) {
     if (!data.length) {
         return (
-            <EmptyState message="Sin datos suficientes. Los grupos con menos de 5 registros se omiten para proteger la privacidad." />
+            <EmptyState message="Todavía no hay datos para este gráfico." />
         );
     }
 

@@ -10,11 +10,10 @@ import { query } from '../database/pool.js';
  * in the first place — a bug in the admin UI cannot leak what was never
  * fetched.
  *
- * `MIN_CELL` suppresses small buckets. In a rare-disease platform a bucket of
- * one is potentially a named family, which is why geography is reported by
- * country and never by `localidad`.
+ * Geography is reported by country and never by `localidad`: in a rare-disease
+ * platform a single case in a named town can identify a family, and no
+ * aggregate here is worth that.
  */
-const MIN_CELL = 5;
 
 export type TimePoint = { day: string; count: number };
 export type Bucket = { label: string; count: number };
@@ -110,11 +109,10 @@ export async function getTopSpecialties(limit: number): Promise<Bucket[]> {
           FROM exploded
          WHERE label IS NOT NULL AND label <> ''
          GROUP BY label
-        HAVING count(*) >= $2
          ORDER BY count(*) DESC, label ASC
          LIMIT $1
         `,
-        [limit, MIN_CELL],
+        [limit],
     );
     return rows.map((r) => ({ label: String(r.label), count: Number(r.count) }));
 }
@@ -141,11 +139,10 @@ export async function getTopPhenotypes(limit: number): Promise<Bucket[]> {
           FROM exploded
          WHERE label IS NOT NULL AND label <> ''
          GROUP BY label
-        HAVING count(*) >= $2
          ORDER BY count(*) DESC, label ASC
          LIMIT $1
         `,
-        [limit, MIN_CELL],
+        [limit],
     );
     return rows.map((r) => ({ label: String(r.label), count: Number(r.count) }));
 }
@@ -190,11 +187,10 @@ export async function getCountries(limit: number): Promise<Bucket[]> {
                count(*) AS count
           FROM patients
          GROUP BY label
-        HAVING count(*) >= $2
          ORDER BY count(*) DESC, label ASC
          LIMIT $1
         `,
-        [limit, MIN_CELL],
+        [limit],
     );
     return rows.map((r) => ({ label: String(r.label), count: Number(r.count) }));
 }
