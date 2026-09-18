@@ -8,8 +8,15 @@ export interface AuthRequest extends Request {
 }
 
 export function authenticate(req: AuthRequest, res: Response, next: NextFunction) {
+    // Only the Bearer scheme. Splitting on a space accepted any scheme's
+    // credential, so behind a proxy doing HTTP basic auth — staging sits behind
+    // Traefik's — the browser's `Authorization: Basic <base64>` was parsed as a
+    // token, failed verification, and returned 403 "Forbidden" where an
+    // anonymous caller should get 401. The header is the proxy's, not the
+    // caller's, and carries no claim about who this user is.
     const authHeader = req.headers.authorization;
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const bearer = /^Bearer\s+(.+)$/i.exec(authHeader ?? '');
+    const token = bearer?.[1];
     const cookieToken = req.cookies?.['access_token'];
     const finalToken = token || cookieToken;
 

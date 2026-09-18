@@ -276,3 +276,17 @@ test('login gives the same answer for an unknown user and a wrong password', { s
     assert.equal(unknown.status, wrongPassword.status);
     assert.deepEqual(unknown.json, wrongPassword.json);
 });
+
+test('a proxy Authorization: Basic header is not mistaken for a token', { skip }, async () => {
+    // Staging sits behind Traefik basic auth, so the browser sends
+    // `Authorization: Basic <base64>` on every request. That header belongs to
+    // the proxy and says nothing about the application user. Parsing it as a
+    // bearer token turned an anonymous request into 403 "Forbidden" — a failed
+    // token — when it should read as 401, no credentials at all.
+    const anon = createClient(server.baseUrl);
+    const res = await anon.get('/api/patients', {
+        headers: { Authorization: 'Basic ZXF1aXBvOnBhc3N3b3Jk' },
+    });
+
+    assert.equal(res.status, 401, 'a Basic header must read as no credentials, not a bad token');
+});
