@@ -21,7 +21,7 @@ env:
 
 jobs:
   publish:
-    name: Build & publish ${{ matrix.workspace }}${{ matrix.suffix }}
+    name: Build & publish ${{ matrix.workspace }} (${{ matrix.environment }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -33,24 +33,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `environment` is the only knob. The image name is derived from it,
+          # so a production image can never be published under a staging name
+          # or the reverse — the two cannot drift by editing one line.
+          #
           # The backend reads every URL from .env at runtime, so one image
-          # serves both environments.
+          # serves both environments and carries no environment in its name.
           - workspace: backend
-            image: diagnosticar-backend
-            suffix: ""
-            env_prefix: ""
+            environment: production
           # The frontend does not: NEXT_PUBLIC_* values are compiled into the
-          # client bundle at build time, so an image built for production
-          # posts to production's API no matter what the node's .env says.
-          # Staging therefore needs its own image rather than its own config.
+          # client bundle at build time, so an image built for production posts
+          # to production's API no matter what the node's .env says. Each
+          # environment therefore needs its own image, not its own config.
           - workspace: frontend
-            image: diagnosticar-frontend
-            suffix: ""
-            env_prefix: ""
+            environment: production
           - workspace: frontend
-            image: diagnosticar-frontend
-            suffix: "-staging"
-            env_prefix: "STAGING_"
+            environment: staging
 
     steps:
       - uses: actions/checkout@v4
@@ -65,10 +63,75 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Everything environment-specific is derived here, from matrix.environment
+      # alone: the image name and the four public URLs compiled into the bundle.
+      # Deriving rather than listing them means a staging build cannot be
+      # published under the production name by editing one line in the matrix.
+      - id: env
+        env:
+          ENVIRONMENT: ${{ matrix.environment }}
+          WORKSPACE: ${{ matrix.workspace }}
+          PROD_API: ${{ vars.NEXT_PUBLIC_API_URL }}
+          PROD_API_BASE: ${{ vars.NEXT_PUBLIC_API_BASE_URL }}
+          PROD_HPO: ${{ vars.NEXT_PUBLIC_HPO_API_URL }}
+          PROD_GENPHEN: ${{ vars.NEXT_PUBLIC_GENPHENAI_URL }}
+          STG_API: ${{ vars.STAGING_NEXT_PUBLIC_API_URL }}
+          STG_API_BASE: ${{ vars.STAGING_NEXT_PUBLIC_API_BASE_URL }}
+          STG_HPO: ${{ vars.STAGING_NEXT_PUBLIC_HPO_API_URL }}
+          STG_GENPHEN: ${{ vars.STAGING_NEXT_PUBLIC_GENPHENAI_URL }}
+        run: |
+          set -euo pipefail
+
+          # The backend is environment-agnostic, so it keeps a bare name. Only
+          # images whose content differs per environment get a suffix.
+          if [ "$WORKSPACE" = "backend" ]; then
+            image="diagnosticar-backend"
+          elif [ "$ENVIRONMENT" = "production" ]; then
+            image="diagnosticar-frontend"
+          else
+            image="diagnosticar-frontend-${ENVIRONMENT}"
+          fi
+
+          if [ "$ENVIRONMENT" = "staging" ]; then
+            api="$STG_API"; api_base="$STG_API_BASE"; hpo="$STG_HPO"; genphen="$STG_GENPHEN"
+          else
+            api="$PROD_API"; api_base="$PROD_API_BASE"; hpo="$PROD_HPO"; genphen="$PROD_GENPHEN"
+          fi
+
+          # A frontend built with the wrong environment's URLs is silently
+          # wrong: it starts, serves, and posts every request to the other
+          # environment's API. Refuse to build rather than publish that.
+          if [ "$WORKSPACE" = "frontend" ]; then
+            for v in "$api" "$api_base" "$hpo" "$genphen"; do
+              if [ -z "$v" ]; then
+                echo "::error::Public URL variables for '$ENVIRONMENT' are not set."
+                exit 1
+              fi
+            done
+            case "$ENVIRONMENT:$api" in
+              staging:*staging.*) ;;
+              production:*staging.*)
+                echo "::error::Production build resolved a staging URL: $api"
+                exit 1 ;;
+              staging:*)
+                echo "::error::Staging build resolved a non-staging URL: $api"
+                exit 1 ;;
+            esac
+          fi
+
+          {
+            echo "image=$image"
+            echo "api=$api"
+            echo "api_base=$api_base"
+            echo "hpo=$hpo"
+            echo "genphen=$genphen"
+          } >> "$GITHUB_OUTPUT"
+          echo "environment=$ENVIRONMENT image=$image api=$api"
+
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}${{ matrix.suffix }}
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ steps.env.outputs.image }}
           tags: |
             # ops/deploy.sh and ops/staging.sh pass the git tag verbatim
             # ("v0.1.0"), but {{version}} strips the leading v and publishes
@@ -85,41 +148,6 @@ jobs:
       # Choose which set of public URLs gets compiled into this image. The
       # staging variant reads STAGING_NEXT_PUBLIC_*; everything else reads the
       # production ones. Selecting here rather than in the build-args block
-      # keeps that block a single source of truth for both the scan build and
-      # the push build, which must be byte-identical.
-      - id: urls
-        env:
-          PROD_API: ${{ vars.NEXT_PUBLIC_API_URL }}
-          PROD_API_BASE: ${{ vars.NEXT_PUBLIC_API_BASE_URL }}
-          PROD_HPO: ${{ vars.NEXT_PUBLIC_HPO_API_URL }}
-          PROD_GENPHEN: ${{ vars.NEXT_PUBLIC_GENPHENAI_URL }}
-          STG_API: ${{ vars.STAGING_NEXT_PUBLIC_API_URL }}
-          STG_API_BASE: ${{ vars.STAGING_NEXT_PUBLIC_API_BASE_URL }}
-          STG_HPO: ${{ vars.STAGING_NEXT_PUBLIC_HPO_API_URL }}
-          STG_GENPHEN: ${{ vars.STAGING_NEXT_PUBLIC_GENPHENAI_URL }}
-          IS_STAGING: ${{ matrix.suffix == '-staging' }}
-        run: |
-          if [ "$IS_STAGING" = "true" ]; then
-            api="$STG_API"; api_base="$STG_API_BASE"; hpo="$STG_HPO"; genphen="$STG_GENPHEN"
-            # A staging image built with production's URLs would silently post
-            # every request to production. Fail loudly instead.
-            for v in "$api" "$api_base" "$hpo" "$genphen"; do
-              if [ -z "$v" ]; then
-                echo "::error::STAGING_NEXT_PUBLIC_* repository variables are not set."
-                exit 1
-              fi
-            done
-          else
-            api="$PROD_API"; api_base="$PROD_API_BASE"; hpo="$PROD_HPO"; genphen="$PROD_GENPHEN"
-          fi
-          {
-            echo "api=$api"
-            echo "api_base=$api_base"
-            echo "hpo=$hpo"
-            echo "genphen=$genphen"
-          } >> "$GITHUB_OUTPUT"
-          echo "building for: ${IS_STAGING:+staging}${IS_STAGING:-production} -> $api"
-
       # Build into the local daemon first. Pushing before the scan would put a
       # vulnerable image on the registry and only then fail the job, leaving a
       # tag that nodo0 could pull.
@@ -129,16 +157,16 @@ jobs:
           context: ./${{ matrix.workspace }}
           push: false
           load: true
-          tags: ${{ matrix.image }}${{ matrix.suffix }}:candidate
+          tags: ${{ steps.env.outputs.image }}:candidate
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.workspace }}${{ matrix.suffix }}
+          cache-from: type=gha,scope=${{ matrix.workspace }}-${{ matrix.environment }}
           # NEXT_PUBLIC_* values are baked into the client bundle at build time,
           # so the public URLs must be supplied here, not at container start.
           build-args: |
-            NEXT_PUBLIC_API_URL=${{ steps.urls.outputs.api }}
-            NEXT_PUBLIC_API_BASE_URL=${{ steps.urls.outputs.api_base }}
-            NEXT_PUBLIC_HPO_API_URL=${{ steps.urls.outputs.hpo }}
-            NEXT_PUBLIC_GENPHENAI_URL=${{ steps.urls.outputs.genphen }}
+            NEXT_PUBLIC_API_URL=${{ steps.env.outputs.api }}
+            NEXT_PUBLIC_API_BASE_URL=${{ steps.env.outputs.api_base }}
+            NEXT_PUBLIC_HPO_API_URL=${{ steps.env.outputs.hpo }}
+            NEXT_PUBLIC_GENPHENAI_URL=${{ steps.env.outputs.genphen }}
             RELEASE_VERSION=${{ github.ref_name }}
             RELEASE_COMMIT=${{ github.sha }}
             RELEASE_BUILT_AT=${{ steps.stamp.outputs.built_at }}
@@ -146,7 +174,7 @@ jobs:
       - name: Scan the candidate image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ matrix.image }}${{ matrix.suffix }}:candidate
+          image-ref: ${{ steps.env.outputs.image }}:candidate
           format: table
           exit-code: "1"
           ignore-unfixed: true
@@ -157,9 +185,9 @@ jobs:
 
       - name: Assert the image does not run as root
         run: |
-          user=$(docker image inspect ${{ matrix.image }}${{ matrix.suffix }}:candidate --format '{{.Config.User}}')
+          user=$(docker image inspect ${{ steps.env.outputs.image }}:candidate --format '{{.Config.User}}')
           if [ -z "$user" ] || [ "$user" = "root" ] || [ "$user" = "0" ]; then
-            echo "::error::${{ matrix.image }}${{ matrix.suffix }} runs as root; add a USER directive to its Dockerfile."
+            echo "::error::${{ steps.env.outputs.image }} runs as root; add a USER directive to its Dockerfile."
             exit 1
           fi
           echo "ok — runs as $user"
@@ -173,12 +201,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.workspace }}${{ matrix.suffix }}
+          cache-from: type=gha,scope=${{ matrix.workspace }}-${{ matrix.environment }}
           build-args: |
-            NEXT_PUBLIC_API_URL=${{ steps.urls.outputs.api }}
-            NEXT_PUBLIC_API_BASE_URL=${{ steps.urls.outputs.api_base }}
-            NEXT_PUBLIC_HPO_API_URL=${{ steps.urls.outputs.hpo }}
-            NEXT_PUBLIC_GENPHENAI_URL=${{ steps.urls.outputs.genphen }}
+            NEXT_PUBLIC_API_URL=${{ steps.env.outputs.api }}
+            NEXT_PUBLIC_API_BASE_URL=${{ steps.env.outputs.api_base }}
+            NEXT_PUBLIC_HPO_API_URL=${{ steps.env.outputs.hpo }}
+            NEXT_PUBLIC_GENPHENAI_URL=${{ steps.env.outputs.genphen }}
             RELEASE_VERSION=${{ github.ref_name }}
             RELEASE_COMMIT=${{ github.sha }}
             RELEASE_BUILT_AT=${{ steps.stamp.outputs.built_at }}
