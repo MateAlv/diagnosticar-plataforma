@@ -77,6 +77,19 @@ case "${1:-up}" in
   smoke)
     # Runs against the public staging host so Traefik, TLS and the basic-auth
     # middleware are all in the path.
+    #
+    # STAGING_BASIC_AUTH is an htpasswd line — "user:$$apr1$$hash" — with the
+    # dollars doubled to survive compose interpolation. curl needs the plain
+    # password, which the hash does not contain, so the password is supplied
+    # separately via STAGING_SMOKE_PASSWORD. Without it every check reads 401
+    # and the suite fails on a healthy stack.
+    smoke_user="${STAGING_BASIC_AUTH%%:*}"
+    if [ -n "${STAGING_SMOKE_PASSWORD:-}" ]; then
+      export SMOKE_BASIC_AUTH="${smoke_user}:${STAGING_SMOKE_PASSWORD}"
+    else
+      echo "Note: STAGING_SMOKE_PASSWORD is not set in $ENV_FILE." >&2
+      echo "      Every check will return 401 because staging requires basic auth." >&2
+    fi
     SMOKE_FRONTEND_URL="https://${STAGING_HOST}" \
     SMOKE_BACKEND_URL="https://${STAGING_HOST}" \
       "$REPO_ROOT/ops/smoke.sh"
