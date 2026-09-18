@@ -4,7 +4,7 @@ Two halves: **what the pipeline does** (reference), and **how to take a change
 through it** (the runbook, at the bottom — start there if you are shipping
 something today).
 
-Accurate as of 2026-09-17, `v0.1.0`.
+Accurate as of 2026-09-18, `v0.4.0`.
 
 ---
 
@@ -102,21 +102,30 @@ build is a cache hit, so this costs nothing.
 failing cancels the other mid-push, and a **half-published release** is worse
 than a failed one — `deploy.sh` would find a mismatched pair.
 
-Images land at (note the **lowercase** path, which is not how the account name
-is spelled):
+**Three images per tag.** The backend reads every URL from `.env` at runtime,
+so one image serves both environments. The frontend does not — `NEXT_PUBLIC_*`
+values are compiled into the client bundle at build time — so it is built once
+per environment:
 
 ```
-ghcr.io/matealv/diagnosticar-frontend:X.Y.Z
 ghcr.io/matealv/diagnosticar-backend:X.Y.Z
+ghcr.io/matealv/diagnosticar-frontend:X.Y.Z            production URLs
+ghcr.io/matealv/diagnosticar-frontend-staging:X.Y.Z    staging URLs
 ```
 
-plus `X.Y`, `latest`, and `sha-<full commit sha>`.
+plus `X.Y`, `latest`, and `sha-<full commit sha>`. Note the **lowercase**
+registry path, which is not how the account name is spelled.
 
-`NEXT_PUBLIC_*` values are baked into the client bundle **at build time**, so
-they are supplied as build args from repository variables. Setting them in
-`.env` on the node has **no effect on an already-built image** — a wrong value
-here does not fail the build, it ships a frontend that cannot reach its own API.
-All four currently point at the production host.
+The matrix is keyed on `environment` alone; the image name, the four public
+URLs and the cache scope are all derived from it, so a staging build cannot be
+published under the production name by editing one line. A build whose resolved
+API URL disagrees with its declared environment **fails** rather than shipping
+an image that starts cleanly and posts to the wrong place — which is exactly
+what happened on the first staging deploy, where the login failed because the
+request reached production's API.
+
+Setting `NEXT_PUBLIC_*` in `.env` on the node has **no effect on an
+already-built image**. Changing one requires a new tag, not a restart.
 
 ### Why the Dockerfiles delete npm
 
@@ -162,6 +171,112 @@ returns 401 unauthenticated, that a cross-origin POST is rejected, that five
 security headers are present and `X-Powered-By` is absent, and that `/home`
 renders without mojibake. A container that starts with a broken database
 connection or an accidentally public patients endpoint is a **failed deploy**.
+
+### Production CD: how we intend to turn it on
+
+**Nothing has ever deployed production through this pipeline.** Production
+diagnostic.ar was deployed by hand and has been running for weeks from
+`/home/<usuario>/nodo0-server/services/diagnostic.ar`. Everything below is the
+intended path, written down before anyone walks it.
+
+The staging work already proved most of it: the release workflow publishes
+correctly, `ops/staging.sh` pulls and starts a stack, and `ops/smoke.sh` catches
+real defects. What is untested is `ops/deploy.sh` itself — the backup, the
+rollback, and the systemd timer.
+
+#### What must be true first
+
+1. **Staging has run the same tag.** Production should never be the first place
+   an image executes.
+2. **A restore has been rehearsed.** `ops/deploy.sh` takes a `pg_dump` before
+   every deploy and refuses to proceed without one, but nothing has ever
+   restored one. Until that is rehearsed, treat the backups as unverified —
+   which means the rollback story is "roll back the image", not "roll back the
+   data".
+3. **The node can pull.** `docker login ghcr.io` as whoever runs the deploy, and
+   a read-only PAT at `/etc/diagnosticar/github-token` for the release-lookup
+   call in `latest_release()`.
+
+#### Step 1 — dry run against staging, with the production script
+
+```bash
+ssh nodo0-diagnostic.ar
+cd ~/diagnostic.ar/diagnostic.ar-staging
+DEPLOY_STATE_DIR=$HOME/deploy-state-test \
+ENV_FILE=$PWD/.env.staging \
+  ops/deploy.sh v0.4.0
+```
+
+This exercises the real script — backup, pull, restart, smoke, and the rollback
+branch — against the staging stack and a throwaway state directory. It is the
+only way to find out whether the rollback path works **before** needing it.
+
+Expect to find something. The script has never run.
+
+#### Step 2 — deploy production by hand once
+
+Before automating, do it manually so the failure modes are observed by a person:
+
+```bash
+# on nodo0, as whoever owns the production deployment
+cd /home/<usuario>/nodo0-server/services/diagnostic.ar
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+               -f docker-compose.deploy.yml pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+               -f docker-compose.deploy.yml up -d --no-build
+ops/smoke.sh
+```
+
+Note production's checkout predates this pipeline and may not contain `ops/` or
+the deploy overlay. Bringing it up to date is itself a change to a live service
+serving families, so schedule it rather than doing it opportunistically.
+
+#### Step 3 — install the timer
+
+```bash
+sudo mkdir -p /var/lib/diagnosticar /etc/diagnosticar
+printf '%s' 'ghp_...' | sudo tee /etc/diagnosticar/github-token >/dev/null
+sudo chmod 600 /etc/diagnosticar/github-token
+sudo cp ops/systemd/diagnosticar-deploy.* /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now diagnosticar-deploy.timer
+```
+
+The timer asks GitHub every ten minutes whether a newer release exists. Nothing
+reaches into the node: no inbound access, no CI runner, no repository
+credentials on the machine holding clinical data. That property is the reason
+for the pull-based design and should not be traded away for convenience.
+
+#### Step 4 — watch the first automated deploy
+
+```bash
+journalctl -u diagnosticar-deploy -f
+systemctl list-timers diagnosticar-deploy.timer
+```
+
+#### Why production is riskier than staging, concretely
+
+- **Staging shares the host with production.** A compose command that resolves
+  to the wrong project name hits live clinical data. Every command carries an
+  explicit `-p`.
+- **Migrations run on every backend boot.** A bad migration breaks the deploy
+  *and* the data. This is what the pre-deploy `pg_dump` exists for, and why an
+  unrehearsed restore is the biggest open risk in this repository.
+- **Rollback restores the image, not the database.** If a migration corrupts
+  data, rolling back the tag does not undo it.
+
+#### What would make this safe enough to automate
+
+In rough order of value:
+
+1. Rehearse a restore from a `pg_dump` into staging.
+2. Run `ops/deploy.sh` end to end against staging, including a deliberate smoke
+   failure, to prove the rollback branch.
+3. Add uptime monitoring. The smoke test covers the moment of release; nothing
+   currently notices a disk filling at 03:00.
+4. Only then enable the timer.
+
+Until at least the first two are done, deploy production by hand.
 
 ### Installing on nodo0
 

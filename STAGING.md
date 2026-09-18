@@ -1,34 +1,29 @@
 # Staging
 
-A full copy of production on the same node, behind basic auth, with its own
-database. It exists for one reason CI cannot cover: **it is the only place the
+A full copy of production on the same node, with its own database. It exists for one reason CI cannot cover: **it is the only place the
 real HPO and GenPhenAI services are exercised before production.** CI stubs
 them, so anything touching the model path is genuinely untested until it runs
 here.
 
 **https://staging.diagnosticar.infra.cluster.qb.fcen.uba.ar** — running
-`v0.3.1` as of 2026-09-18.
+`v0.4.0` as of 2026-09-18.
 
 ---
 
 ## Getting in
 
-Two prompts, two unrelated credentials. This confuses everyone the first time.
+Just the app login — no browser password. The Traefik basic-auth gate was
+removed in `v0.4.0`: it was the only service on nodo0 using one, and it made
+every visit a two-password ritual for the one person testing the project.
 
-| Prompt | What it is | Credential |
-|---|---|---|
-| Browser popup | Traefik basic auth, in front of the whole site | `equipo` / *see the team password manager* |
-| App login page | The application's own accounts | your admin account |
+Removing it exposes nothing production does not already expose — production
+serves `/hpo-api` and `/genphenai` unauthenticated today, both answering 200 to
+an anonymous request. `X-Robots-Tag: noindex, nofollow` stays, so staging is
+still absent from search results.
 
-The popup is not part of the application. It gates the host so staging stays
-off the public internet and out of search indexes — without it,
-`staging.diagnosticar…` is publicly reachable. It runs before any application
-code, which is why it also covers `/api`, `/hpo-api` and `/genphenai`: without
-it those paths would be an unauthenticated public route to the GPU node.
-
-Both credentials live in the password manager, not in this repository. The
-basic-auth password is also in `.env.staging` on the node
-(`STAGING_SMOKE_PASSWORD`), readable only by `<usuario>`.
+What still protects the data is the application itself: `/api/patients` and
+every `/api/admin` route answer 401 to an anonymous caller, and the admin routes
+re-read the role from the database on every request.
 
 ### Creating an admin
 
@@ -91,7 +86,7 @@ image that looks fine and talks to the wrong environment.
 ssh nodo0-diagnostic.ar
 cd ~/diagnostic.ar/diagnostic.ar-staging
 git pull
-ops/staging.sh up v0.3.1     # a released tag — what production will run
+ops/staging.sh up v0.4.0     # a released tag — what production will run
 ops/staging.sh smoke
 ```
 
@@ -119,54 +114,40 @@ a restart.
 
 ## What will bite you
 
-### The two passwords
+### `$$` in an env file, and why it cost an evening
 
-Every first-time user reports "the login is broken" when they mean the popup.
-See the table above.
+Staging no longer uses basic auth, but the shell trap that broke it applies to
+any compose variable containing a hash.
 
-### `$$` in the basic-auth hash
+Compose needs dollars **doubled** so interpolation leaves them alone. To bash,
+`$$` is the **process id** — so `source`-ing such a file corrupts the value:
+`equipo:$$apr1$$…` reached Traefik as `equipo:1865433apr11865433`. Traefik could
+not parse the middleware, dropped it, and every route answered 401 with a
+correct password.
 
-`STAGING_BASIC_AUTH` holds an htpasswd line whose dollars are **doubled** so
-compose interpolation leaves them alone. Two consequences:
+Three different causes all presented as "wrong password" that evening: the
+mangled hash, a middleware defined on one container while four routers
+referenced it (Traefik reads labels per container and fails closed), and a
+frontend image built with production's URLs. Regenerating credentials fixed
+none of them.
 
-- Generate it with `htpasswd -nb equipo 'pass' | sed -e 's/\$/\$\$/g'`. A single
-  `$` gets eaten and every login silently fails.
-- **Never `source` the file from a shell script.** To bash, `$$` is the process
-  id: the hash reaches Traefik as `equipo:1865433apr11865433`, Traefik cannot
-  parse the middleware, drops it, and every route answers 401 — with a correct
-  password. `ops/staging.sh` reads the values it needs with `sed` for exactly
-  this reason.
-
-The failure points the wrong way. 401 reads as a bad password, so the instinct
-is to regenerate the hash, which changes nothing. **Read Traefik's logs first**:
+**The habit that saves the time is reading the proxy's own account first:**
 
 ```bash
 docker logs traefik_nodo0 --since 10m 2>&1 | grep -i staging
 ```
 
-It says `middleware "diagnosticar-staging-auth@docker" does not exist` when the
-hash is corrupt, which is the actual diagnosis.
+It said `middleware "diagnosticar-staging-auth@docker" does not exist` the whole
+time.
 
-### Traefik middleware must be defined on every service that references it
-
-Traefik reads labels per container. A router whose middleware is defined on a
-*different* container cannot resolve it and fails closed — 401 everywhere. All
-four staging services therefore carry an identical
-`traefik.http.middlewares.diagnosticar-staging-auth.basicauth.users` label.
-Traefik accepts duplicate identical definitions.
+Scripts here therefore read individual keys with `sed` rather than sourcing the
+env file.
 
 ### `/health` is not reachable at the root
 
 Traefik routes the backend on `PathPrefix(/api)`, so a request to `/health`
 never reaches the container. The handler is mounted at **both** `/health` and
 `/api/health`; `ops/smoke.sh` takes the path from `SMOKE_HEALTH_PATH`.
-
-### `smoke` needs the password in plaintext
-
-An htpasswd hash cannot authenticate a request, so `.env.staging` carries
-`STAGING_SMOKE_PASSWORD` alongside the hash. Both must be the **same** password
-— they are generated together, and a mismatch shows up as a smoke suite that
-401s on a perfectly healthy stack.
 
 ### `tr -dc </dev/urandom | head -c N` dies under `set -e`
 
