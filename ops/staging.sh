@@ -17,8 +17,23 @@ cd "$REPO_ROOT"
 ENV_FILE="${STAGING_ENV_FILE:-$REPO_ROOT/.env.staging}"
 [ -f "$ENV_FILE" ] || { echo "Missing $ENV_FILE — copy .env.staging.example and fill it in." >&2; exit 1; }
 
-# shellcheck disable=SC1090
-set -a; source "$ENV_FILE"; set +a
+# Read the values this script needs directly, without sourcing the file.
+#
+# `source` would let the shell expand STAGING_BASIC_AUTH, whose htpasswd hash
+# contains "$$" doubled for compose interpolation — and to the shell "$$" is the
+# process id. The hash arrives at Traefik as "equipo:1865433apr11865433", the
+# middleware fails to parse, Traefik drops it, and every route answers 401 with
+# a correct password. Compose reads the file itself via --env-file, where the
+# doubling means what it is supposed to mean.
+read_env() {
+    sed -n "s/^$1=//p" "$ENV_FILE" | head -1
+}
+
+STAGING_HOST="$(read_env STAGING_HOST)"
+STAGING_BASIC_AUTH="$(read_env STAGING_BASIC_AUTH)"
+STAGING_SMOKE_PASSWORD="$(read_env STAGING_SMOKE_PASSWORD)"
+STAGING_JWT_ACCESS_SECRET="$(read_env STAGING_JWT_ACCESS_SECRET)"
+STAGING_JWT_REFRESH_SECRET="$(read_env STAGING_JWT_REFRESH_SECRET)"
 
 PROJECT=diagnosticar-staging
 
