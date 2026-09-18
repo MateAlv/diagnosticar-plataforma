@@ -76,6 +76,10 @@ case "${1:-up}" in
   up)
     if [ -n "${2:-}" ]; then
       export RELEASE_TAG="$2"
+      # The frontend bundle has its API URLs compiled in, so staging pulls an
+      # image built against the staging host rather than reconfiguring the
+      # production one — which would post every request to production.
+      export FRONTEND_IMAGE="diagnosticar-frontend-staging"
       COMPOSE+=(-f docker-compose.deploy.yml)
       "${COMPOSE[@]}" pull backend frontend
       "${COMPOSE[@]}" up -d --no-build --remove-orphans

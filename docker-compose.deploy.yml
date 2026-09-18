@@ -17,5 +17,8 @@ services:
     pull_policy: always
 
   frontend:
-    image: ghcr.io/${GHCR_OWNER:-matealv}/diagnosticar-frontend:${RELEASE_TAG:?RELEASE_TAG must be set}
+    # FRONTEND_IMAGE lets staging select its own build without depending on
+    # compose overlay ordering. NEXT_PUBLIC_* values are compiled in at build
+    # time, so staging genuinely needs a different image, not different config.
+    image: ghcr.io/${GHCR_OWNER:-matealv}/${FRONTEND_IMAGE:-diagnosticar-frontend}:${RELEASE_TAG:?RELEASE_TAG must be set}
     pull_policy: always
