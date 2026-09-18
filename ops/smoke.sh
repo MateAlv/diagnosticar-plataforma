@@ -11,6 +11,12 @@ set -euo pipefail
 
 FRONTEND_URL="${1:-${SMOKE_FRONTEND_URL:-http://127.0.0.1:3000}}"
 BACKEND_URL="${2:-${SMOKE_BACKEND_URL:-http://127.0.0.1:4000}}"
+
+# Where /health lives depends on how the backend is reached. Straight at the
+# container it is /health; behind Traefik the router matches PathPrefix(`/api`),
+# so anything outside /api never reaches the backend at all. Callers that go
+# through the proxy set SMOKE_HEALTH_PATH=/api/health.
+HEALTH_PATH="${SMOKE_HEALTH_PATH:-/health}"
 TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-90}"
 
 # Staging sits behind Traefik basic auth, so every request there needs
@@ -38,11 +44,11 @@ wait_for() {
 }
 
 echo "==> Availability"
-wait_for "$BACKEND_URL/health" "backend /health"
+wait_for "$BACKEND_URL$HEALTH_PATH" "backend $HEALTH_PATH"
 wait_for "$FRONTEND_URL/home"  "frontend /home"
 
 echo "==> Backend health reports a reachable database"
-health=$(curl -sf "${AUTH[@]}" --max-time 5 "$BACKEND_URL/health")
+health=$(curl -sf "${AUTH[@]}" --max-time 5 "$BACKEND_URL$HEALTH_PATH")
 echo "$health" | grep -q '"status":"ok"' \
   || fail "backend health is not ok: $health"
 ok "database reachable"

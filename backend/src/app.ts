@@ -50,7 +50,11 @@ export function createApp() {
     app.use('/api/patients', patientsRouter);
     app.use('/api/admin', adminRouter);
 
-    app.get('/health', async (req, res) => {
+    // Also mounted under /api because Traefik routes the backend on
+    // PathPrefix(`/api`); a bare /health never reaches the container through
+    // the proxy, which made the deploy smoke test unable to see a healthy
+    // backend.
+    app.get(['/health', '/api/health'], async (req, res) => {
         try {
             const { query } = await import('./database/pool.js');
             await query('SELECT 1');
