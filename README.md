@@ -56,6 +56,8 @@ contraseña de 8+ caracteres.
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Setup en una máquina nueva (requiere Node 22) |
 | [TESTING.md](TESTING.md) | Estrategia de pruebas, modo mock, deuda de accesibilidad |
 | [CI_CD.md](CI_CD.md) | Pipeline, releases, despliegue en nodo0 y staging |
+| [STAGING.md](STAGING.md) | Acceso a staging, cómo se despliega y qué cosas muerden |
+| [ops/NODO0_SAFETY.md](ops/NODO0_SAFETY.md) | Cómo trabajar en nodo0 sin romper los otros 13 proyectos |
 | [HANDOFF.md](HANDOFF.md) | Estado actual y próximos pasos |
 | [CLAUDE.md](CLAUDE.md) | Contexto para agentes de IA |
 
