@@ -514,10 +514,24 @@ function NuevoDiagnosticoScreen() {
       const response = await fetch(HPO_EXTRACT_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // The access_token cookie is httpOnly, so it cannot be read here and
+        // put in a header. In staging and production the gateway is the same
+        // origin as the backend (/hpo-api beside /api) and the cookie's path
+        // is "/", so the browser attaches it once credentials are included.
+        credentials: "include",
         body: JSON.stringify({ text_es: texto, patient_locale: "es-AR" }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Tu sesión expiró. Volvé a iniciar sesión para analizar el texto.");
+        }
+        if (response.status === 429) {
+          throw new Error("Hiciste muchas consultas seguidas. Esperá un momento y volvé a intentar.");
+        }
+        if (response.status === 503) {
+          throw new Error("El servicio está ocupado en este momento. Probá de nuevo en unos segundos.");
+        }
         const detail = payload?.detail || payload?.error || "No pudimos analizar el texto.";
         throw new Error(detail);
       }

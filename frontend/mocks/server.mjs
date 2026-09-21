@@ -505,6 +505,13 @@ const server = http.createServer(async (req, res) => {
   // --- brainy: HPO gateway -------------------------------------------------
   if (pathname === "/extract-hpo" && method === "POST") {
     if (FAIL.has("extract")) { log("502 (MOCK_FAIL=extract)"); return send(res, 502, { detail: "extraction-failed" }); }
+    // The gateway can reject a request before extracting: 401 when REQUIRE_AUTH
+    // is on and no access_token cookie arrives, 429 over the per-IP budget, 503
+    // when too many extractions are already in flight. Each has its own message
+    // in the wizard, so each is reachable here.
+    if (FAIL.has("extract-auth")) { log("401 (MOCK_FAIL=extract-auth)"); return send(res, 401, { detail: "Unauthorized" }); }
+    if (FAIL.has("extract-ratelimit")) { log("429 (MOCK_FAIL=extract-ratelimit)"); return send(res, 429, { detail: "Rate limit exceeded" }); }
+    if (FAIL.has("extract-busy")) { log("503 (MOCK_FAIL=extract-busy)"); return send(res, 503, { detail: "Service is busy, try again shortly" }); }
     const body = await readBody(req);
     const text = String(body.text_es ?? "");
     // The real gateway caps text_es at 10000 chars with a 422.
