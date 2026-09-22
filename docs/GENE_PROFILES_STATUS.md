@@ -40,6 +40,21 @@ own annotation and must be presented as context, never as the prediction.
 - **Builds resume** from disk caches after an interruption or a block.
 - 34 tests, no network.
 
+## Deployed to staging 2026-09-22
+
+`v0.5.0` is live at https://staging.diagnosticar.infra.cluster.qb.fcen.uba.ar
+and the wizard has now run end to end against the **real** HPO gateway and
+GenPhenAI — the first time that has happened. Production was untouched:
+container uptimes identical before and after (3 and 6 weeks), host steady at 62
+containers across 15 projects.
+
+The database transferred intact (md5 `699120d8…`, 62,107,648 bytes both sides)
+and mounts read-only with no load warning. SMOKE PASS on all 13 checks.
+
+**What the first real run showed is in `GENE_CARD_UI_TODO.md`:** the card is a
+wall of text that buries the symptom comparison, and 117 summaries (2.2%) are
+still in English. Neither blocks the pipeline; both are visible to a user.
+
 ## In flight
 
 **The database is built and verified**: 5,228 genes, 0 NCBI misses, 100% of the
