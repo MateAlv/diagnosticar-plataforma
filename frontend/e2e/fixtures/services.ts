@@ -113,10 +113,18 @@ export async function mockGeneProfiles(page: Page, { available = true } = {}) {
         const reported = new Set(reportedIds.map((id) => id.toUpperCase()));
         const all = [...profile.coincidencias, ...profile.frecuentes_no_reportados];
         const { tecnico, ...rest } = profile;
+        const coincidencias = all.filter((s) => reported.has(s.hpo_id.toUpperCase()));
         const entry: Record<string, unknown> = {
             ...rest,
-            coincidencias: all.filter((s) => reported.has(s.hpo_id.toUpperCase())),
+            coincidencias,
             frecuentes_no_reportados: all.filter((s) => !reported.has(s.hpo_id.toUpperCase())).slice(0, 5),
+            // Which reported phenotypes the gene engages — the meter's numerator,
+            // and not the same as coincidencias.length. The real backend also
+            // counts matches reached through the HPO graph; this mock has no
+            // ontology, so here the two happen to coincide.
+            reportados_cubiertos: [
+                ...new Set(coincidencias.map((s) => s.hpo_id.toUpperCase())),
+            ],
         };
         if (view === "professional") entry.tecnico = tecnico;
         return entry;

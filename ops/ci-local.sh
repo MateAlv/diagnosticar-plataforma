@@ -102,9 +102,14 @@ build_and_check_image() {
     local args=()
     [ "$workspace" = "frontend" ] && args=("${BUILD_ARGS[@]}")
 
-    # --pull and --no-cache because the failure this gate exists to catch is a
-    # fresh install resolving differently from the layers already on this disk.
-    docker build --pull --no-cache "${args[@]}" \
+    # --pull keeps the base image current, but not --no-cache: `npm ci` installs
+    # exactly what the lockfile pins, so a cached layer cannot hold a different
+    # dependency tree from a fresh one. Forcing a rebuild every run just wrote
+    # another ~800 MB copy of node_modules, and filled a laptop doing it.
+    #
+    # One fixed tag per image, reused every run, for the same reason: a new tag
+    # per iteration orphans the previous image as dangling layers.
+    docker build --pull "${args[@]}" \
         -t "${image}:ci" "./${workspace}" || return 1
 
     local user

@@ -96,6 +96,30 @@ import { GeneCard } from "./gene-card";
 import { fetchGeneProfiles, type GeneProfile } from "@/lib/genes-api";
 
 const PROFESSIONAL_VIEW_KEY = "diagnosticar:vista-profesional";
+
+type GeneGroupKey = "match" | "none" | "nodata";
+type RankedGene = { gene: GenPhenResult; symbol: string; rank: number };
+
+/**
+ * The three groups, in reading order.
+ *
+ * The notes matter as much as the titles: twenty rows that all read as a
+ * negative is both discouraging and false, so each group says plainly what its
+ * emptiness does and does not mean.
+ */
+const GENE_GROUPS: { key: GeneGroupKey; title: string; note?: string }[] = [
+  { key: "match", title: "Se relacionan con lo que contaste" },
+  {
+    key: "none",
+    title: "Sin relación con lo que contaste",
+    note: "Siguen dentro del grupo sugerido. Que no coincidan con lo que contaste no los descarta.",
+  },
+  {
+    key: "nodata",
+    title: "Todavía no podemos compararlos",
+    note: "No tenemos síntomas descritos para estos genes. Eso no es evidencia en contra: es un dato que nos falta a nosotros.",
+  },
+];
 const HPO_API_URL = process.env.NEXT_PUBLIC_HPO_API_URL || "http://localhost:8000";
 const HPO_EXTRACT_ENDPOINT = `${HPO_API_URL.replace(/\/$/, "")}/extract-hpo`;
 const HPO_SEARCH_ENDPOINT = `${HPO_API_URL.replace(/\/$/, "")}/hpo/es/search`;
@@ -373,8 +397,47 @@ function NuevoDiagnosticoScreen() {
     .slice(0, 3)
     .map(traducirEspecialidad);
   const visibleGeneResults = genphenResults;
+  // The words the reader used, keyed by the HPO term they were mapped to. The
+  // results screen speaks their language back to them — "convulsiones", not
+  // HP:0001250 — which is what makes a claimed match checkable.
+  const reportedWords = useMemo(() => {
+    const words = new Map<string, string>();
+    for (const phenotype of extractedPhenotypes) {
+      if (phenotype.negated) continue;
+      const said = (phenotype.span_es || phenotype.label_es || phenotype.label || "").trim();
+      if (said) words.set(phenotype.hpo_id.toUpperCase(), said);
+    }
+    return words;
+  }, [extractedPhenotypes]);
   const [geneProfiles, setGeneProfiles] = useState<Map<string, GeneProfile>>(new Map());
   const [professionalView, setProfessionalView] = useState(false);
+
+  /**
+   * The ranking split three ways, keeping each gene's position in the model's
+   * order so it can still be shown.
+   *
+   * Grouping rather than ranking is what the accuracy claim actually supports:
+   * the correct gene is among the top 20 in about 9 of 10 cases, which is a
+   * statement about the set. Position 1 and position 12 are not meaningfully
+   * different, so the useful question is which genes engage what the reader
+   * described — not which came first.
+   *
+   * "nodata" is separate from "none" on purpose. 10% of genes carry no symptom
+   * annotation at all, so an empty comparison there means we have nothing to
+   * compare, not that the gene was ruled out.
+   */
+  const groupedGenes = useMemo(() => {
+    const groups: Record<GeneGroupKey, RankedGene[]> = { match: [], none: [], nodata: [] };
+    visibleGeneResults.forEach((gene, index) => {
+      const symbol = gene.gene_symbol || gene.gene_id;
+      const profile = geneProfiles.get(symbol.toUpperCase()) ?? null;
+      const covered = profile?.reportados_cubiertos?.length ?? 0;
+      const key: GeneGroupKey =
+        !profile || profile.total_esperados === 0 ? "nodata" : covered > 0 ? "match" : "none";
+      groups[key].push({ gene, symbol, rank: index + 1 });
+    });
+    return groups;
+  }, [visibleGeneResults, geneProfiles]);
   const demoPrimaryGene = isDemoMode ? genphenResults[0] : null;
 
   // The professional view is a display preference, not a permission: everything
@@ -1412,7 +1475,8 @@ function NuevoDiagnosticoScreen() {
                             <p className="mt-1 text-sm leading-relaxed text-[var(--lu-subtle)]">
                               El sistema sugiere <strong>genes</strong> para investigar, no enfermedades ni
                               diagnósticos. En pruebas, el gen correcto aparece entre los 20 sugeridos en
-                              aproximadamente 9 de cada 10 casos.
+                              aproximadamente 9 de cada 10 casos, así que lo que importa es el conjunto y
+                              no el puesto.
                             </p>
                           </div>
                           <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs text-[var(--lu-subtle)]">
@@ -1433,19 +1497,50 @@ function NuevoDiagnosticoScreen() {
                             Vista profesional
                           </label>
                         </div>
-                        <div className="mt-5 space-y-3">
-                          {visibleGeneResults.map((gene, index) => {
-                            const symbol = gene.gene_symbol || gene.gene_id;
+                        {reportedWords.size > 0 && groupedGenes.match.length > 0 && (
+                          <p className="mt-4 text-sm leading-relaxed text-[var(--lu-text)]">
+                            <strong className="font-semibold">
+                              {groupedGenes.match.length} de los {visibleGeneResults.length} genes
+                            </strong>{" "}
+                            se relacionan con algo de lo que contaste. Empezá por ahí.
+                          </p>
+                        )}
+
+                        <div className="mt-5 flex flex-col gap-6">
+                          {GENE_GROUPS.map(({ key, title, note }) => {
+                            const group = groupedGenes[key];
+                            if (group.length === 0) return null;
                             return (
-                              <GeneCard
-                                key={`${gene.gene_id}-${index}`}
-                                symbol={symbol}
-                                rank={index + 1}
-                                score={Number(gene.score)}
-                                profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
-                                professional={professionalView}
-                                defaultOpen={index === 0}
-                              />
+                              <section key={key}>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="text-base font-semibold text-[var(--lu-text)]">
+                                    {title}
+                                  </h4>
+                                  <span className="font-mono text-xs text-[var(--lu-subtle)]">
+                                    {group.length}
+                                  </span>
+                                </div>
+                                {note && (
+                                  <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
+                                    {note}
+                                  </p>
+                                )}
+                                <div className="mt-2.5 space-y-2.5">
+                                  {group.map(({ gene, rank, symbol }, indexInGroup) => (
+                                    <GeneCard
+                                      key={`${gene.gene_id}-${rank}`}
+                                      symbol={symbol}
+                                      rank={rank}
+                                      total={visibleGeneResults.length}
+                                      score={Number(gene.score)}
+                                      profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
+                                      professional={professionalView}
+                                      reportedWords={reportedWords}
+                                      defaultOpen={key === "match" && indexInGroup === 0}
+                                    />
+                                  ))}
+                                </div>
+                              </section>
                             );
                           })}
                         </div>

@@ -15,6 +15,13 @@ export type Disease = {
     nombre: string;
     descripcion_es: string;
     omim: string;
+    /**
+     * How many reported phenotypes this condition accounts for. Present only
+     * when phenotypes were sent. The list is never reordered by it — the model
+     * predicts genes, not diseases — but it identifies which condition is the
+     * relevant one to name.
+     */
+    coincidencias?: number;
 };
 
 export type Symptom = {
@@ -22,6 +29,12 @@ export type Symptom = {
     nombre: string;
     frecuencia_pct: number | null;
     frecuencia_texto: string | null;
+    /**
+     * Set when this matched something reported more generally: they said
+     * "fiebre", the condition causes "fiebre episódica". Absent on an exact
+     * match.
+     */
+    coincide_con?: { hpo_id: string; distancia: number };
 };
 
 export type GeneTechnical = {
@@ -48,6 +61,13 @@ export type GeneProfile = {
     coincidencias: Symptom[];
     frecuentes_no_reportados: Symptom[];
     total_esperados: number;
+    /**
+     * Which reported phenotypes this gene engages, as HPO ids. The meter's
+     * numerator: "2 de 4 cosas que contaste". Not `coincidencias.length` — a
+     * gene can match nine annotated symptoms that all trace back to one thing
+     * the family said.
+     */
+    reportados_cubiertos: string[];
     referencias: Record<string, string>;
     tecnico?: GeneTechnical;
 };

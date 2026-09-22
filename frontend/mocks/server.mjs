@@ -304,11 +304,13 @@ const server = http.createServer(async (req, res) => {
         const profile = fixtures.genes?.[String(raw).toUpperCase()];
         if (!profile) continue;
         const all = [...profile.coincidencias, ...profile.frecuentes_no_reportados];
+        const matched = all.filter((s) => reported.has(s.hpo_id.toUpperCase()));
         const { tecnico, ...rest } = profile;
         const entry = {
           ...rest,
-          coincidencias: all.filter((s) => reported.has(s.hpo_id.toUpperCase())),
+          coincidencias: matched,
           frecuentes_no_reportados: all.filter((s) => !reported.has(s.hpo_id.toUpperCase())).slice(0, 5),
+          reportados_cubiertos: [...new Set(matched.map((s) => s.hpo_id.toUpperCase()))],
         };
         if (body?.view === "professional") entry.tecnico = tecnico;
         profiles[profile.simbolo] = entry;
@@ -344,7 +346,12 @@ const server = http.createServer(async (req, res) => {
     const noReportados = allSymptoms.filter((s) => !reported.has(s.hpo_id.toUpperCase()));
 
     const { tecnico, ...rest } = profile;
-    const body = { ...rest, coincidencias, frecuentes_no_reportados: noReportados.slice(0, 5) };
+    const body = {
+      ...rest,
+      coincidencias,
+      frecuentes_no_reportados: noReportados.slice(0, 5),
+      reportados_cubiertos: [...new Set(coincidencias.map((s) => s.hpo_id.toUpperCase()))],
+    };
     if (url.searchParams.get("view") === "professional") body.tecnico = tecnico;
 
     log(`200 gene ${symbol}`);

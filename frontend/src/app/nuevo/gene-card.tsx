@@ -1,35 +1,44 @@
 "use client";
 
 import { useId, useState } from "react";
-import { describeFrequency, researchLinks, type GeneProfile, type Symptom } from "@/lib/genes-api";
+import {
+    describeFrequency,
+    researchLinks,
+    type GeneProfile,
+    type Symptom,
+} from "@/lib/genes-api";
+import { MatchMeter, MeterCaption, meterState } from "./match-meter";
 
 /**
- * One gene in the results ranking, as a row that opens.
+ * One gene in the results ranking.
  *
- * The model predicts *genes*, not diseases: the correct gene is in the top 20
- * in roughly 9 of 10 cases, and no disease is ever predicted. So the gene is
- * the headline and the conditions sit underneath as labelled context. Leading
- * with a disease name would present our own annotation as the model's output.
+ * The model predicts *genes*, not diseases, and its claim is about the set:
+ * the correct gene is among the top 20 in roughly 9 of 10 cases. So the gene
+ * symbol identifies the row and the model's position is a grey aside — being
+ * in the set is the claim, the order inside it is not.
  *
- * The guarantee is about the *set* of 20, so the ranking has to be scannable:
- * collapsed, a row carries only what decides whether to open it — rank, symbol,
- * how much of the reader's own report it engages, and the leading condition.
- * Everything else waits behind the click.
+ * **No condition name appears on a collapsed row.** Our stored conditions can
+ * be the wrong ones (TCF4 holds only a type 2 diabetes susceptibility locus,
+ * with Pitt-Hopkins missing entirely), and the condition would be the most
+ * legible text in the row — so it would read as the answer. Conditions live
+ * inside, plural and labelled as unordered and possibly incomplete.
  *
- * The diseases are deliberately unordered and never truncated once open —
- * ranking them would read as a differential the model did not produce.
+ * The symptom overlap is ours, not the model's: /rank-genes returns
+ * `matched_count: 0` and never explains a ranking.
  */
 
-/** Longer than this and the summary is clamped behind a "ver más". */
+/** Longer than this and the summary is clamped behind a "seguir leyendo". */
 const SUMMARY_CLAMP = 260;
 
 export type GeneCardProps = {
     symbol: string;
     rank: number;
+    total: number;
     score: number;
     profile: GeneProfile | null;
     professional: boolean;
-    /** The first row opens so the screen does not start as an undifferentiated list. */
+    /** HPO id -> the words the reader actually used, from the wizard. */
+    reportedWords: Map<string, string>;
     defaultOpen?: boolean;
 };
 
@@ -43,66 +52,56 @@ function stripProvenance(text: string): string {
     return text.replace(/\s*[[(](?:provided by|proporcionado por)[^\])]*[\])]\s*$/i, "").trim();
 }
 
-function SymptomRow({ symptom, tone }: { symptom: Symptom; tone: "match" | "ask" }) {
-    const frequency = describeFrequency(symptom);
-    return (
-        <li className="flex items-baseline justify-between gap-3 py-1">
-            <span className="flex min-w-0 items-baseline gap-2">
-                <span
-                    aria-hidden="true"
-                    className={
-                        tone === "match"
-                            ? "text-[var(--lu-green)]"
-                            : "text-[var(--lu-subtle)]"
-                    }
-                >
-                    {tone === "match" ? "✓" : "•"}
-                </span>
-                <span className="truncate text-sm text-[var(--lu-text)]">{symptom.nombre}</span>
-            </span>
-            {frequency && (
-                <span className="shrink-0 text-xs text-[var(--lu-subtle)]">{frequency}</span>
-            )}
-        </li>
-    );
-}
-
 /**
- * The match signal, as a count and as something readable at a glance.
+ * A matched symptom, shown against the words the reader used for it.
  *
- * This comparison is *ours*: /rank-genes returns `matched_count: 0` and exposes
- * nothing about why a gene ranked where it did. So it is worded as a comparison
- * we made against the gene's expected symptoms, never as the model's reasoning.
- *
- * A gene with no expected symptoms at all (10% of them) is not the same as one
- * that matched none of them — "sin datos para comparar" says we have nothing,
- * which is the honest reading, rather than implying the gene was ruled out.
+ * "Dijiste convulsiones → Espasmos infantiles" keeps the match honest: we are
+ * not claiming they reported the specific form, and the extra specificity is
+ * itself worth knowing.
  */
-function MatchSignal({ matches, totalExpected }: { matches: number; totalExpected: number }) {
-    if (totalExpected === 0) {
-        return (
-            <span className="shrink-0 text-xs text-[var(--lu-subtle)]">Sin datos para comparar</span>
-        );
-    }
-
-    if (matches === 0) {
-        return <span className="shrink-0 text-xs text-[var(--lu-subtle)]">Sin coincidencias</span>;
-    }
+function MatchedSymptom({
+    symptom,
+    reportedWords,
+}: {
+    symptom: Symptom;
+    reportedWords: Map<string, string>;
+}) {
+    const frequency = describeFrequency(symptom);
+    const viaId = symptom.coincide_con?.hpo_id ?? symptom.hpo_id;
+    const said = reportedWords.get(viaId.toUpperCase());
 
     return (
-        <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--lu-green)] px-2.5 py-0.5 text-xs font-medium text-[var(--lu-green)]">
-            <span aria-hidden="true">✓</span>
-            {matches === 1 ? "1 dato tuyo" : `${matches} datos tuyos`}
-        </span>
+        <li className="border-b border-[var(--lu-border)] px-3.5 py-3 last:border-b-0">
+            {said && (
+                <p className="text-xs text-[var(--lu-subtle)]">
+                    Dijiste <strong className="font-semibold text-[var(--lu-text)]">{said}</strong>
+                </p>
+            )}
+            <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-sm font-semibold text-[var(--lu-text)]">{symptom.nombre}</span>
+                <span className="flex-grow" />
+                {symptom.frecuencia_pct !== null && (
+                    <span className="shrink-0 font-mono text-xs text-[var(--lu-accent-text)]">
+                        {Math.round(symptom.frecuencia_pct)}%
+                    </span>
+                )}
+            </div>
+            <p className="mt-0.5 text-xs text-[var(--lu-subtle)]">
+                {symptom.coincide_con ? "Más específico que lo que contaste" : "Coincidencia directa"}
+                {frequency && ` · ${frequency}`}
+            </p>
+        </li>
     );
 }
 
 export function GeneCard({
     symbol,
     rank,
+    total,
     score,
     profile,
     professional,
+    reportedWords,
     defaultOpen = false,
 }: GeneCardProps) {
     const [open, setOpen] = useState(defaultOpen);
@@ -115,14 +114,25 @@ export function GeneCard({
     const matches = profile?.coincidencias ?? [];
     const toAsk = profile?.frecuentes_no_reportados ?? [];
     const summary = profile?.resumen_es ? stripProvenance(profile.resumen_es) : "";
-    const leadingCondition = profile?.enfermedades[0]?.nombre ?? null;
+    const covered = profile?.reportados_cubiertos?.length ?? 0;
+    const reported = reportedWords.size;
+    const totalExpected = profile?.total_esperados ?? 0;
+    const state = meterState(covered, totalExpected);
+
+    // The words the reader used, for the parts of their report this gene
+    // engages — the row's one line of prose, in their language not HPO's.
+    const coveredWords = (profile?.reportados_cubiertos ?? [])
+        .map((id) => reportedWords.get(id.toUpperCase()))
+        .filter((word): word is string => Boolean(word));
 
     return (
         <article
-            className={`rounded-2xl border bg-[var(--lu-surface)] ${
-                matches.length > 0
-                    ? "border-[var(--lu-green)]/40"
-                    : "border-[var(--lu-border)]"
+            className={`rounded-[18px] border ${
+                state === "match"
+                    ? "border-[var(--lu-accent-light)] bg-white"
+                    : state === "nodata"
+                      ? "border-dashed border-[var(--lu-border-strong)] bg-white"
+                      : "border-[var(--lu-border)] bg-[var(--lu-surface)]"
             }`}
         >
             <h4>
@@ -131,86 +141,141 @@ export function GeneCard({
                     onClick={() => setOpen((isOpen) => !isOpen)}
                     aria-expanded={open}
                     aria-controls={bodyId}
-                    className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left hover:bg-[var(--lu-bg)]"
+                    className="flex w-full flex-col gap-2 rounded-[18px] px-3.5 py-3.5 text-left hover:bg-[var(--lu-bg)]"
                 >
-                    <span
-                        aria-hidden="true"
-                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--lu-accent)] text-xs font-bold text-white"
-                    >
-                        {rank}
-                    </span>
-
-                    <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="text-base font-semibold text-[var(--lu-text)]">
+                    <span className="flex w-full items-baseline gap-2">
+                        <span
+                            className={`font-mono font-medium text-[var(--lu-text)] ${
+                                state === "match" ? "text-[19px]" : "text-[17px]"
+                            }`}
+                        >
                             <span className="sr-only">Gen </span>
                             {symbol}
                         </span>
                         {profile?.ubicacion && (
-                            <span className="text-xs text-[var(--lu-subtle)]">{profile.ubicacion}</span>
-                        )}
-                        {leadingCondition && (
-                            <span className="min-w-0 basis-full truncate text-xs text-[var(--lu-subtle)]">
-                                {leadingCondition}
+                            <span className="font-mono text-xs text-[var(--lu-subtle)]">
+                                {profile.ubicacion}
                             </span>
                         )}
+                        <span className="flex-grow" />
+                        {/* The model's position, as an aside. No circle, no medal:
+                            rank 1 and rank 12 are not meaningfully different, and
+                            the guarantee is about the set. */}
+                        <span className="shrink-0 font-mono text-[10.5px] text-[var(--lu-subtle)]">
+                            #{rank} de {total}
+                        </span>
                     </span>
 
-                    <MatchSignal matches={matches.length} totalExpected={profile?.total_esperados ?? 0} />
-
-                    <span
-                        aria-hidden="true"
-                        className={`shrink-0 text-[var(--lu-subtle)] transition-transform ${
-                            open ? "rotate-90" : ""
-                        }`}
-                    >
-                        ›
+                    <span className="flex w-full items-center gap-2.5">
+                        <MatchMeter
+                            covered={covered}
+                            reported={reported}
+                            totalExpected={totalExpected}
+                        />
+                        <MeterCaption
+                            covered={covered}
+                            reported={reported}
+                            totalExpected={totalExpected}
+                        />
                     </span>
+
+                    {coveredWords.length > 0 && (
+                        <span className="w-full text-xs leading-relaxed text-[var(--lu-text)]">
+                            {coveredWords.join(" · ")}
+                        </span>
+                    )}
                 </button>
             </h4>
 
             {open && (
-                <div id={bodyId} className="border-t border-[var(--lu-border)] px-4 pb-4 pt-3">
-                    {/* What the reader came for: the part computed from their own
-                        report, before anything about the protein. */}
+                <div id={bodyId} className="border-t border-[var(--lu-border)] px-3.5 pb-4 pt-3.5">
                     {matches.length > 0 && (
                         <section>
-                            <h5 className="text-xs font-medium uppercase tracking-wide text-[var(--lu-subtle)]">
-                                Coincide con lo que contaste
+                            <h5 className="text-base font-semibold text-[var(--lu-text)]">
+                                Qué coincide
                             </h5>
-                            <ul className="mt-1">
+                            <ul className="mt-2 rounded-[14px] border border-[var(--lu-accent-light)]">
                                 {matches.map((symptom) => (
-                                    <SymptomRow key={symptom.hpo_id} symptom={symptom} tone="match" />
+                                    <MatchedSymptom
+                                        key={symptom.hpo_id}
+                                        symptom={symptom}
+                                        reportedWords={reportedWords}
+                                    />
                                 ))}
                             </ul>
-                        </section>
-                    )}
-
-                    {toAsk.length > 0 && (
-                        <section className={matches.length > 0 ? "mt-4" : ""}>
-                            <h5 className="text-xs font-medium uppercase tracking-wide text-[var(--lu-subtle)]">
-                                Otros signos frecuentes en estas condiciones
-                            </h5>
-                            <ul className="mt-1">
-                                {toAsk.map((symptom) => (
-                                    <SymptomRow key={symptom.hpo_id} symptom={symptom} tone="ask" />
-                                ))}
-                            </ul>
-                            {/* Questions to raise with a doctor — never a self-assessment checklist. */}
                             <p className="mt-2 text-xs leading-relaxed text-[var(--lu-subtle)]">
-                                No los mencionaste. Preguntale a tu médico si corresponde evaluarlos.
+                                Esta comparación la hacemos nosotros, entre lo que contaste y los
+                                síntomas descritos para este gen. El modelo que ordena la lista no
+                                explica por qué eligió cada gen.
                             </p>
                         </section>
                     )}
 
-                    {profile && profile.enfermedades.length > 0 && (
-                        <section className="mt-4">
-                            <h5 className="text-xs font-medium uppercase tracking-wide text-[var(--lu-subtle)]">
-                                Se estudia en relación con
+                    {toAsk.length > 0 && (
+                        <section className={matches.length > 0 ? "mt-5" : ""}>
+                            <h5 className="text-base font-semibold text-[var(--lu-text)]">
+                                Para preguntar en la consulta
                             </h5>
-                            <ul className="mt-1.5 space-y-1">
+                            {/* Amber, not red: these are questions, not an alarm.
+                                And questions for a professional — never a checklist
+                                a family scores themselves against. */}
+                            <div className="mt-2 rounded-[14px] border border-amber-200 bg-amber-50 p-3.5">
+                                <p className="text-xs leading-relaxed text-amber-900">
+                                    Estos signos aparecen con frecuencia en las condiciones asociadas
+                                    a este gen y no figuran en lo que nos contaste. Anotalos y
+                                    preguntá por ellos. No son cosas para evaluar por tu cuenta.
+                                </p>
+                                <ul className="mt-2">
+                                    {toAsk.map((symptom) => (
+                                        <li
+                                            key={symptom.hpo_id}
+                                            className="mt-2 flex items-baseline gap-2 border-t border-amber-200 pt-2 first:mt-0"
+                                        >
+                                            <span className="text-sm font-semibold text-[var(--lu-text)]">
+                                                {symptom.nombre}
+                                            </span>
+                                            <span className="flex-grow" />
+                                            {symptom.frecuencia_pct !== null && (
+                                                <span className="shrink-0 font-mono text-xs text-amber-800">
+                                                    {Math.round(symptom.frecuencia_pct)}%
+                                                </span>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </section>
+                    )}
+
+                    {profile && profile.enfermedades.length > 0 && (
+                        <section className="mt-5">
+                            <h5 className="text-base font-semibold text-[var(--lu-text)]">
+                                Condiciones asociadas a este gen
+                            </h5>
+                            {/* Unordered and possibly incomplete, said plainly: the
+                                list is our annotation, not the model's output, and
+                                it has real gaps. */}
+                            <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
+                                Este gen está descrito en {profile.enfermedades.length}{" "}
+                                {profile.enfermedades.length === 1 ? "condición" : "condiciones"}. No
+                                están ordenadas por relevancia para tu caso, y la lista puede estar
+                                incompleta.
+                            </p>
+                            <ul className="mt-2 flex flex-col gap-1.5">
                                 {profile.enfermedades.map((disease) => (
-                                    <li key={disease.omim || disease.nombre} className="text-sm text-[var(--lu-text)]">
-                                        {disease.nombre}
+                                    <li
+                                        key={disease.omim || disease.nombre}
+                                        className="flex items-baseline gap-2 rounded-xl border border-[var(--lu-border)] bg-[var(--lu-surface)] px-3 py-2.5"
+                                    >
+                                        <span className="text-sm text-[var(--lu-text)]">
+                                            {disease.nombre}
+                                        </span>
+                                        <span className="flex-grow" />
+                                        {disease.omim && (
+                                            <span className="shrink-0 font-mono text-[10.5px] text-[var(--lu-subtle)]">
+                                                OMIM {disease.omim}
+                                            </span>
+                                        )}
                                     </li>
                                 ))}
                             </ul>
@@ -218,40 +283,38 @@ export function GeneCard({
                     )}
 
                     {summary && (
-                        <section className="mt-4">
-                            <h5 className="text-xs font-medium uppercase tracking-wide text-[var(--lu-subtle)]">
-                                Qué hace este gen
+                        <section className="mt-5">
+                            <h5 className="text-base font-semibold text-[var(--lu-text)]">
+                                Qué se sabe del gen
                             </h5>
                             <p
                                 id={summaryId}
                                 className={`mt-1.5 text-sm leading-relaxed text-[var(--lu-text)] ${
-                                    showFullSummary ? "" : "line-clamp-2"
+                                    showFullSummary ? "" : "line-clamp-3"
                                 }`}
                             >
                                 {summary}
                             </p>
-                            {/* Half of these run past 600 characters and some reach 3,900,
-                                so the card clamps and lets the reader open it. */}
                             {summary.length > SUMMARY_CLAMP && (
                                 <button
                                     type="button"
                                     onClick={() => setShowFullSummary((isOpen) => !isOpen)}
                                     aria-expanded={showFullSummary}
                                     aria-controls={summaryId}
-                                    className="mt-1 text-xs font-medium text-[var(--lu-accent)] underline underline-offset-2"
+                                    className="mt-1 text-xs font-semibold text-[var(--lu-accent-text)] underline underline-offset-2"
                                 >
-                                    {showFullSummary ? "Ver menos" : "Ver descripción completa"}
+                                    {showFullSummary ? "Ver menos" : "Seguir leyendo"}
                                 </button>
                             )}
                         </section>
                     )}
 
                     {profile && (
-                        <section className="mt-4">
-                            <h5 className="text-xs font-medium uppercase tracking-wide text-[var(--lu-subtle)]">
+                        <section className="mt-5">
+                            <h5 className="text-base font-semibold text-[var(--lu-text)]">
                                 Para leer más
                             </h5>
-                            <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
+                            <ul className="mt-2 flex flex-wrap gap-2">
                                 {researchLinks(profile)
                                     // Families get the Spanish sources; the English
                                     // databases are for whoever turned on the technical view.
@@ -262,15 +325,21 @@ export function GeneCard({
                                                 href={link.url}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="text-xs text-[var(--lu-accent)] underline underline-offset-2"
+                                                className="flex min-h-[44px] items-center gap-1.5 rounded-full border border-[var(--lu-border-strong)] px-3.5 text-xs font-medium text-[var(--lu-accent-text)]"
                                             >
                                                 {link.label}
+                                                {!link.spanish && (
+                                                    <span className="text-[10.5px] text-[var(--lu-subtle)]">
+                                                        en inglés
+                                                    </span>
+                                                )}
                                             </a>
                                         </li>
                                     ))}
                             </ul>
                             <p className="mt-2 text-xs leading-relaxed text-[var(--lu-subtle)]">
-                                Son fuentes para investigar y llevar a una consulta, no un diagnóstico.
+                                Son fuentes para investigar y llevar a una consulta, no un
+                                diagnóstico.
                             </p>
                         </section>
                     )}
@@ -282,13 +351,13 @@ export function GeneCard({
                     )}
 
                     {professional && profile?.tecnico && (
-                        <div className="mt-4 border-t border-[var(--lu-border)] pt-3">
+                        <div className="mt-5 border-t border-[var(--lu-border)] pt-3">
                             <button
                                 type="button"
                                 onClick={() => setShowTechnical((isOpen) => !isOpen)}
                                 aria-expanded={showTechnical}
                                 aria-controls={technicalId}
-                                className="text-xs font-medium text-[var(--lu-accent)] underline underline-offset-2"
+                                className="text-xs font-semibold text-[var(--lu-accent-text)] underline underline-offset-2"
                             >
                                 {showTechnical ? "Ocultar detalle técnico" : "Ver detalle técnico"}
                             </button>
@@ -296,18 +365,26 @@ export function GeneCard({
                             {showTechnical && (
                                 <dl id={technicalId} className="mt-3 space-y-3 text-xs">
                                     <div>
-                                        <dt className="font-medium text-[var(--lu-text)]">Puntaje del modelo</dt>
+                                        <dt className="font-medium text-[var(--lu-text)]">
+                                            Puntaje del modelo
+                                        </dt>
                                         <dd className="text-[var(--lu-subtle)]">{score.toFixed(3)}</dd>
                                     </div>
                                     {profile.nombre_completo && (
                                         <div>
-                                            <dt className="font-medium text-[var(--lu-text)]">Nombre completo</dt>
-                                            <dd className="text-[var(--lu-subtle)]">{profile.nombre_completo}</dd>
+                                            <dt className="font-medium text-[var(--lu-text)]">
+                                                Nombre completo
+                                            </dt>
+                                            <dd className="text-[var(--lu-subtle)]">
+                                                {profile.nombre_completo}
+                                            </dd>
                                         </div>
                                     )}
                                     {profile.tecnico.funcion_proteina_es && (
                                         <div>
-                                            <dt className="font-medium text-[var(--lu-text)]">Función de la proteína</dt>
+                                            <dt className="font-medium text-[var(--lu-text)]">
+                                                Función de la proteína
+                                            </dt>
                                             <dd className="leading-relaxed text-[var(--lu-subtle)]">
                                                 {stripProvenance(profile.tecnico.funcion_proteina_es)}
                                             </dd>
@@ -315,8 +392,12 @@ export function GeneCard({
                                     )}
                                     {profile.tecnico.aliases && (
                                         <div>
-                                            <dt className="font-medium text-[var(--lu-text)]">Otros nombres</dt>
-                                            <dd className="text-[var(--lu-subtle)]">{profile.tecnico.aliases}</dd>
+                                            <dt className="font-medium text-[var(--lu-text)]">
+                                                Otros nombres
+                                            </dt>
+                                            <dd className="text-[var(--lu-subtle)]">
+                                                {profile.tecnico.aliases}
+                                            </dd>
                                         </div>
                                     )}
                                 </dl>

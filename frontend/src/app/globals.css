@@ -33,8 +33,15 @@
   /* Slate 200 */
   --lu-accent: #0d9488;
   /* Teal 600 - Trustworthy & Professional */
+  --lu-accent-text: #115e59;
+  /* Teal 800. --lu-accent is 3.74:1 on white: enough for a fill or 24px+ text,
+     not for a link or a small figure. This is 7.58:1, and it is the fix named
+     in the "Accessibility debt" note in e2e/a11y.spec.ts. Small text on the
+     accent goes here; the accent itself stays for fills and borders. */
   --lu-accent-light: #ccfbf1;
   /* Teal 100 */
+  --lu-border-strong: #cbd5e1;
+  /* Slate 300 - an empty meter segment, and dashed outlines */
   --lu-amber: #f59e0b;
   /* Amber 500 - Warmth */
   --lu-green: #10b981;

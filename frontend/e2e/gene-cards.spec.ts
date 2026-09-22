@@ -65,16 +65,33 @@ test("a gene card shows the curated description", async ({ page }) => {
     expect(errors).toEqual([]);
 });
 
-test("the gene is the headline and the disease is labelled as context", async ({ page }) => {
+test("no condition name appears on a collapsed row", async ({ page }) => {
+    // Our stored conditions can be the wrong ones — TCF4 holds only a type 2
+    // diabetes susceptibility locus — and on a row the condition would be the
+    // most legible text, so it would read as the answer. The gene identifies
+    // the row; conditions live inside.
+    await runToResults(page);
+
+    const collapsed = page.getByRole("article").filter({ hasText: "SCNN1A" }).first();
+    await expect(collapsed.getByRole("button", { name: /SCNN1A/ })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+    );
+    await expect(collapsed.getByText("Pseudohipoaldosteronismo tipo 1")).toHaveCount(0);
+});
+
+test("conditions appear inside, labelled as unordered and possibly incomplete", async ({ page }) => {
     // The model does not predict diseases. Presenting one as the headline would
     // pass our own OMIM annotation off as the model's output.
     await runToResults(page);
 
     const card = page.getByRole("article").filter({ hasText: "CFTR" }).first();
     await expect(card.getByRole("heading", { name: /CFTR/ })).toBeVisible();
-    await expect(card.getByText("Se estudia en relación con")).toBeVisible();
-    // Named in the collapsed row as context and again in the open body; both
-    // subordinate to the symbol, which is the heading.
+    await expect(
+        card.getByRole("heading", { name: "Condiciones asociadas a este gen" }),
+    ).toBeVisible();
+    await expect(card.getByText(/No están ordenadas por relevancia/)).toBeVisible();
+    await expect(card.getByText(/puede estar incompleta/)).toBeVisible();
     await expect(card.getByText("Fibrosis quística").first()).toBeVisible();
 });
 
@@ -82,8 +99,18 @@ test("reported symptoms are separated from the ones to ask about", async ({ page
     await runToResults(page);
 
     const card = page.getByRole("article").filter({ hasText: "CFTR" }).first();
-    await expect(card.getByText("Coincide con lo que contaste")).toBeVisible();
-    await expect(card.getByText("Otros signos frecuentes en estas condiciones")).toBeVisible();
+    await expect(card.getByText("Qué coincide")).toBeVisible();
+    await expect(card.getByText("Para preguntar en la consulta")).toBeVisible();
+});
+
+test("a match is shown against the words the reader used", async ({ page }) => {
+    // "Dijiste cuadros respiratorios a repetición" — their language, not HPO's.
+    // It is what makes the claimed match checkable by the person reading it.
+    await runToResults(page);
+
+    const card = page.getByRole("article").filter({ hasText: "CFTR" }).first();
+    await expect(card.getByText(/Dijiste/).first()).toBeVisible();
+    await expect(card.getByText("Infecciones respiratorias recurrentes").first()).toBeVisible();
 });
 
 test("unreported signs are framed as a question for a doctor", async ({ page }) => {
@@ -92,8 +119,9 @@ test("unreported signs are framed as a question for a doctor", async ({ page }) 
     await runToResults(page);
 
     await expect(
-        page.getByText(/Preguntale a tu médico si corresponde evaluarlos/i).first(),
+        page.getByText(/No son cosas para evaluar por tu cuenta/i).first(),
     ).toBeVisible();
+    await expect(page.getByText(/Anotalos y preguntá por ellos/i).first()).toBeVisible();
 });
 
 test("the accuracy of the model is stated, and as a top-20 claim", async ({ page }) => {
@@ -133,8 +161,12 @@ test("a gene without a description still appears in the ranking", async ({ page 
     await mockGeneProfiles(page, { available: false });
     await runToResults(page);
 
-    await expect(page.getByRole("article").filter({ hasText: "CFTR" }).first()).toBeVisible();
-    await expect(page.getByText(/Sin descripción disponible/).first()).toBeVisible();
+    const card = page.getByRole("article").filter({ hasText: "CFTR" }).first();
+    await expect(card).toBeVisible();
+    // With no profile there is nothing to compare, which is its own state.
+    await expect(card.getByText(/Sin datos para comparar/)).toBeVisible();
+    await card.getByRole("button", { name: /CFTR/ }).click();
+    await expect(card.getByText(/Sin descripción disponible/)).toBeVisible();
 });
 
 test("the disclaimer survives on a screen that now names diseases", async ({ page }) => {
@@ -183,14 +215,14 @@ test("a long description is clamped until the reader opens it", async ({ page })
     await runToResults(page);
 
     const card = page.getByRole("article").filter({ hasText: "CFTR" }).first();
-    const expand = card.getByRole("button", { name: /Ver descripción completa/ });
+    const expand = card.getByRole("button", { name: /Seguir leyendo/ });
     await expect(expand).toBeVisible();
 
-    const clamped = card.locator("p.line-clamp-2");
+    const clamped = card.locator("p.line-clamp-3");
     await expect(clamped).toHaveCount(1);
 
     await expand.click();
-    await expect(card.locator("p.line-clamp-2")).toHaveCount(0);
+    await expect(card.locator("p.line-clamp-3")).toHaveCount(0);
     await expect(card.getByRole("button", { name: /Ver menos/ })).toBeVisible();
 });
 
@@ -200,11 +232,39 @@ test("the summary opens closed, so 'Ver menos' never shows on first render", asy
     await runToResults(page);
 
     await expect(page.getByRole("button", { name: /^Ver menos$/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Seguir leyendo/ }).first()).toBeVisible();
 });
 
-test("the ranking is scannable: only the first gene opens", async ({ page }) => {
-    // The guarantee is about the top 20 as a *set*, so the reader has to be able
-    // to see the set. One full card per gene made that impossible.
+test("the ranking is grouped by what it engages, not by position", async ({ page }) => {
+    // The accuracy claim is about the set of 20, so position 1 and position 12
+    // are not meaningfully different. Grouping answers the reader's actual
+    // question — which of these engage what I described?
+    await runToResults(page);
+
+    await expect(page.getByRole("heading", { name: "Se relacionan con lo que contaste" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sin relación con lo que contaste" })).toBeVisible();
+
+    // A gene that matched nothing is not ruled out, and the screen says so.
+    await expect(page.getByText(/no los descarta/)).toBeVisible();
+});
+
+test("a gene with no symptom data is separated from one that simply did not match", async ({ page }) => {
+    // 10% of genes carry no symptom annotation at all. Collapsing that into
+    // "sin coincidencias" would report a gap in our data as a finding about
+    // the gene.
+    await runToResults(page);
+
+    await expect(page.getByRole("heading", { name: "Todavía no podemos compararlos" })).toBeVisible();
+    await expect(page.getByText(/no es evidencia en contra/)).toBeVisible();
+
+    const noData = page.getByRole("article").filter({ hasText: "DNAH5" }).first();
+    await expect(noData.getByText("Sin datos para comparar")).toBeVisible();
+
+    const noMatch = page.getByRole("article").filter({ hasText: "SCNN1A" }).first();
+    await expect(noMatch.getByText(/tenemos \d+ síntomas descritos/)).toBeVisible();
+});
+
+test("rows open independently, so two candidates can be compared", async ({ page }) => {
     await runToResults(page);
 
     const first = page.getByRole("article").filter({ hasText: "CFTR" }).first();
@@ -216,13 +276,10 @@ test("the ranking is scannable: only the first gene opens", async ({ page }) => 
     const second = page.getByRole("article").filter({ hasText: "SCNN1A" }).first();
     const toggle = second.getByRole("button", { name: /SCNN1A/ });
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(second.getByText("Se estudia en relación con")).toHaveCount(0);
 
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(second.getByText("Se estudia en relación con").first()).toBeVisible();
-
-    // Comparing two candidates is the task, so opening one must not close another.
+    // Opening one must not close another.
     await expect(first.getByRole("button", { name: /CFTR/ })).toHaveAttribute(
         "aria-expanded",
         "true",
@@ -237,9 +294,9 @@ test("the symptom comparison comes before the gene's biology", async ({ page }) 
     const card = page.getByRole("article").filter({ hasText: "CFTR" }).first();
     const headings = await card.locator("h5").allTextContents();
 
-    expect(headings[0]).toMatch(/Coincide con lo que contaste/);
-    expect(headings.indexOf("Qué hace este gen")).toBeGreaterThan(
-        headings.findIndex((text) => /Coincide con lo que contaste/.test(text)),
+    expect(headings[0]).toMatch(/Qué coincide/);
+    expect(headings.indexOf("Qué se sabe del gen")).toBeGreaterThan(
+        headings.findIndex((text) => /Qué coincide/.test(text)),
     );
 });
 
@@ -249,8 +306,20 @@ test("the match count is framed as our comparison, not the model's reasoning", a
     await runToResults(page);
 
     const card = page.getByRole("article").filter({ hasText: "CFTR" }).first();
-    await expect(card.getByText(/datos tuyos|dato tuyo/)).toBeVisible();
-    await expect(card.getByText(/el modelo (lo )?eligió|por esto/i)).toHaveCount(0);
+    await expect(card.getByText(/Esta comparación la hacemos nosotros/)).toBeVisible();
+    await expect(card.getByText(/no explica por qué eligió cada gen/)).toBeVisible();
+    await expect(card.getByText(/el modelo (lo )?eligió porque|por esto el modelo/i)).toHaveCount(0);
+});
+
+test("the meter counts things reported, not symptoms matched", async ({ page }) => {
+    // A gene can match several annotated symptoms that all trace back to one
+    // thing the family said. The denominator is their own report, so it has to
+    // be a count of that report.
+    await runToResults(page);
+
+    const card = page.getByRole("article").filter({ hasText: "CFTR" }).first();
+    const meter = card.getByRole("img", { name: /Coincide con \d+ de las \d+ cosas que contaste/ });
+    await expect(meter).toBeVisible();
 });
 
 test("the provenance tail is stripped from the displayed summary", async ({ page }) => {
