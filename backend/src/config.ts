@@ -117,6 +117,12 @@ export const GOOGLE_CALLBACK_URL =
 export const GOOGLE_REDIRECT_URL = process.env.GOOGLE_REDIRECT_URL || `${FRONTEND_URL}/login`;
 export const GOOGLE_AUTH_ENABLED = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
 
+// Read-only SQLite holding Spanish gene descriptions, built outside this repo
+// and copied to the node with scp. Optional: without it the results screen
+// shows genes with no description rather than failing.
+export const GENE_PROFILES_DB_PATH =
+    process.env.GENE_PROFILES_DB_PATH || '/app/data/genes.db';
+
 // Baked in at image build time by .github/workflows/release.yml. The running
 // container is the only thing that knows which release it actually is — the
 // deploy tag on nodo0 is a file, and a hand-started container would not match

@@ -1,0 +1,209 @@
+"use client";
+
+/**
+ * Typed client for /api/genes.
+ *
+ * Gene descriptions enrich a result; they never gate it. Every failure here
+ * resolves to `null` rather than throwing, so a ranked gene still renders with
+ * its symbol and score when the description is unavailable. Losing the prose
+ * must never cost the user the result.
+ */
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
+export type Disease = {
+    nombre: string;
+    descripcion_es: string;
+    omim: string;
+};
+
+export type Symptom = {
+    hpo_id: string;
+    nombre: string;
+    frecuencia_pct: number | null;
+    frecuencia_texto: string | null;
+};
+
+export type GeneTechnical = {
+    resumen_es: string | null;
+    funcion_proteina_es: string | null;
+    resumen_en: string | null;
+    funcion_proteina_en: string | null;
+    aliases: string | null;
+    ncbi_id: string | null;
+    uniprot_accession: string | null;
+    codigo_omim: string[];
+};
+
+export type GeneProfile = {
+    simbolo: string;
+    nombre_completo: string | null;
+    cromosoma: string | null;
+    ubicacion: string | null;
+    /** The curated Spanish summary — technical, and what the card shows. */
+    resumen_es: string | null;
+    /** Plain-language rewrite: generated, unreviewed, not shown yet. */
+    resumen_llano_es: string | null;
+    enfermedades: Disease[];
+    coincidencias: Symptom[];
+    frecuentes_no_reportados: Symptom[];
+    total_esperados: number;
+    referencias: Record<string, string>;
+    tecnico?: GeneTechnical;
+};
+
+const HPO_RE = /^HP:\d{7}$/i;
+const MAX_REPORTED = 100;
+
+/**
+ * One gene's profile, or `null` when there is none.
+ *
+ * A miss is ordinary: the model ranks over a gene set that can move ahead of
+ * the description database. The caller shows the gene without a description —
+ * it must never hide the gene or invent text for it.
+ */
+export async function fetchGeneProfile(
+    symbol: string,
+    reportedHpoIds: string[] = [],
+    options: { professional?: boolean; signal?: AbortSignal } = {},
+): Promise<GeneProfile | null> {
+    const params = new URLSearchParams();
+
+    const reported = reportedHpoIds.filter((id) => HPO_RE.test(id)).slice(0, MAX_REPORTED);
+    if (reported.length > 0) params.set("reported", reported.join(","));
+    if (options.professional) params.set("view", "professional");
+
+    const query = params.toString();
+    const path = `/genes/${encodeURIComponent(symbol)}${query ? `?${query}` : ""}`;
+
+    try {
+        const res = await fetch(`${API_URL}${path}`, {
+            credentials: "include",
+            signal: options.signal,
+        });
+        if (!res.ok) return null;
+        return (await res.json()) as GeneProfile;
+    } catch {
+        // Includes AbortError when the user leaves the screen mid-request.
+        return null;
+    }
+}
+
+function readCookie(name: string): string | null {
+    if (typeof document === "undefined") return null;
+    const escaped = name.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+    const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
+    return match ? decodeURIComponent(match[1]) : null;
+}
+
+/**
+ * Profiles for a whole ranking, keyed by symbol.
+ *
+ * One request for the whole list: the results screen shows up to 50 genes, and
+ * a request each would spend most of a minute's rate budget on a single page
+ * load. Genes without a profile are absent from the map rather than present
+ * with a null, so callers iterate their own ranking and look up.
+ */
+export async function fetchGeneProfiles(
+    symbols: string[],
+    reportedHpoIds: string[] = [],
+    options: { professional?: boolean; signal?: AbortSignal } = {},
+): Promise<Map<string, GeneProfile>> {
+    const profiles = new Map<string, GeneProfile>();
+    if (symbols.length === 0) return profiles;
+
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const csrf = readCookie("csrf_token");
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+
+    try {
+        const res = await fetch(`${API_URL}/genes/batch`, {
+            method: "POST",
+            credentials: "include",
+            headers,
+            signal: options.signal,
+            body: JSON.stringify({
+                symbols,
+                reported: reportedHpoIds.filter((id) => HPO_RE.test(id)).slice(0, MAX_REPORTED),
+                view: options.professional ? "professional" : undefined,
+            }),
+        });
+        if (!res.ok) return profiles;
+
+        const body = (await res.json()) as { profiles?: Record<string, GeneProfile> };
+        for (const profile of Object.values(body.profiles ?? {})) {
+            profiles.set(profile.simbolo.toUpperCase(), profile);
+        }
+    } catch {
+        // Descriptions enrich the ranking and never gate it, so a failure here
+        // leaves every gene on screen without prose.
+    }
+    return profiles;
+}
+
+/** "muy frecuente (95%)" — the words first, the number as support. */
+export function describeFrequency(symptom: Symptom): string | null {
+    const { frecuencia_pct: pct, frecuencia_texto: text } = symptom;
+    if (pct === null) return text || null;
+
+    const rounded = Math.round(pct);
+    if (rounded >= 80) return `muy frecuente (${rounded}%)`;
+    if (rounded >= 30) return `frecuente (${rounded}%)`;
+    return `menos frecuente (${rounded}%)`;
+}
+
+export type ResearchLink = {
+    label: string;
+    url: string;
+    /** Spanish, patient-facing sources come first; the rest are English databases. */
+    spanish: boolean;
+};
+
+/**
+ * Where a person can read more about a gene and its associated conditions.
+ *
+ * Ordered for the reader, not for us: Orphanet publishes patient-facing pages
+ * in Spanish, so those lead. MedlinePlus covers many genes in Spanish too. The
+ * curated databases are English and technical, so they come last — useful to a
+ * clinician, largely impenetrable to a family.
+ *
+ * Every link is built from an identifier already in the profile. Nothing is
+ * guessed, so a link is either correct or absent.
+ */
+export function researchLinks(profile: GeneProfile): ResearchLink[] {
+    const links: ResearchLink[] = [];
+    const symbol = profile.simbolo;
+
+    // Orphanet's Spanish search, scoped to the gene, is the best patient-facing
+    // entry point for rare disease.
+    links.push({
+        label: `Orphanet — enfermedades asociadas a ${symbol}`,
+        url: `https://www.orpha.net/es/disease/search?query=${encodeURIComponent(symbol)}`,
+        spanish: true,
+    });
+
+    // MedlinePlus retired its per-gene Spanish pages, so this goes to the
+    // Spanish search rather than a path that 404s. Verified 2026-09-21.
+    links.push({
+        label: `MedlinePlus en español — buscar ${symbol}`,
+        url: "https://vsearch.nlm.nih.gov/vivisimo/cgi-bin/query-meta"
+            + `?v%3Aproject=medlineplus-spanish&query=${encodeURIComponent(symbol)}`,
+        spanish: true,
+    });
+
+    for (const [name, url] of Object.entries(profile.referencias)) {
+        if (url) links.push({ label: name, url, spanish: false });
+    }
+
+    for (const disease of profile.enfermedades) {
+        if (disease.omim) {
+            links.push({
+                label: `OMIM ${disease.omim} — ${disease.nombre}`,
+                url: `https://www.omim.org/entry/${disease.omim}`,
+                spanish: false,
+            });
+        }
+    }
+
+    return links;
+}

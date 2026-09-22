@@ -82,6 +82,74 @@ export async function mockBackend(
     await page.route("**/api/patients/**", (route) => json(route, 201, { id: "33333333-3333-4333-8333-333333333333" }));
 }
 
+/** The gene profile fixtures, keyed by symbol, as /api/genes would return them. */
+export const GENE_FIXTURES = fixtures.genes as unknown as Record<string, GeneProfileFixture>;
+
+type SymptomFixture = {
+    hpo_id: string;
+    nombre: string;
+    frecuencia_pct: number | null;
+    frecuencia_texto: string | null;
+};
+
+type GeneProfileFixture = {
+    simbolo: string;
+    coincidencias: SymptomFixture[];
+    frecuentes_no_reportados: SymptomFixture[];
+    tecnico?: Record<string, unknown>;
+    [key: string]: unknown;
+};
+
+/**
+ * Stands in for GET /api/genes/:symbol.
+ *
+ * Faithful in the two ways that matter: it re-splits the symptoms against the
+ * phenotypes the caller actually reported, and it withholds the technical block
+ * unless the professional view was requested. A lenient mock here would let the
+ * audience split rot without any test noticing.
+ */
+export async function mockGeneProfiles(page: Page, { available = true } = {}) {
+    const split = (profile: GeneProfileFixture, reportedIds: string[], view?: string) => {
+        const reported = new Set(reportedIds.map((id) => id.toUpperCase()));
+        const all = [...profile.coincidencias, ...profile.frecuentes_no_reportados];
+        const { tecnico, ...rest } = profile;
+        const entry: Record<string, unknown> = {
+            ...rest,
+            coincidencias: all.filter((s) => reported.has(s.hpo_id.toUpperCase())),
+            frecuentes_no_reportados: all.filter((s) => !reported.has(s.hpo_id.toUpperCase())).slice(0, 5),
+        };
+        if (view === "professional") entry.tecnico = tecnico;
+        return entry;
+    };
+
+    // Single-gene route, kept for callers that still use it.
+    await page.route("**/api/genes/*", (route) => {
+        const url = new URL(route.request().url());
+        const symbol = decodeURIComponent(url.pathname.split("/").pop() ?? "").toUpperCase();
+        const profile = available ? GENE_FIXTURES[symbol] : undefined;
+        if (!profile) {
+            return json(route, 404, { error: "Gen sin descripción disponible", disponible: available });
+        }
+        const reported = (url.searchParams.get("reported") ?? "").split(",").map((i) => i.trim()).filter(Boolean);
+        return json(route, 200, split(profile, reported, url.searchParams.get("view") ?? undefined));
+    });
+
+    // The results screen fetches the whole ranking in one request. Registered
+    // after the catch-all on purpose: Playwright gives precedence to the most
+    // recently added route, so this is what /batch actually hits.
+    await page.route("**/api/genes/batch", (route) => {
+        const body = JSON.parse(route.request().postData() ?? "{}") as {
+            symbols?: string[]; reported?: string[]; view?: string;
+        };
+        const profiles: Record<string, unknown> = {};
+        for (const symbol of body.symbols ?? []) {
+            const profile = available ? GENE_FIXTURES[symbol.toUpperCase()] : undefined;
+            if (profile) profiles[profile.simbolo] = split(profile, body.reported ?? [], body.view);
+        }
+        return json(route, 200, { profiles, disponible: available });
+    });
+}
+
 /**
  * Waits until every <img> inside `selector` has actually decoded. next/image
  * lazy-loads, and an undecoded image still occupies its intrinsic width — which

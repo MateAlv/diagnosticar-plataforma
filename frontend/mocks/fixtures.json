@@ -1,8 +1,10 @@
 {
   "_comment": "Single source of truth for stubbed HPO/GenPhenAI responses. Consumed by mocks/server.mjs (dev mode) and e2e/fixtures/services.ts (Playwright). Shapes mirror diagnostic.ar-api: services/api-gateway/app/schemas.py and services/genphenai/app/main.py. If either service changes its response, change it here once.",
-
   "extract": {
-    "symptoms_extracted": ["infecciones respiratorias recurrentes", "bajo peso"],
+    "symptoms_extracted": [
+      "infecciones respiratorias recurrentes",
+      "bajo peso"
+    ],
     "model": {
       "symptom_extractor": "ollama/qwen2.5",
       "translator": "nllb-200",
@@ -15,8 +17,13 @@
         "label_es": "Infecciones respiratorias recurrentes",
         "span_es": "cuadros respiratorios a repetición",
         "span_en": "recurrent respiratory infections",
-        "start_es": 74, "end_es": 108, "start_en": 70, "end_en": 101,
-        "negated": false, "confidence": 0.91, "matched_by": "es-index"
+        "start_es": 74,
+        "end_es": 108,
+        "start_en": 70,
+        "end_en": 101,
+        "negated": false,
+        "confidence": 0.91,
+        "matched_by": "es-index"
       },
       {
         "hpo_id": "HP:0004322",
@@ -24,8 +31,13 @@
         "label_es": "Talla baja",
         "span_es": "pesaba menos de lo esperado",
         "span_en": "weighed less than expected",
-        "start_es": 74, "end_es": 108, "start_en": 70, "end_en": 101,
-        "negated": false, "confidence": 0.76, "matched_by": "es-index"
+        "start_es": 74,
+        "end_es": 108,
+        "start_en": 70,
+        "end_en": 101,
+        "negated": false,
+        "confidence": 0.76,
+        "matched_by": "es-index"
       },
       {
         "hpo_id": "HP:0001250",
@@ -33,24 +45,75 @@
         "label_es": "Convulsiones",
         "span_es": "sin convulsiones",
         "span_en": "no seizures",
-        "start_es": 74, "end_es": 108, "start_en": 70, "end_en": 101,
-        "negated": true, "confidence": 0.88, "matched_by": "es-index"
+        "start_es": 74,
+        "end_es": 108,
+        "start_en": 70,
+        "end_en": 101,
+        "negated": true,
+        "confidence": 0.88,
+        "matched_by": "es-index"
       }
     ]
   },
-
   "rank": {
     "results": [
-      { "gene_id": "CFTR",  "gene_symbol": "CFTR",  "score": 0.412, "matched_hpo_ids": [], "matched_count": 0, "input_count": 2, "coverage": 0, "precision": 0 },
-      { "gene_id": "DNAH5", "gene_symbol": "DNAH5", "score": 0.201, "matched_hpo_ids": [], "matched_count": 0, "input_count": 2, "coverage": 0, "precision": 0 },
-      { "gene_id": "SCNN1A","gene_symbol": "SCNN1A","score": 0.087, "matched_hpo_ids": [], "matched_count": 0, "input_count": 2, "coverage": 0, "precision": 0 }
+      {
+        "gene_id": "CFTR",
+        "gene_symbol": "CFTR",
+        "score": 0.412,
+        "matched_hpo_ids": [],
+        "matched_count": 0,
+        "input_count": 2,
+        "coverage": 0,
+        "precision": 0
+      },
+      {
+        "gene_id": "DNAH5",
+        "gene_symbol": "DNAH5",
+        "score": 0.201,
+        "matched_hpo_ids": [],
+        "matched_count": 0,
+        "input_count": 2,
+        "coverage": 0,
+        "precision": 0
+      },
+      {
+        "gene_id": "SCNN1A",
+        "gene_symbol": "SCNN1A",
+        "score": 0.087,
+        "matched_hpo_ids": [],
+        "matched_count": 0,
+        "input_count": 2,
+        "coverage": 0,
+        "precision": 0
+      }
     ],
     "specialties": {
       "top_specialty": "Pulmonology",
-      "top_specialties": ["Pulmonology", "Gastroenterology"],
+      "top_specialties": [
+        "Pulmonology",
+        "Gastroenterology"
+      ],
       "specialty_ranking": [
-        { "specialty": "Pulmonology", "matched_genes_count": 2, "probability_mass": 0.61, "genes": ["CFTR", "DNAH5"], "fraction_of_selected_genes": 0.67 },
-        { "specialty": "Gastroenterology", "matched_genes_count": 1, "probability_mass": 0.09, "genes": ["SCNN1A"], "fraction_of_selected_genes": 0.33 }
+        {
+          "specialty": "Pulmonology",
+          "matched_genes_count": 2,
+          "probability_mass": 0.61,
+          "genes": [
+            "CFTR",
+            "DNAH5"
+          ],
+          "fraction_of_selected_genes": 0.67
+        },
+        {
+          "specialty": "Gastroenterology",
+          "matched_genes_count": 1,
+          "probability_mass": 0.09,
+          "genes": [
+            "SCNN1A"
+          ],
+          "fraction_of_selected_genes": 0.33
+        }
       ],
       "selected_gene_count": 3,
       "unmapped_genes": [],
@@ -58,14 +121,127 @@
     },
     "confidence": 0.78
   },
-
   "search": {
     "results": [
-      { "hpo_id": "HP:0002205", "label_es": "Infecciones respiratorias recurrentes", "label_en": "Recurrent respiratory infections" },
-      { "hpo_id": "HP:0002094", "label_es": "Disnea", "label_en": "Dyspnea" },
-      { "hpo_id": "HP:0012378", "label_es": "Fatiga", "label_en": "Fatigue" },
-      { "hpo_id": "HP:0002027", "label_es": "Dolor abdominal", "label_en": "Abdominal pain" },
-      { "hpo_id": "HP:0001508", "label_es": "Retraso del crecimiento", "label_en": "Failure to thrive" }
+      {
+        "hpo_id": "HP:0002205",
+        "label_es": "Infecciones respiratorias recurrentes",
+        "label_en": "Recurrent respiratory infections"
+      },
+      {
+        "hpo_id": "HP:0002094",
+        "label_es": "Disnea",
+        "label_en": "Dyspnea"
+      },
+      {
+        "hpo_id": "HP:0012378",
+        "label_es": "Fatiga",
+        "label_en": "Fatigue"
+      },
+      {
+        "hpo_id": "HP:0002027",
+        "label_es": "Dolor abdominal",
+        "label_en": "Abdominal pain"
+      },
+      {
+        "hpo_id": "HP:0001508",
+        "label_es": "Retraso del crecimiento",
+        "label_en": "Failure to thrive"
+      }
     ]
+  },
+  "genes": {
+    "CFTR": {
+      "simbolo": "CFTR",
+      "nombre_completo": "CF transmembrane conductance regulator",
+      "cromosoma": "7",
+      "ubicacion": "7q31.2",
+      "resumen_llano_es": "Este gen da las instrucciones para fabricar una proteína que funciona como un canal en las células. Ayuda a controlar el paso de sales y agua en los tejidos que recubren el cuerpo y sus órganos.",
+      "enfermedades": [
+        {
+          "nombre": "Fibrosis quística",
+          "descripcion_es": "Un trastorno generalizado de las glándulas exocrinas que altera la eliminación de secreciones.",
+          "omim": "219700"
+        }
+      ],
+      "coincidencias": [
+        {
+          "hpo_id": "HP:0002205",
+          "nombre": "Infecciones respiratorias recurrentes",
+          "frecuencia_pct": 88.0,
+          "frecuencia_texto": null
+        }
+      ],
+      "frecuentes_no_reportados": [
+        {
+          "hpo_id": "HP:0012236",
+          "nombre": "Cloruro en sudor elevado",
+          "frecuencia_pct": 100.0,
+          "frecuencia_texto": null
+        },
+        {
+          "hpo_id": "HP:0002110",
+          "nombre": "Bronquiectasias",
+          "frecuencia_pct": 95.5,
+          "frecuencia_texto": null
+        }
+      ],
+      "total_esperados": 31,
+      "referencias": {
+        "NCBI Gene": "https://www.ncbi.nlm.nih.gov/gene/1080",
+        "UniProt": "https://www.uniprot.org/uniprotkb/P13569"
+      },
+      "tecnico": {
+        "resumen_es": "Este gen codifica un miembro de la superfamilia de transportadores del casete de unión a ATP (ABC). La proteína codificada funciona como un canal de cloruro, lo que la hace única entre los miembros de esta familia, y controla la secreción y absorción de iones y agua en los tejidos epiteliales. La activación del canal está mediada por ciclos de fosforilación del dominio regulador, unión de ATP por los dominios de unión de nucleótidos e hidrólisis de ATP.",
+        "funcion_proteina_es": "Canal iónico epitelial que regula el transporte de iones y agua.",
+        "resumen_en": "This gene encodes a member of the ATP-binding cassette (ABC) transporter superfamily.",
+        "funcion_proteina_en": "Epithelial ion channel.",
+        "aliases": "ABCC7, CF, MRP7",
+        "ncbi_id": "1080",
+        "uniprot_accession": "P13569",
+        "codigo_omim": [
+          "219700"
+        ]
+      },
+      "resumen_es": "Este gen codifica un miembro de la superfamilia de transportadores del casete de unión a ATP (ABC). La proteína codificada funciona como un canal de cloruro, lo que la hace única entre los miembros de esta familia, y controla la secreción y absorción de iones y agua en los tejidos epiteliales. La activación del canal está mediada por ciclos de fosforilación del dominio regulador, unión de ATP por los dominios de unión de nucleótidos e hidrólisis de ATP."
+    },
+    "SCNN1A": {
+      "simbolo": "SCNN1A",
+      "nombre_completo": "sodium channel epithelial 1 subunit alpha",
+      "cromosoma": "12",
+      "ubicacion": "12p13.31",
+      "resumen_llano_es": "Este gen produce una parte de un canal que deja entrar sodio a las células de varios tejidos.",
+      "enfermedades": [
+        {
+          "nombre": "Pseudohipoaldosteronismo tipo 1",
+          "descripcion_es": "Trastorno de la regulación de sales.",
+          "omim": "264350"
+        }
+      ],
+      "coincidencias": [],
+      "frecuentes_no_reportados": [
+        {
+          "hpo_id": "HP:0002150",
+          "nombre": "Hipercalciuria",
+          "frecuencia_pct": 100.0,
+          "frecuencia_texto": null
+        }
+      ],
+      "total_esperados": 25,
+      "referencias": {},
+      "tecnico": {
+        "resumen_es": "Subunidad alfa del canal de sodio epitelial sensible a amilorida.",
+        "funcion_proteina_es": "Media el transporte de sodio.",
+        "resumen_en": "Alpha subunit of the amiloride-sensitive epithelial sodium channel.",
+        "funcion_proteina_en": "Mediates sodium transport.",
+        "aliases": "ENaCa, SCNN1",
+        "ncbi_id": "6337",
+        "uniprot_accession": "P37088",
+        "codigo_omim": [
+          "264350"
+        ]
+      },
+      "resumen_es": "Subunidad alfa del canal de sodio epitelial sensible a amilorida."
+    }
   }
 }

@@ -286,6 +286,71 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { message: "Verified" });
   }
 
+  // --- Express API: gene profiles ------------------------------------------
+  // Authenticated like the real route: the request carries the phenotypes the
+  // patient reported, and an open endpoint would let anyone enumerate the
+  // database. The technical block only ships when the caller asks for it.
+  if (pathname === "/api/genes/batch" && method === "POST") {
+    const user = currentUser(cookies);
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+
+    const body = await readBody(req);
+    {
+      const symbols = Array.isArray(body?.symbols) ? body.symbols : [];
+      const reported = new Set((body?.reported ?? []).map((id) => String(id).toUpperCase()));
+      const profiles = {};
+
+      for (const raw of symbols.slice(0, 60)) {
+        const profile = fixtures.genes?.[String(raw).toUpperCase()];
+        if (!profile) continue;
+        const all = [...profile.coincidencias, ...profile.frecuentes_no_reportados];
+        const { tecnico, ...rest } = profile;
+        const entry = {
+          ...rest,
+          coincidencias: all.filter((s) => reported.has(s.hpo_id.toUpperCase())),
+          frecuentes_no_reportados: all.filter((s) => !reported.has(s.hpo_id.toUpperCase())).slice(0, 5),
+        };
+        if (body?.view === "professional") entry.tecnico = tecnico;
+        profiles[profile.simbolo] = entry;
+      }
+
+      log(`200 gene batch (${Object.keys(profiles).length}/${symbols.length})`);
+      return send(res, 200, { profiles, disponible: true });
+    }
+  }
+
+  if (pathname.startsWith("/api/genes/")) {
+    const user = currentUser(cookies);
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+
+    const symbol = decodeURIComponent(pathname.slice("/api/genes/".length)).toUpperCase();
+    const profile = fixtures.genes?.[symbol];
+    if (!profile) {
+      log(`404 (no profile for ${symbol})`);
+      return send(res, 404, { error: "Gen sin descripción disponible", disponible: true });
+    }
+
+    const reported = new Set(
+      (url.searchParams.get("reported") ?? "")
+        .split(",")
+        .map((id) => id.trim().toUpperCase())
+        .filter(Boolean),
+    );
+
+    // Re-split the fixture's symptoms against what this caller reported, so the
+    // mock reflects the request rather than replaying a fixed answer.
+    const allSymptoms = [...profile.coincidencias, ...profile.frecuentes_no_reportados];
+    const coincidencias = allSymptoms.filter((s) => reported.has(s.hpo_id.toUpperCase()));
+    const noReportados = allSymptoms.filter((s) => !reported.has(s.hpo_id.toUpperCase()));
+
+    const { tecnico, ...rest } = profile;
+    const body = { ...rest, coincidencias, frecuentes_no_reportados: noReportados.slice(0, 5) };
+    if (url.searchParams.get("view") === "professional") body.tecnico = tecnico;
+
+    log(`200 gene ${symbol}`);
+    return send(res, 200, body);
+  }
+
   // --- Express API: admin (backoffice) -------------------------------------
   // Faithful to the real thing in the way that matters: a caller without the
   // admin role gets 404, not 403, so the panel is invisible rather than merely

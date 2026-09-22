@@ -72,6 +72,20 @@ fi
 COMPOSE=(docker compose -p "$PROJECT" --env-file "$ENV_FILE"
          -f docker-compose.yml -f docker-compose.staging.yml)
 
+# Gene descriptions are a file copied to the host with scp, not part of any
+# image, so the overlay is added only when the file is actually there. Without
+# it the platform runs normally and the results screen shows genes with no
+# description — and a bind mount pointing at a missing file would silently
+# create a root-owned directory instead of failing.
+GENE_PROFILES_DB="${GENE_PROFILES_DB:-$PWD/data/genes.db}"
+if [ -f "$GENE_PROFILES_DB" ]; then
+  export GENE_PROFILES_DB
+  COMPOSE+=(-f docker-compose.genes.yml)
+  echo "Gene profiles: $GENE_PROFILES_DB ($(du -h "$GENE_PROFILES_DB" | cut -f1))"
+else
+  echo "Gene profiles: none at $GENE_PROFILES_DB — genes will render without descriptions."
+fi
+
 case "${1:-up}" in
   up)
     if [ -n "${2:-}" ]; then

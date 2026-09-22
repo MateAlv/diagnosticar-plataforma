@@ -92,6 +92,10 @@ const defaultSymptoms: Symptom[] = [
   { description: "Cambios en peso", code: "HP:0004324" },
 ];
 
+import { GeneCard } from "./gene-card";
+import { fetchGeneProfiles, type GeneProfile } from "@/lib/genes-api";
+
+const PROFESSIONAL_VIEW_KEY = "diagnosticar:vista-profesional";
 const HPO_API_URL = process.env.NEXT_PUBLIC_HPO_API_URL || "http://localhost:8000";
 const HPO_EXTRACT_ENDPOINT = `${HPO_API_URL.replace(/\/$/, "")}/extract-hpo`;
 const HPO_SEARCH_ENDPOINT = `${HPO_API_URL.replace(/\/$/, "")}/hpo/es/search`;
@@ -369,7 +373,47 @@ function NuevoDiagnosticoScreen() {
     .slice(0, 3)
     .map(traducirEspecialidad);
   const visibleGeneResults = genphenResults;
+  const [geneProfiles, setGeneProfiles] = useState<Map<string, GeneProfile>>(new Map());
+  const [professionalView, setProfessionalView] = useState(false);
   const demoPrimaryGene = isDemoMode ? genphenResults[0] : null;
+
+  // The professional view is a display preference, not a permission: everything
+  // it reveals is public reference data. It defaults off, because a clinician
+  // seeing the plain view knows to turn it on, while a family dropped into the
+  // technical one does not know what it is looking at.
+  useEffect(() => {
+    try {
+      setProfessionalView(window.localStorage.getItem(PROFESSIONAL_VIEW_KEY) === "1");
+    } catch {
+      // Private browsing or blocked storage: the default is correct anyway.
+    }
+  }, []);
+
+  // Descriptions enrich the ranking and never gate it, so a failure here leaves
+  // the genes on screen with their symbols and no prose.
+  useEffect(() => {
+    const symbols = visibleGeneResults
+      .map((gene) => gene.gene_symbol || gene.gene_id)
+      .filter((symbol): symbol is string => Boolean(symbol));
+
+    if (symbols.length === 0 || isDemoMode) {
+      setGeneProfiles(new Map());
+      return;
+    }
+
+    const controller = new AbortController();
+    const reported = extractedPhenotypes
+      .filter((phenotype) => !phenotype.negated)
+      .map((phenotype) => phenotype.hpo_id);
+
+    fetchGeneProfiles(symbols, reported, {
+      professional: professionalView,
+      signal: controller.signal,
+    }).then(setGeneProfiles);
+
+    return () => controller.abort();
+  }, [visibleGeneResults, extractedPhenotypes, professionalView, isDemoMode]);
+
   const demoBlurredGeneRows =
     isDemoMode && genphenResults.length > 0 ? DEMO_BLURRED_GENE_PLACEHOLDERS : 0;
 
@@ -1362,44 +1406,47 @@ function NuevoDiagnosticoScreen() {
                     {/* Gene ranking – technical detail */}
                     {!isLowConfidenceResult && genphenResults.length > 0 && (
                       <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
-                        <p className="text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Detalle técnico</p>
-                        <h3 className="mt-2 text-lg font-semibold text-[var(--lu-text)]">Genes candidatos priorizados</h3>
-                        <p className="mt-1 text-sm text-[var(--lu-subtle)] leading-relaxed">
-                          Ranking computacional a partir de los síntomas HPO. Usarlo como guía inicial junto con el equipo clínico.
-                        </p>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="text-lg font-semibold text-[var(--lu-text)]">Genes para investigar</h3>
+                            <p className="mt-1 text-sm leading-relaxed text-[var(--lu-subtle)]">
+                              El sistema sugiere <strong>genes</strong> para investigar, no enfermedades ni
+                              diagnósticos. En pruebas, el gen correcto aparece entre los 20 sugeridos en
+                              aproximadamente 9 de cada 10 casos.
+                            </p>
+                          </div>
+                          <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs text-[var(--lu-subtle)]">
+                            <input
+                              type="checkbox"
+                              checked={professionalView}
+                              onChange={(event) => {
+                                const next = event.target.checked;
+                                setProfessionalView(next);
+                                try {
+                                  window.localStorage.setItem(PROFESSIONAL_VIEW_KEY, next ? "1" : "0");
+                                } catch {
+                                  // Preference simply does not persist.
+                                }
+                              }}
+                              className="h-4 w-4 accent-[var(--lu-accent)]"
+                            />
+                            Vista profesional
+                          </label>
+                        </div>
                         <div className="mt-5 space-y-3">
-                          {visibleGeneResults.map((gene, index) => (
-                            <div
-                              key={`${gene.gene_id}-${index}`}
-                              className="rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-4"
-                            >
-                              <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div className="flex items-center gap-3">
-                                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--lu-accent)] text-xs font-bold text-white">
-                                    {index + 1}
-                                  </span>
-                                  <p className="text-base font-semibold text-[var(--lu-text)]">
-                                    {gene.gene_symbol || gene.gene_id}
-                                  </p>
-                                </div>
-                                <div className="flex flex-wrap gap-2 text-xs text-[var(--lu-subtle)]">
-                                  <span className="rounded-full border border-[var(--lu-border)] bg-white px-2 py-1">
-                                    Score {Number(gene.score).toFixed(3)}
-                                  </span>
-                                  {gene.matched_count > 0 && (
-                                    <span className="rounded-full border border-[var(--lu-border)] bg-white px-2 py-1">
-                                      Match {gene.matched_count}/{gene.input_count}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              {gene.matched_hpo_ids?.length > 0 && (
-                                <p className="mt-3 text-xs text-[var(--lu-subtle)]">
-                                  HPO: {gene.matched_hpo_ids.join(", ")}
-                                </p>
-                              )}
-                            </div>
-                          ))}
+                          {visibleGeneResults.map((gene, index) => {
+                            const symbol = gene.gene_symbol || gene.gene_id;
+                            return (
+                              <GeneCard
+                                key={`${gene.gene_id}-${index}`}
+                                symbol={symbol}
+                                rank={index + 1}
+                                score={Number(gene.score)}
+                                profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
+                                professional={professionalView}
+                              />
+                            );
+                          })}
                         </div>
                       </div>
                     )}

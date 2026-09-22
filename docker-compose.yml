@@ -38,6 +38,7 @@ services:
       GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:4000/api/auth/oauth/google/callback}
       GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL:-http://localhost:3000/login}
       NODE_ENV: ${NODE_ENV:-development}
+      GENE_PROFILES_DB_PATH: /app/data/genes.db
     depends_on:
       db:
         condition: service_healthy

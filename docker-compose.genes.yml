@@ -1,0 +1,21 @@
+# Spanish gene descriptions for the results screen.
+#
+# A separate overlay rather than part of the base compose file, because a bind
+# mount whose source file is missing makes Docker create a root-owned directory
+# at that path — on the host, inside the checkout. Putting the mount here means
+# you opt in once you actually have the database, and everyone else runs
+# without it and sees genes with no description, which is the intended
+# degradation.
+#
+#   python -m genesdb.build ...            # in the gene-profiles repo
+#   scp genes.db <host>:/path/to/genes.db
+#   GENE_PROFILES_DB=/path/to/genes.db docker compose \
+#     -f docker-compose.yml -f docker-compose.genes.yml up -d
+#
+# The file is rebuilt wholesale rather than migrated, so a deploy is a copy and
+# a restart, and a rollback is copying the previous file back.
+
+services:
+  backend:
+    volumes:
+      - ${GENE_PROFILES_DB:?set GENE_PROFILES_DB to the database path on the host}:/app/data/genes.db:ro
