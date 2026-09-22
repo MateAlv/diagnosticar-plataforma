@@ -1,6 +1,6 @@
 .PHONY: up down logs shell-frontend shell-backend \
         up-prod down-prod logs-prod config-prod \
-        test test-backend test-frontend test-e2e lint typecheck \
+        ci test test-backend test-frontend test-e2e lint typecheck \
         staging-up staging-down staging-logs staging-smoke \
         deploy deploy-rollback smoke
 
@@ -21,6 +21,16 @@ shell-backend:
 	docker compose exec backend sh
 
 # --- Tests -----------------------------------------------------------------
+# Every check in .github/workflows/ci.yml, locally, in CI's order. `test`
+# covers five of the eleven; this covers all of them, including the image
+# builds and the compose stack. Run it before pushing — Actions minutes are
+# finite, and a Docker build that fails there fails here first.
+#
+#   make ci                  # everything
+#   make ci GROUPS=images    # one group, while iterating on a failure
+ci:
+	ops/ci-local.sh $(GROUPS)
+
 # Backend integration tests need Postgres. Without TEST_DATABASE_URL they skip;
 # `make test-backend` starts a throwaway database so they actually run.
 test: lint typecheck test-backend test-frontend test-e2e

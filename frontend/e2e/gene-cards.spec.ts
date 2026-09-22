@@ -73,7 +73,9 @@ test("the gene is the headline and the disease is labelled as context", async ({
     const card = page.getByRole("article").filter({ hasText: "CFTR" }).first();
     await expect(card.getByRole("heading", { name: /CFTR/ })).toBeVisible();
     await expect(card.getByText("Se estudia en relación con")).toBeVisible();
-    await expect(card.getByText("Fibrosis quística")).toBeVisible();
+    // Named in the collapsed row as context and again in the open body; both
+    // subordinate to the symbol, which is the heading.
+    await expect(card.getByText("Fibrosis quística").first()).toBeVisible();
 });
 
 test("reported symptoms are separated from the ones to ask about", async ({ page }) => {
@@ -184,10 +186,78 @@ test("a long description is clamped until the reader opens it", async ({ page })
     const expand = card.getByRole("button", { name: /Ver descripción completa/ });
     await expect(expand).toBeVisible();
 
-    const clamped = card.locator("p.line-clamp-4");
+    const clamped = card.locator("p.line-clamp-2");
     await expect(clamped).toHaveCount(1);
 
     await expand.click();
-    await expect(card.locator("p.line-clamp-4")).toHaveCount(0);
+    await expect(card.locator("p.line-clamp-2")).toHaveCount(0);
     await expect(card.getByRole("button", { name: /Ver menos/ })).toBeVisible();
+});
+
+test("the summary opens closed, so 'Ver menos' never shows on first render", async ({ page }) => {
+    // The label used to be computed from a state that did not match the clamp,
+    // so cards nobody had touched offered to collapse themselves.
+    await runToResults(page);
+
+    await expect(page.getByRole("button", { name: /^Ver menos$/ })).toHaveCount(0);
+});
+
+test("the ranking is scannable: only the first gene opens", async ({ page }) => {
+    // The guarantee is about the top 20 as a *set*, so the reader has to be able
+    // to see the set. One full card per gene made that impossible.
+    await runToResults(page);
+
+    const first = page.getByRole("article").filter({ hasText: "CFTR" }).first();
+    await expect(first.getByRole("button", { name: /CFTR/ })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+    );
+
+    const second = page.getByRole("article").filter({ hasText: "SCNN1A" }).first();
+    const toggle = second.getByRole("button", { name: /SCNN1A/ });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(second.getByText("Se estudia en relación con")).toHaveCount(0);
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(second.getByText("Se estudia en relación con").first()).toBeVisible();
+
+    // Comparing two candidates is the task, so opening one must not close another.
+    await expect(first.getByRole("button", { name: /CFTR/ })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+    );
+});
+
+test("the symptom comparison comes before the gene's biology", async ({ page }) => {
+    // The reader's question is "does this match my child", not "what does this
+    // protein do". The summary used to open the card and run past 1,000 chars.
+    await runToResults(page);
+
+    const card = page.getByRole("article").filter({ hasText: "CFTR" }).first();
+    const headings = await card.locator("h5").allTextContents();
+
+    expect(headings[0]).toMatch(/Coincide con lo que contaste/);
+    expect(headings.indexOf("Qué hace este gen")).toBeGreaterThan(
+        headings.findIndex((text) => /Coincide con lo que contaste/.test(text)),
+    );
+});
+
+test("the match count is framed as our comparison, not the model's reasoning", async ({ page }) => {
+    // /rank-genes returns matched_count: 0 and never says why a gene ranked.
+    // Anything we show about a match is computed by us and must read that way.
+    await runToResults(page);
+
+    const card = page.getByRole("article").filter({ hasText: "CFTR" }).first();
+    await expect(card.getByText(/datos tuyos|dato tuyo/)).toBeVisible();
+    await expect(card.getByText(/el modelo (lo )?eligió|por esto/i)).toHaveCount(0);
+});
+
+test("the provenance tail is stripped from the displayed summary", async ({ page }) => {
+    // "[proporcionado por RefSeq, julio…]" is metadata. Beside an English
+    // "[provided by RefSeq, Jul 2016]" it reads as broken text.
+    await runToResults(page);
+
+    await expect(page.getByText(/provided by RefSeq/i)).toHaveCount(0);
+    await expect(page.getByText(/proporcionado por RefSeq/i)).toHaveCount(0);
 });

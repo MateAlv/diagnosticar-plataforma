@@ -192,7 +192,7 @@
         "UniProt": "https://www.uniprot.org/uniprotkb/P13569"
       },
       "tecnico": {
-        "resumen_es": "Este gen codifica un miembro de la superfamilia de transportadores del casete de unión a ATP (ABC). La proteína codificada funciona como un canal de cloruro, lo que la hace única entre los miembros de esta familia, y controla la secreción y absorción de iones y agua en los tejidos epiteliales. La activación del canal está mediada por ciclos de fosforilación del dominio regulador, unión de ATP por los dominios de unión de nucleótidos e hidrólisis de ATP.",
+        "resumen_es": "Este gen codifica un miembro de la superfamilia de transportadores del casete de unión a ATP (ABC). La proteína codificada funciona como un canal de cloruro, lo que la hace única entre los miembros de esta familia, y controla la secreción y absorción de iones y agua en los tejidos epiteliales. La activación del canal está mediada por ciclos de fosforilación del dominio regulador, unión de ATP por los dominios de unión de nucleótidos e hidrólisis de ATP. [proporcionado por RefSeq, julio 2008]",
         "funcion_proteina_es": "Canal iónico epitelial que regula el transporte de iones y agua.",
         "resumen_en": "This gene encodes a member of the ATP-binding cassette (ABC) transporter superfamily.",
         "funcion_proteina_en": "Epithelial ion channel.",
@@ -203,7 +203,7 @@
           "219700"
         ]
       },
-      "resumen_es": "Este gen codifica un miembro de la superfamilia de transportadores del casete de unión a ATP (ABC). La proteína codificada funciona como un canal de cloruro, lo que la hace única entre los miembros de esta familia, y controla la secreción y absorción de iones y agua en los tejidos epiteliales. La activación del canal está mediada por ciclos de fosforilación del dominio regulador, unión de ATP por los dominios de unión de nucleótidos e hidrólisis de ATP."
+      "resumen_es": "Este gen codifica un miembro de la superfamilia de transportadores del casete de unión a ATP (ABC). La proteína codificada funciona como un canal de cloruro, lo que la hace única entre los miembros de esta familia, y controla la secreción y absorción de iones y agua en los tejidos epiteliales. La activación del canal está mediada por ciclos de fosforilación del dominio regulador, unión de ATP por los dominios de unión de nucleótidos e hidrólisis de ATP. [proporcionado por RefSeq, julio 2008]"
     },
     "SCNN1A": {
       "simbolo": "SCNN1A",

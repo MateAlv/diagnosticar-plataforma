@@ -1444,6 +1444,7 @@ function NuevoDiagnosticoScreen() {
                                 score={Number(gene.score)}
                                 profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
                                 professional={professionalView}
+                                defaultOpen={index === 0}
                               />
                             );
                           })}

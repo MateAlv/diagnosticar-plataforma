@@ -51,9 +51,17 @@ containers across 15 projects.
 The database transferred intact (md5 `699120d8…`, 62,107,648 bytes both sides)
 and mounts read-only with no load warning. SMOKE PASS on all 13 checks.
 
-**What the first real run showed is in `GENE_CARD_UI_TODO.md`:** the card is a
-wall of text that buries the symptom comparison, and 117 summaries (2.2%) are
-still in English. Neither blocks the pipeline; both are visible to a user.
+**What the first real run showed is in `GENE_CARD_UI_TODO.md`:** the card was a
+wall of text that buried the symptom comparison, and text was still in English.
+Neither blocked the pipeline; both were visible to a user. Both are now fixed
+and waiting to ship.
+
+The English count was first reported here as 117 summaries (2.2%), measured
+with a keyword regex too narrow to see most of it. The real figure was **809
+texts across 781 genes** — 321 summaries and 488 protein-function fields. The
+two columns drift independently, which is why the function field was invisible
+to the first count. All 809 are translated; `scripts/verify_db.py` now reports
+0 and gates the copy.
 
 ## In flight
 
