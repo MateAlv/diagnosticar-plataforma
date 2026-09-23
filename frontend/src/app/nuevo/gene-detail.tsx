@@ -102,8 +102,9 @@ export function GeneDetail({
                     <span className="sr-only">Gen </span>
                     {symbol}
                 </h4>
-                {profile?.ubicacion && (
+                {professional && profile?.ubicacion && (
                     <span className="font-mono text-sm text-[var(--lu-subtle)]">
+                        <span className="sr-only">Locus citogenético </span>
                         {profile.ubicacion}
                     </span>
                 )}

@@ -206,7 +206,7 @@ test("the technical detail is hidden until the professional view is on", async (
     await expect(page.getByText(/Puntaje del modelo/)).toHaveCount(0);
     await expect(page.getByText("ABCC7")).toHaveCount(0);
 
-    await page.getByLabel("Vista profesional").check();
+    await page.getByLabel("Ver detalle médico").check();
 
     const card = await openGene(page, "CFTR");
     if (isDesktop(page)) {
@@ -221,11 +221,11 @@ test("the technical detail is hidden until the professional view is on", async (
 
 test("the professional view is remembered across visits", async ({ page }) => {
     await runToResults(page);
-    await page.getByLabel("Vista profesional").check();
+    await page.getByLabel("Ver detalle médico").check();
 
     await runToResults(page);
 
-    await expect(page.getByLabel("Vista profesional")).toBeChecked();
+    await expect(page.getByLabel("Ver detalle médico")).toBeChecked();
 });
 
 test("a gene without a description still appears in the ranking", async ({ page }) => {
@@ -256,7 +256,7 @@ test("a family gets Spanish sources to read further, not English databases", asy
 
     // Says which view it is about rather than relying on the default, since
     // the preference is deliberately sticky.
-    await page.getByLabel("Vista profesional").uncheck();
+    await page.getByLabel("Ver detalle médico").uncheck();
 
     const card = await openGene(page, "CFTR");
     await expect(card.getByRole("link", { name: /Orphanet/ })).toBeVisible();
@@ -269,7 +269,7 @@ test("a family gets Spanish sources to read further, not English databases", asy
 
 test("the technical view adds the curated database links", async ({ page }) => {
     await runToResults(page);
-    await page.getByLabel("Vista profesional").check();
+    await page.getByLabel("Ver detalle médico").check();
 
     const card = await openGene(page, "CFTR");
     await expect(card.getByRole("link", { name: /NCBI Gene/ })).toBeVisible();
@@ -314,30 +314,39 @@ test("the summary opens closed, so 'Ver menos' never shows on first render", asy
     await expect(page.getByRole("button", { name: /Seguir leyendo/ }).first()).toBeVisible();
 });
 
-test("the ranking is grouped by what it engages, not by position", async ({ page }) => {
-    // The accuracy claim is about the set of 20, so position 1 and position 12
-    // are not meaningfully different. Grouping answers the reader's actual
-    // question — which of these engage what I described?
+test("the ranking keeps the model's order, ungrouped", async ({ page }) => {
+    // Grouping by symptom overlap was tried and dropped: it pushed
+    // top-scoring genes below a fold, and a heading over the genes that
+    // matched nothing read as an apology for a result that is not a failure.
     await runToResults(page);
 
-    await expect(page.getByRole("heading", { name: "Se relacionan con lo que contaste" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Sin relación con lo que contaste" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Se relacionan con lo que contaste/ })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: /Sin relación con lo que contaste/ })).toHaveCount(0);
+    await expect(page.getByText(/no los descarta/)).toHaveCount(0);
 
-    // A gene that matched nothing is not ruled out, and the screen says so.
-    await expect(page.getByText(/no los descarta/)).toBeVisible();
+    // The model's first gene is the one that opens.
+    await expect(geneRow(page, "CFTR")).toBeVisible();
 });
 
-test("a gene with no symptom data is separated from one that simply did not match", async ({ page }) => {
-    // 10% of genes carry no symptom annotation at all. Collapsing that into
-    // "sin coincidencias" would report a gap in our data as a finding about
-    // the gene.
+test("a gene with no symptom data still says so, without a heading to explain it", async ({ page }) => {
+    // 10% of genes carry no symptom annotation. The row says what we have;
+    // it just no longer needs a section to apologise for it.
     await runToResults(page);
-
-    await expect(page.getByRole("heading", { name: "Todavía no podemos compararlos" })).toBeVisible();
-    await expect(page.getByText(/no es evidencia en contra/)).toBeVisible();
 
     await expect(geneRow(page, "DNAH5").getByText("Sin datos para comparar")).toBeVisible();
     await expect(geneRow(page, "SCNN1A").getByText(/tenemos \d+ síntomas descritos/)).toBeVisible();
+});
+
+test("the locus rides with the medical detail, not with the gene's identity", async ({ page }) => {
+    // A cytogenetic locus is meaningful to a clinician and noise to a family,
+    // so it appears with the rest of the medical detail rather than
+    // identifying the row.
+    await runToResults(page);
+    await page.getByLabel("Ver detalle médico").uncheck();
+    await expect(page.getByText("7q31.2")).toHaveCount(0);
+
+    await page.getByLabel("Ver detalle médico").check();
+    await expect(page.getByText("7q31.2").first()).toBeVisible();
 });
 
 test("rows open independently, so two candidates can be compared", async ({ page }) => {
@@ -385,7 +394,7 @@ test("the match count is framed as our comparison, not the model's reasoning", a
 
     // Both layouts say it, in their own words: the overlap is ours and the
     // model explains nothing. The wording differs, the claim must not.
-    await page.getByLabel("Vista profesional").check();
+    await page.getByLabel("Ver detalle médico").check();
     const card = await openGene(page, "CFTR");
     await expect(
         card.getByText(/hacemos nosotros|no aporta coincidencias propias/),

@@ -103,29 +103,7 @@ const PROFESSIONAL_VIEW_KEY = "diagnosticar:vista-profesional";
 /** A symptom carries a real HPO code, or it cannot be compared against a gene. */
 const HPO_CODE_RE = /^HP:\d+$/;
 
-type GeneGroupKey = "match" | "none" | "nodata";
 type RankedGene = { gene: GenPhenResult; symbol: string; rank: number };
-
-/**
- * The three groups, in reading order.
- *
- * The notes matter as much as the titles: twenty rows that all read as a
- * negative is both discouraging and false, so each group says plainly what its
- * emptiness does and does not mean.
- */
-const GENE_GROUPS: { key: GeneGroupKey; title: string; note?: string }[] = [
-  { key: "match", title: "Se relacionan con lo que contaste" },
-  {
-    key: "none",
-    title: "Sin relación con lo que contaste",
-    note: "Siguen dentro del grupo sugerido. Que no coincidan con lo que contaste no los descarta.",
-  },
-  {
-    key: "nodata",
-    title: "Todavía no podemos compararlos",
-    note: "No tenemos síntomas descritos para estos genes. Eso no es evidencia en contra: es un dato que nos falta a nosotros.",
-  },
-];
 const HPO_API_URL = process.env.NEXT_PUBLIC_HPO_API_URL || "http://localhost:8000";
 const HPO_EXTRACT_ENDPOINT = `${HPO_API_URL.replace(/\/$/, "")}/extract-hpo`;
 const HPO_SEARCH_ENDPOINT = `${HPO_API_URL.replace(/\/$/, "")}/hpo/es/search`;
@@ -434,49 +412,37 @@ function NuevoDiagnosticoScreen() {
   const [geneProfiles, setGeneProfiles] = useState<Map<string, GeneProfile>>(new Map());
   const [professionalView, setProfessionalView] = useState(false);
 
-  /**
-   * The ranking split three ways, keeping each gene's position in the model's
-   * order so it can still be shown.
-   *
-   * Grouping rather than ranking is what the accuracy claim actually supports:
-   * the correct gene is among the top 20 in about 9 of 10 cases, which is a
-   * statement about the set. Position 1 and position 12 are not meaningfully
-   * different, so the useful question is which genes engage what the reader
-   * described — not which came first.
-   *
-   * "nodata" is separate from "none" on purpose. 10% of genes carry no symptom
-   * annotation at all, so an empty comparison there means we have nothing to
-   * compare, not that the gene was ruled out.
-   */
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const wideScreen = useWideScreen();
 
-  const groupedGenes = useMemo(() => {
-    const groups: Record<GeneGroupKey, RankedGene[]> = { match: [], none: [], nodata: [] };
-    visibleGeneResults.forEach((gene, index) => {
-      const symbol = gene.gene_symbol || gene.gene_id;
-      const profile = geneProfiles.get(symbol.toUpperCase()) ?? null;
-      const covered = profile?.reportados_cubiertos?.length ?? 0;
-      const key: GeneGroupKey =
-        !profile || profile.total_esperados === 0 ? "nodata" : covered > 0 ? "match" : "none";
-      groups[key].push({ gene, symbol, rank: index + 1 });
-    });
-    return groups;
-  }, [visibleGeneResults, geneProfiles]);
+  /**
+   * The ranking in the model's own order.
+   *
+   * Grouping by symptom overlap was tried and dropped: it buried the
+   * top-scoring genes below a fold, and it made "no overlap" read as an
+   * apology for a result that is not actually a failure. Every row already
+   * carries its own overlap, so the ordering does not need to repeat it.
+   */
+  const orderedGenes = useMemo<RankedGene[]>(
+    () =>
+      visibleGeneResults.map((gene, index) => ({
+        gene,
+        symbol: gene.gene_symbol || gene.gene_id,
+        rank: index + 1,
+      })),
+    [visibleGeneResults],
+  );
 
   /**
-   * The gene open in the detail pane.
-   *
-   * Defaults to the first that engages the reader's report, falling back to the
-   * model's first: opening on a gene with no overlap would make the screen look
-   * like it found nothing. Falls back again if the selected symbol leaves the
-   * ranking — a new run, or profiles arriving late and regrouping everything.
+   * The gene open in the detail pane: the selected one, or the model's first.
+   * Falls back when the selected symbol leaves the ranking, which a new run
+   * does.
    */
   const selectedGene = useMemo(() => {
-    const ordered = [...groupedGenes.match, ...groupedGenes.none, ...groupedGenes.nodata];
-    if (ordered.length === 0) return null;
-    return ordered.find((entry) => entry.symbol === selectedSymbol) ?? ordered[0];
-  }, [groupedGenes, selectedSymbol]);
+    if (orderedGenes.length === 0) return null;
+    return orderedGenes.find((entry) => entry.symbol === selectedSymbol) ?? orderedGenes[0];
+  }, [orderedGenes, selectedSymbol]);
+
   const demoPrimaryGene = isDemoMode ? genphenResults[0] : null;
 
   // The professional view is a display preference, not a permission: everything
@@ -1536,12 +1502,12 @@ function NuevoDiagnosticoScreen() {
                               }}
                               className="h-[17px] w-[17px] accent-[var(--lu-accent)]"
                             />
-                            Vista profesional
+                            Ver detalle médico
                           </label>
                         </div>
 
-                        <div className="flex flex-col lg:flex-row lg:items-stretch">
-                          <div className="flex flex-col gap-3 px-6 py-5 lg:w-[420px] lg:shrink-0 lg:border-r lg:border-[var(--lu-border)]">
+                        <div className="flex flex-col lg:h-[min(820px,calc(100vh-13rem))] lg:flex-row lg:items-stretch">
+                          <div className="flex flex-col gap-3 px-6 py-5 lg:w-[420px] lg:shrink-0 lg:overflow-hidden lg:border-r lg:border-[var(--lu-border)]">
                             {reportedWords.size > 0 && (
                               <div className="flex flex-col gap-2 border-b border-[var(--lu-border)] pb-4">
                                 <p className="text-xs font-semibold text-[var(--lu-text)]">
@@ -1567,69 +1533,49 @@ function NuevoDiagnosticoScreen() {
                               así que lo que importa es el conjunto y no el puesto.
                             </p>
 
-                            {GENE_GROUPS.map(({ key, title, note }) => {
-                              const group = groupedGenes[key];
-                              if (group.length === 0) return null;
-                              return (
-                                <section key={key} className="border-t border-[var(--lu-border)] pt-3.5">
-                                  <div className="flex items-center gap-2">
-                                    <h4 className="text-base font-semibold text-[var(--lu-text)]">
-                                      {title}
-                                    </h4>
-                                    <span className="font-mono text-xs text-[var(--lu-subtle)]">
-                                      {group.length}
-                                    </span>
-                                  </div>
-                                  {note && (
-                                    <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
-                                      {note}
-                                    </p>
-                                  )}
-
-                                  {/* Wide: a selectable list beside the detail pane.
-                                      Narrow: the same genes as accordion rows, since
-                                      there is no room for two panes. */}
-                                  {wideScreen ? (
-                                  <ul className="mt-2.5 flex flex-col gap-2.5">
-                                    {group.map(({ gene, rank, symbol }) => (
-                                      <GeneListRow
-                                        key={`${gene.gene_id}-${rank}`}
-                                        symbol={symbol}
-                                        rank={rank}
-                                        total={visibleGeneResults.length}
-                                        score={Number(gene.score)}
-                                        profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
-                                        professional={professionalView}
-                                        reportedWords={reportedWords}
-                                        selected={selectedGene?.symbol === symbol}
-                                        onSelect={() => setSelectedSymbol(symbol)}
-                                      />
-                                    ))}
-                                  </ul>
-                                  ) : (
-                                  <div className="mt-2.5 space-y-2.5">
-                                    {group.map(({ gene, rank, symbol }, indexInGroup) => (
-                                      <GeneCard
-                                        key={`${gene.gene_id}-${rank}`}
-                                        symbol={symbol}
-                                        rank={rank}
-                                        total={visibleGeneResults.length}
-                                        score={Number(gene.score)}
-                                        profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
-                                        professional={professionalView}
-                                        reportedWords={reportedWords}
-                                        defaultOpen={key === "match" && indexInGroup === 0}
-                                      />
-                                    ))}
-                                  </div>
-                                  )}
-                                </section>
-                              );
-                            })}
+                            {/* The model's own order, ungrouped. Splitting the
+                                ranking put the top-scoring genes below a fold
+                                and made a gene with no symptom overlap look
+                                like an apology; the overlap is already on every
+                                row, so it does not need a heading too. */}
+                            {wideScreen ? (
+                              <ul className="-mr-2 flex flex-1 flex-col gap-2.5 overflow-y-auto pr-2">
+                                {orderedGenes.map(({ gene, rank, symbol }) => (
+                                  <GeneListRow
+                                    key={`${gene.gene_id}-${rank}`}
+                                    symbol={symbol}
+                                    rank={rank}
+                                    total={visibleGeneResults.length}
+                                    score={Number(gene.score)}
+                                    profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
+                                    professional={professionalView}
+                                    reportedWords={reportedWords}
+                                    selected={selectedGene?.symbol === symbol}
+                                    onSelect={() => setSelectedSymbol(symbol)}
+                                  />
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="space-y-2.5">
+                                {orderedGenes.map(({ gene, rank, symbol }, index) => (
+                                  <GeneCard
+                                    key={`${gene.gene_id}-${rank}`}
+                                    symbol={symbol}
+                                    rank={rank}
+                                    total={visibleGeneResults.length}
+                                    score={Number(gene.score)}
+                                    profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
+                                    professional={professionalView}
+                                    reportedWords={reportedWords}
+                                    defaultOpen={index === 0}
+                                  />
+                                ))}
+                              </div>
+                            )}
                           </div>
 
                           {wideScreen && selectedGene && (
-                            <div className="flex min-w-0 flex-1">
+                            <div className="flex min-w-0 flex-1 overflow-y-auto">
                               <GeneDetail
                                 symbol={selectedGene.symbol}
                                 rank={selectedGene.rank}

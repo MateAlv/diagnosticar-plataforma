@@ -152,8 +152,9 @@ export function GeneCard({
                             <span className="sr-only">Gen </span>
                             {symbol}
                         </span>
-                        {profile?.ubicacion && (
+                        {professional && profile?.ubicacion && (
                             <span className="font-mono text-xs text-[var(--lu-subtle)]">
+                                <span className="sr-only">Locus citogenético </span>
                                 {profile.ubicacion}
                             </span>
                         )}

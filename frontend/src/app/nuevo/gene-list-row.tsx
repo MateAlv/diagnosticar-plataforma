@@ -56,14 +56,18 @@ export function GeneListRow({
                 type="button"
                 onClick={onSelect}
                 aria-current={selected ? "true" : undefined}
-                className={`flex w-full flex-col gap-2 rounded-2xl border px-3.5 py-3 text-left transition-colors ${
+                // The hover lifts the row a hair and warms its border. Kept
+                // subtle deliberately: twenty of these are on screen at once,
+                // and the selected row has to stay the loudest thing in the
+                // list. Motion is dropped for anyone who asked for less of it.
+                className={`flex w-full flex-col gap-2 rounded-2xl border px-3.5 py-3 text-left transition-all duration-150 motion-safe:hover:-translate-y-px ${
                     selected
                         ? "border-2 border-[var(--lu-accent)] bg-[var(--lu-accent-light)]/30"
                         : state === "match"
-                          ? "border-[var(--lu-accent-light)] bg-white hover:bg-[var(--lu-surface)]"
+                          ? "border-[var(--lu-accent-light)] bg-white hover:border-[var(--lu-accent)] hover:bg-[var(--lu-surface)] hover:shadow-sm"
                           : state === "nodata"
-                            ? "border-dashed border-[var(--lu-border-strong)] bg-white hover:bg-[var(--lu-surface)]"
-                            : "border-[var(--lu-border)] bg-[var(--lu-surface)] hover:bg-white"
+                            ? "border-dashed border-[var(--lu-border-strong)] bg-white hover:border-[var(--lu-subtle)] hover:bg-[var(--lu-surface)] hover:shadow-sm"
+                            : "border-[var(--lu-border)] bg-[var(--lu-surface)] hover:border-[var(--lu-border-strong)] hover:bg-white hover:shadow-sm"
                 }`}
             >
                 <span className="flex w-full items-baseline gap-2">
@@ -75,8 +79,14 @@ export function GeneListRow({
                         <span className="sr-only">Gen </span>
                         {symbol}
                     </span>
-                    {profile?.ubicacion && (
-                        <span className="font-mono text-xs text-[var(--lu-subtle)]">
+                    {professional && profile?.ubicacion && (
+                        // The cytogenetic locus. Clinically meaningful, and
+                        // noise to everyone else, so it rides with the medical
+                        // detail rather than identifying the row.
+                        <span
+                            title="Locus citogenético"
+                            className="font-mono text-xs text-[var(--lu-subtle)]"
+                        >
                             {profile.ubicacion}
                         </span>
                     )}
