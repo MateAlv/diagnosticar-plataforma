@@ -93,9 +93,15 @@ const defaultSymptoms: Symptom[] = [
 ];
 
 import { GeneCard } from "./gene-card";
+import { GeneDetail } from "./gene-detail";
+import { GeneListRow } from "./gene-list-row";
+import { useWideScreen } from "./use-wide-screen";
 import { fetchGeneProfiles, type GeneProfile } from "@/lib/genes-api";
 
 const PROFESSIONAL_VIEW_KEY = "diagnosticar:vista-profesional";
+
+/** A symptom carries a real HPO code, or it cannot be compared against a gene. */
+const HPO_CODE_RE = /^HP:\d+$/;
 
 type GeneGroupKey = "match" | "none" | "nodata";
 type RankedGene = { gene: GenPhenResult; symbol: string; rank: number };
@@ -401,14 +407,30 @@ function NuevoDiagnosticoScreen() {
   // results screen speaks their language back to them — "convulsiones", not
   // HP:0001250 — which is what makes a claimed match checkable.
   const reportedWords = useMemo(() => {
-    const words = new Map<string, string>();
+    // Built from `symptoms`, the confirmed list the model ranked on — not from
+    // `extractedPhenotypes`, which only exists after a text analysis and is
+    // empty for symptoms added by hand or restored from a draft.
+    //
+    // Where the extractor did run, its `span_es` is what the person actually
+    // typed ("convulsiones"), which reads better back to them than the official
+    // HPO label. So it wins when present, and the confirmed description is the
+    // fallback.
+    const spans = new Map<string, string>();
     for (const phenotype of extractedPhenotypes) {
       if (phenotype.negated) continue;
-      const said = (phenotype.span_es || phenotype.label_es || phenotype.label || "").trim();
-      if (said) words.set(phenotype.hpo_id.toUpperCase(), said);
+      const span = (phenotype.span_es || "").trim();
+      if (span) spans.set(phenotype.hpo_id.toUpperCase(), span);
+    }
+
+    const words = new Map<string, string>();
+    for (const symptom of symptoms) {
+      const code = (symptom.code || "").trim().toUpperCase();
+      if (!HPO_CODE_RE.test(code)) continue;
+      const said = spans.get(code) || (symptom.description || "").trim();
+      if (said) words.set(code, said);
     }
     return words;
-  }, [extractedPhenotypes]);
+  }, [symptoms, extractedPhenotypes]);
   const [geneProfiles, setGeneProfiles] = useState<Map<string, GeneProfile>>(new Map());
   const [professionalView, setProfessionalView] = useState(false);
 
@@ -426,6 +448,9 @@ function NuevoDiagnosticoScreen() {
    * annotation at all, so an empty comparison there means we have nothing to
    * compare, not that the gene was ruled out.
    */
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const wideScreen = useWideScreen();
+
   const groupedGenes = useMemo(() => {
     const groups: Record<GeneGroupKey, RankedGene[]> = { match: [], none: [], nodata: [] };
     visibleGeneResults.forEach((gene, index) => {
@@ -438,6 +463,20 @@ function NuevoDiagnosticoScreen() {
     });
     return groups;
   }, [visibleGeneResults, geneProfiles]);
+
+  /**
+   * The gene open in the detail pane.
+   *
+   * Defaults to the first that engages the reader's report, falling back to the
+   * model's first: opening on a gene with no overlap would make the screen look
+   * like it found nothing. Falls back again if the selected symbol leaves the
+   * ranking — a new run, or profiles arriving late and regrouping everything.
+   */
+  const selectedGene = useMemo(() => {
+    const ordered = [...groupedGenes.match, ...groupedGenes.none, ...groupedGenes.nodata];
+    if (ordered.length === 0) return null;
+    return ordered.find((entry) => entry.symbol === selectedSymbol) ?? ordered[0];
+  }, [groupedGenes, selectedSymbol]);
   const demoPrimaryGene = isDemoMode ? genphenResults[0] : null;
 
   // The professional view is a display preference, not a permission: everything
@@ -465,9 +504,12 @@ function NuevoDiagnosticoScreen() {
     }
 
     const controller = new AbortController();
-    const reported = extractedPhenotypes
-      .filter((phenotype) => !phenotype.negated)
-      .map((phenotype) => phenotype.hpo_id);
+    // `symptoms` is the confirmed list — what the user reviewed and what the
+    // model ranked on. `extractedPhenotypes` only holds the raw output of a
+    // text analysis, so it is empty whenever symptoms were added by hand,
+    // edited, or restored from a draft, and comparing against it reported no
+    // overlap for every gene.
+    const reported = [...reportedWords.keys()];
 
     fetchGeneProfiles(symbols, reported, {
       professional: professionalView,
@@ -475,7 +517,7 @@ function NuevoDiagnosticoScreen() {
     }).then(setGeneProfiles);
 
     return () => controller.abort();
-  }, [visibleGeneResults, extractedPhenotypes, professionalView, isDemoMode]);
+  }, [visibleGeneResults, reportedWords, professionalView, isDemoMode]);
 
   const demoBlurredGeneRows =
     isDemoMode && genphenResults.length > 0 ? DEMO_BLURRED_GENE_PLACEHOLDERS : 0;
@@ -1466,20 +1508,20 @@ function NuevoDiagnosticoScreen() {
                       </div>
                     )}
 
-                    {/* Gene ranking – technical detail */}
+                    {/* Gene ranking. Master-detail on a wide screen, accordion below it. */}
                     {!isLowConfidenceResult && genphenResults.length > 0 && (
-                      <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="overflow-hidden rounded-3xl border border-[var(--lu-border)] bg-white shadow-sm">
+                        <div className="flex flex-wrap items-center gap-4 border-b border-[var(--lu-border)] bg-[var(--lu-surface)] px-6 py-4">
                           <div className="min-w-0">
-                            <h3 className="text-lg font-semibold text-[var(--lu-text)]">Genes para investigar</h3>
-                            <p className="mt-1 text-sm leading-relaxed text-[var(--lu-subtle)]">
-                              El sistema sugiere <strong>genes</strong> para investigar, no enfermedades ni
-                              diagnósticos. En pruebas, el gen correcto aparece entre los 20 sugeridos en
-                              aproximadamente 9 de cada 10 casos, así que lo que importa es el conjunto y
-                              no el puesto.
+                            <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--lu-subtle)]">
+                              Resultado orientativo · no es un diagnóstico
                             </p>
+                            <h3 className="mt-1 text-xl font-semibold text-[var(--lu-text)]">
+                              Genes para llevar a la consulta
+                            </h3>
                           </div>
-                          <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs text-[var(--lu-subtle)]">
+                          <span className="flex-grow" />
+                          <label className="flex min-h-[44px] shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-[var(--lu-border-strong)] bg-white px-3.5 text-sm font-medium text-[var(--lu-text)]">
                             <input
                               type="checkbox"
                               checked={professionalView}
@@ -1492,57 +1534,113 @@ function NuevoDiagnosticoScreen() {
                                   // Preference simply does not persist.
                                 }
                               }}
-                              className="h-4 w-4 accent-[var(--lu-accent)]"
+                              className="h-[17px] w-[17px] accent-[var(--lu-accent)]"
                             />
                             Vista profesional
                           </label>
                         </div>
-                        {reportedWords.size > 0 && groupedGenes.match.length > 0 && (
-                          <p className="mt-4 text-sm leading-relaxed text-[var(--lu-text)]">
-                            <strong className="font-semibold">
-                              {groupedGenes.match.length} de los {visibleGeneResults.length} genes
-                            </strong>{" "}
-                            se relacionan con algo de lo que contaste. Empezá por ahí.
-                          </p>
-                        )}
 
-                        <div className="mt-5 flex flex-col gap-6">
-                          {GENE_GROUPS.map(({ key, title, note }) => {
-                            const group = groupedGenes[key];
-                            if (group.length === 0) return null;
-                            return (
-                              <section key={key}>
-                                <div className="flex items-center gap-2">
-                                  <h4 className="text-base font-semibold text-[var(--lu-text)]">
-                                    {title}
-                                  </h4>
-                                  <span className="font-mono text-xs text-[var(--lu-subtle)]">
-                                    {group.length}
-                                  </span>
-                                </div>
-                                {note && (
-                                  <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
-                                    {note}
-                                  </p>
-                                )}
-                                <div className="mt-2.5 space-y-2.5">
-                                  {group.map(({ gene, rank, symbol }, indexInGroup) => (
-                                    <GeneCard
-                                      key={`${gene.gene_id}-${rank}`}
-                                      symbol={symbol}
-                                      rank={rank}
-                                      total={visibleGeneResults.length}
-                                      score={Number(gene.score)}
-                                      profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
-                                      professional={professionalView}
-                                      reportedWords={reportedWords}
-                                      defaultOpen={key === "match" && indexInGroup === 0}
-                                    />
+                        <div className="flex flex-col lg:flex-row lg:items-stretch">
+                          <div className="flex flex-col gap-3 px-6 py-5 lg:w-[420px] lg:shrink-0 lg:border-r lg:border-[var(--lu-border)]">
+                            {reportedWords.size > 0 && (
+                              <div className="flex flex-col gap-2 border-b border-[var(--lu-border)] pb-4">
+                                <p className="text-xs font-semibold text-[var(--lu-text)]">
+                                  Lo que nos contaste
+                                </p>
+                                <ul className="flex flex-wrap gap-1.5">
+                                  {[...reportedWords.entries()].map(([code, said]) => (
+                                    <li
+                                      key={code}
+                                      className="rounded-full border border-[var(--lu-border)] bg-[var(--lu-surface)] px-2.5 py-1 text-xs text-[var(--lu-text)]"
+                                    >
+                                      {said}
+                                    </li>
                                   ))}
-                                </div>
-                              </section>
-                            );
-                          })}
+                                </ul>
+                              </div>
+                            )}
+
+                            <p className="text-xs leading-relaxed text-[var(--lu-subtle)]">
+                              El sistema sugiere <strong className="font-semibold">genes</strong>, no
+                              enfermedades ni diagnósticos. El gen correcto aparece entre los{" "}
+                              {visibleGeneResults.length} sugeridos en aproximadamente 9 de cada 10 casos,
+                              así que lo que importa es el conjunto y no el puesto.
+                            </p>
+
+                            {GENE_GROUPS.map(({ key, title, note }) => {
+                              const group = groupedGenes[key];
+                              if (group.length === 0) return null;
+                              return (
+                                <section key={key} className="border-t border-[var(--lu-border)] pt-3.5">
+                                  <div className="flex items-center gap-2">
+                                    <h4 className="text-base font-semibold text-[var(--lu-text)]">
+                                      {title}
+                                    </h4>
+                                    <span className="font-mono text-xs text-[var(--lu-subtle)]">
+                                      {group.length}
+                                    </span>
+                                  </div>
+                                  {note && (
+                                    <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
+                                      {note}
+                                    </p>
+                                  )}
+
+                                  {/* Wide: a selectable list beside the detail pane.
+                                      Narrow: the same genes as accordion rows, since
+                                      there is no room for two panes. */}
+                                  {wideScreen ? (
+                                  <ul className="mt-2.5 flex flex-col gap-2.5">
+                                    {group.map(({ gene, rank, symbol }) => (
+                                      <GeneListRow
+                                        key={`${gene.gene_id}-${rank}`}
+                                        symbol={symbol}
+                                        rank={rank}
+                                        total={visibleGeneResults.length}
+                                        score={Number(gene.score)}
+                                        profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
+                                        professional={professionalView}
+                                        reportedWords={reportedWords}
+                                        selected={selectedGene?.symbol === symbol}
+                                        onSelect={() => setSelectedSymbol(symbol)}
+                                      />
+                                    ))}
+                                  </ul>
+                                  ) : (
+                                  <div className="mt-2.5 space-y-2.5">
+                                    {group.map(({ gene, rank, symbol }, indexInGroup) => (
+                                      <GeneCard
+                                        key={`${gene.gene_id}-${rank}`}
+                                        symbol={symbol}
+                                        rank={rank}
+                                        total={visibleGeneResults.length}
+                                        score={Number(gene.score)}
+                                        profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
+                                        professional={professionalView}
+                                        reportedWords={reportedWords}
+                                        defaultOpen={key === "match" && indexInGroup === 0}
+                                      />
+                                    ))}
+                                  </div>
+                                  )}
+                                </section>
+                              );
+                            })}
+                          </div>
+
+                          {wideScreen && selectedGene && (
+                            <div className="flex min-w-0 flex-1">
+                              <GeneDetail
+                                symbol={selectedGene.symbol}
+                                rank={selectedGene.rank}
+                                total={visibleGeneResults.length}
+                                score={Number(selectedGene.gene.score)}
+                                profile={geneProfiles.get(selectedGene.symbol.toUpperCase()) ?? null}
+                                professional={professionalView}
+                                reportedWords={reportedWords}
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

@@ -1,6 +1,6 @@
 # Gene profiles — where we are, and what is next
 
-Updated 2026-09-21. Read this first if you have lost the thread.
+Updated 2026-09-22. Read this first if you have lost the thread.
 
 ## What this work is for
 
