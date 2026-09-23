@@ -156,12 +156,20 @@ test("conditions appear inside, labelled as unordered and possibly incomplete", 
     await expect(card.getByText("Fibrosis quística").first()).toBeVisible();
 });
 
-test("reported symptoms are separated from the ones to ask about", async ({ page }) => {
+test("the unreported symptoms are medical-view only", async ({ page }) => {
+    // "Preguntá por discapacidad intelectual (88%)" is read by a parent as a
+    // thing to check their child against, whatever the panel says around it.
+    // A clinician can weigh a frequency against a presentation; a family is
+    // handed a verdict about a child.
     await runToResults(page);
+    await page.getByLabel("Ver detalle médico").uncheck();
 
+    await expect(page.getByText("Síntomas que no reportaste")).toHaveCount(0);
+    await expect(page.getByText("Cloruro en sudor elevado")).toHaveCount(0);
+
+    await page.getByLabel("Ver detalle médico").check();
     const card = await openGene(page, "CFTR");
-    await expect(card.getByText("Qué coincide")).toBeVisible();
-    await expect(card.getByText("Para preguntar en la consulta")).toBeVisible();
+    await expect(card.getByText("Síntomas que no reportaste")).toBeVisible();
 });
 
 test("a match is shown against the words the reader used", async ({ page }) => {
@@ -176,24 +184,38 @@ test("a match is shown against the words the reader used", async ({ page }) => {
     await expect(card.getByText("Infecciones respiratorias recurrentes").first()).toBeVisible();
 });
 
-test("unreported signs are framed as a question for a doctor", async ({ page }) => {
-    // Never a self-assessment checklist: these are prompts to raise with a
-    // clinician, not criteria a family should score themselves against.
+test("unreported signs are framed as questions, never as a self-check", async ({ page }) => {
     await runToResults(page);
+    await page.getByLabel("Ver detalle médico").check();
 
     await expect(
-        page.getByText(/No son cosas para evaluar por tu cuenta/i).first(),
+        page.getByText(/no son cosas para evaluar por tu cuenta/i).first(),
     ).toBeVisible();
-    await expect(page.getByText(/Anotalos y preguntá por ellos/i).first()).toBeVisible();
+    await expect(page.getByText(/preguntá por ellos en la consulta/i).first()).toBeVisible();
 });
 
-test("the accuracy of the model is stated, and as a top-20 claim", async ({ page }) => {
+test("no accuracy figure is promised", async ({ page }) => {
+    // The hit rate moves with the model, the phenotypes and the disease. A
+    // number on screen is read as a promise about this child.
     await runToResults(page);
 
-    // The count is the ranking's real length, not a hardcoded 20: the screen
-    // used to promise 20 while listing 50.
-    await expect(page.getByText(/entre los \d+ sugeridos/i)).toBeVisible();
-    await expect(page.getByText(/no enfermedades ni\s+diagnósticos/i)).toBeVisible();
+    await expect(page.getByText(/9 de cada 10/i)).toHaveCount(0);
+    await expect(page.getByText(/\d+ de cada \d+ casos/i)).toHaveCount(0);
+    await expect(page.getByText(/el primero no es una respuesta/i)).toBeVisible();
+});
+
+test("a reported term counts once, however many annotations it reaches", async ({ page }) => {
+    // "Convulsiones" subsumes six of ARX's annotations. Listing all six made
+    // one thing the family said look like six pieces of evidence.
+    await runToResults(page);
+
+    const card = await openGene(page, "CFTR");
+    const saidRows = card.getByText(/^Dijiste/);
+    const meterCovered = await geneRow(page, "CFTR").getByRole("img").getAttribute("aria-label");
+    const covered = Number(meterCovered?.match(/Coincide con (\d+)/)?.[1] ?? 0);
+
+    // One row per reported term, matching the meter's own numerator.
+    expect(await saidRows.count()).toBe(covered);
 });
 
 test("the technical detail is hidden until the professional view is on", async ({ page }) => {

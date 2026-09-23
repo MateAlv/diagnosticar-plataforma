@@ -311,6 +311,9 @@ const server = http.createServer(async (req, res) => {
           coincidencias: matched,
           frecuentes_no_reportados: all.filter((s) => !reported.has(s.hpo_id.toUpperCase())).slice(0, 5),
           reportados_cubiertos: [...new Set(matched.map((s) => s.hpo_id.toUpperCase()))],
+          coincidencias_por_reporte: matched.map((s) => ({
+            reportado_hpo_id: s.hpo_id.toUpperCase(), exacta: s, especificas: [],
+          })),
         };
         if (body?.view === "professional") entry.tecnico = tecnico;
         profiles[profile.simbolo] = entry;
@@ -351,6 +354,9 @@ const server = http.createServer(async (req, res) => {
       coincidencias,
       frecuentes_no_reportados: noReportados.slice(0, 5),
       reportados_cubiertos: [...new Set(coincidencias.map((s) => s.hpo_id.toUpperCase()))],
+      coincidencias_por_reporte: coincidencias.map((s) => ({
+        reportado_hpo_id: s.hpo_id.toUpperCase(), exacta: s, especificas: [],
+      })),
     };
     if (url.searchParams.get("view") === "professional") body.tecnico = tecnico;
 

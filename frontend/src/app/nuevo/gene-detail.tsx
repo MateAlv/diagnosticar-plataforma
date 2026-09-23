@@ -1,6 +1,11 @@
 "use client";
 
-import { describeFrequency, researchLinks, type GeneProfile, type Symptom } from "@/lib/genes-api";
+import {
+    describeFrequency,
+    researchLinks,
+    type GeneProfile,
+    type MatchedReport,
+} from "@/lib/genes-api";
 import { MatchMeter, MeterCaption } from "./match-meter";
 
 /**
@@ -31,47 +36,83 @@ function stripProvenance(text: string): string {
     return text.replace(/\s*[[(](?:provided by|proporcionado por)[^\])]*[\])]\s*$/i, "").trim();
 }
 
-function MatchedRow({
-    symptom,
+function MatchedReportRow({
+    report,
     reportedWords,
     professional,
 }: {
-    symptom: Symptom;
+    report: MatchedReport;
     reportedWords: Map<string, string>;
     professional: boolean;
 }) {
-    const viaId = symptom.coincide_con?.hpo_id;
-    const said = reportedWords.get((viaId ?? symptom.hpo_id).toUpperCase());
+    const said = reportedWords.get(report.reportado_hpo_id.toUpperCase());
+    const anchor = report.exacta ?? report.especificas[0];
 
     return (
         <li className="border-b border-[var(--lu-border)] px-3.5 py-3 last:border-b-0">
-            {said && (
-                <p className="text-xs text-[var(--lu-subtle)]">
-                    Dijiste <strong className="font-semibold text-[var(--lu-text)]">{said}</strong>
-                </p>
-            )}
+            <p className="text-xs text-[var(--lu-subtle)]">
+                Dijiste <strong className="font-semibold text-[var(--lu-text)]">{said}</strong>
+            </p>
+
             <div className="mt-0.5 flex flex-wrap items-baseline gap-2">
-                <span className="text-sm font-semibold text-[var(--lu-text)]">{symptom.nombre}</span>
-                {professional && (
-                    // The derivation, so a clinician can audit the match rather
-                    // than take it on trust: which term we matched, and which of
-                    // theirs it came from.
+                <span className="text-sm font-semibold text-[var(--lu-text)]">
+                    {report.exacta ? report.exacta.nombre : "Coincidencia parcial"}
+                </span>
+                {professional && anchor && (
                     <span className="font-mono text-[11px] text-[var(--lu-subtle)]">
-                        {symptom.hpo_id}
-                        {viaId && ` ← ${viaId}`}
+                        {anchor.hpo_id}
                     </span>
                 )}
                 <span className="flex-grow" />
-                {symptom.frecuencia_pct !== null && (
+                {report.exacta?.frecuencia_pct != null && (
                     <span className="shrink-0 font-mono text-xs text-[var(--lu-accent-text)]">
-                        {Math.round(symptom.frecuencia_pct)}%
+                        {Math.round(report.exacta.frecuencia_pct)}%
                     </span>
                 )}
             </div>
-            <p className="mt-0.5 text-xs text-[var(--lu-subtle)]">
-                {symptom.coincide_con ? "Más específico que lo que contaste" : "Coincidencia directa"}
-                {describeFrequency(symptom) && ` · ${describeFrequency(symptom)}`}
-            </p>
+
+            {report.exacta ? (
+                <p className="mt-0.5 text-xs text-[var(--lu-subtle)]">
+                    Coincidencia directa
+                    {describeFrequency(report.exacta) && ` · ${describeFrequency(report.exacta)}`}
+                </p>
+            ) : (
+                <p className="mt-0.5 text-xs text-[var(--lu-subtle)]">
+                    Las condiciones de este gen describen formas más específicas de lo que contaste,
+                    no exactamente eso.
+                </p>
+            )}
+
+            {/* The variants beneath what they said. Named as forms *described
+                for the gene's conditions*, never as findings about this
+                patient: several are more severe than the words the family
+                used, and a parent reading "profundo" under their own "retraso
+                del desarrollo" would read it as a verdict. */}
+            {report.especificas.length > 0 && (
+                <details className="mt-1.5">
+                    <summary className="cursor-pointer text-xs text-[var(--lu-accent-text)]">
+                        {report.especificas.length === 1
+                            ? "Estas condiciones describen 1 forma más específica"
+                            : `Estas condiciones describen ${report.especificas.length} formas más específicas`}
+                    </summary>
+                    <ul className="mt-1.5 flex flex-col gap-1 border-l-2 border-[var(--lu-border)] pl-3">
+                        {report.especificas.map((symptom) => (
+                            <li key={symptom.hpo_id} className="flex items-baseline gap-2">
+                                <span className="text-xs text-[var(--lu-subtle)]">{symptom.nombre}</span>
+                                {professional && (
+                                    <span className="font-mono text-[10.5px] text-[var(--lu-subtle)]">
+                                        {symptom.hpo_id}
+                                    </span>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                    <p className="mt-1.5 text-xs leading-relaxed text-[var(--lu-subtle)]">
+                        Son variantes descritas para estas condiciones, no algo que hayas contado ni
+                        que sepamos de este caso.
+                    </p>
+                </details>
+            )}
         </li>
     );
 }
@@ -86,6 +127,7 @@ export function GeneDetail({
     reportedWords,
 }: GeneDetailProps) {
     const matches = profile?.coincidencias ?? [];
+    const reports = profile?.coincidencias_por_reporte ?? [];
     const toAsk = profile?.frecuentes_no_reportados ?? [];
     const summary = profile?.resumen_es ? stripProvenance(profile.resumen_es) : "";
     const covered = profile?.reportados_cubiertos?.length ?? 0;
@@ -132,10 +174,10 @@ export function GeneDetail({
                     <h5 className="text-lg font-semibold text-[var(--lu-text)]">Qué coincide</h5>
                     {matches.length > 0 ? (
                         <ul className="rounded-2xl border border-[var(--lu-accent-light)]">
-                            {matches.map((symptom) => (
-                                <MatchedRow
-                                    key={symptom.hpo_id}
-                                    symptom={symptom}
+                            {reports.map((report) => (
+                                <MatchedReportRow
+                                    key={report.reportado_hpo_id}
+                                    report={report}
                                     reportedWords={reportedWords}
                                     professional={professional}
                                 />
@@ -158,41 +200,6 @@ export function GeneDetail({
                 </div>
 
                 <div className="flex w-full flex-col gap-4 xl:w-[330px] xl:shrink-0">
-                    {toAsk.length > 0 && (
-                        <section>
-                            <h5 className="text-lg font-semibold text-[var(--lu-text)]">
-                                Para preguntar en la consulta
-                            </h5>
-                            {/* Amber, not red: a question, not an alarm. And
-                                questions for a professional — never a checklist
-                                a family scores themselves against. */}
-                            <div className="mt-2.5 rounded-2xl border border-amber-200 bg-amber-50 p-3.5">
-                                <p className="text-xs leading-relaxed text-amber-900">
-                                    Frecuentes en estas condiciones y ausentes en el relato. Anotalos y
-                                    preguntá por ellos; no son cosas para evaluar por tu cuenta.
-                                </p>
-                                <ul>
-                                    {toAsk.map((symptom) => (
-                                        <li
-                                            key={symptom.hpo_id}
-                                            className="mt-2.5 flex items-baseline gap-2 border-t border-amber-200 pt-2.5"
-                                        >
-                                            <span className="text-sm font-semibold text-[var(--lu-text)]">
-                                                {symptom.nombre}
-                                            </span>
-                                            <span className="flex-grow" />
-                                            {symptom.frecuencia_pct !== null && (
-                                                <span className="shrink-0 font-mono text-xs text-amber-800">
-                                                    {Math.round(symptom.frecuencia_pct)}%
-                                                </span>
-                                            )}
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        </section>
-                    )}
-
                     {profile && profile.enfermedades.length > 0 && (
                         <section>
                             <h5 className="text-sm font-semibold text-[var(--lu-text)]">
@@ -221,6 +228,52 @@ export function GeneDetail({
                             <p className="mt-2 text-xs leading-relaxed text-[var(--lu-subtle)]">
                                 Sin orden de relevancia para este caso. La lista puede estar incompleta.
                             </p>
+                        </section>
+                    )}
+
+                    {/* Behind the medical toggle, and only there.
+                        "Preguntá por discapacidad intelectual (88%)" is read by
+                        a parent as a thing to check their child against, however
+                        the panel is worded — the disclaimer does not survive
+                        contact with a frightened reader. A clinician can weigh a
+                        frequency against a presentation; a family is handed a
+                        verdict about a child. The data is public either way, so
+                        this is about who is equipped to read it, not secrecy. */}
+                    {professional && toAsk.length > 0 && (
+                        <section>
+                            <h5 className="text-sm font-semibold text-[var(--lu-text)]">
+                                Síntomas que no reportaste
+                            </h5>
+                            {/* Quiet, not alarming. These are frequent in the
+                                gene's conditions and absent from the account —
+                                worth raising with a doctor, but not a finding,
+                                and never a checklist to self-assess against.
+                                The amber panel shouted that louder than the
+                                matches beside it. */}
+                            <div className="mt-2 rounded-xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-3">
+                                <p className="text-xs leading-relaxed text-[var(--lu-subtle)]">
+                                    Frecuentes en estas condiciones. Anotalos y preguntá por ellos en la
+                                    consulta; no son cosas para evaluar por tu cuenta.
+                                </p>
+                                <ul>
+                                    {toAsk.map((symptom) => (
+                                        <li
+                                            key={symptom.hpo_id}
+                                            className="mt-2.5 flex items-baseline gap-2 border-t border-[var(--lu-border)] pt-2.5"
+                                        >
+                                            <span className="text-sm text-[var(--lu-text)]">
+                                                {symptom.nombre}
+                                            </span>
+                                            <span className="flex-grow" />
+                                            {symptom.frecuencia_pct !== null && (
+                                                <span className="shrink-0 font-mono text-xs text-[var(--lu-text)]">
+                                                    {Math.round(symptom.frecuencia_pct)}%
+                                                </span>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
                         </section>
                     )}
                 </div>
@@ -283,7 +336,7 @@ export function GeneDetail({
             )}
 
             {professional && (
-                <p className="font-mono text-[11px] text-[var(--lu-subtle)]">
+                <p className="font-mono text-xs text-[var(--lu-text)]">
                     score {score.toFixed(3)}
                 </p>
             )}

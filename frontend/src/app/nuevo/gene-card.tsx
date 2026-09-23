@@ -212,32 +212,34 @@ export function GeneCard({
                         </section>
                     )}
 
-                    {toAsk.length > 0 && (
+                    {/* Medical view only: see the note in gene-detail.tsx. */}
+                    {professional && toAsk.length > 0 && (
                         <section className={matches.length > 0 ? "mt-5" : ""}>
                             <h5 className="text-base font-semibold text-[var(--lu-text)]">
-                                Para preguntar en la consulta
+                                Síntomas que no reportaste
                             </h5>
-                            {/* Amber, not red: these are questions, not an alarm.
-                                And questions for a professional — never a checklist
-                                a family scores themselves against. */}
-                            <div className="mt-2 rounded-[14px] border border-amber-200 bg-amber-50 p-3.5">
-                                <p className="text-xs leading-relaxed text-amber-900">
-                                    Estos signos aparecen con frecuencia en las condiciones asociadas
-                                    a este gen y no figuran en lo que nos contaste. Anotalos y
-                                    preguntá por ellos. No son cosas para evaluar por tu cuenta.
+                            {/* Quiet, not alarming: frequent in the gene's
+                                conditions and absent from the account, worth
+                                raising with a doctor but not a finding — and
+                                never a checklist to self-assess against. */}
+                            <div className="mt-2 rounded-[14px] border border-[var(--lu-border)] bg-[var(--lu-surface)] p-3.5">
+                                <p className="text-xs leading-relaxed text-[var(--lu-subtle)]">
+                                    Frecuentes en las condiciones asociadas a este gen. Anotalos y
+                                    preguntá por ellos en la consulta; no son cosas para evaluar por
+                                    tu cuenta.
                                 </p>
                                 <ul className="mt-2">
                                     {toAsk.map((symptom) => (
                                         <li
                                             key={symptom.hpo_id}
-                                            className="mt-2 flex items-baseline gap-2 border-t border-amber-200 pt-2 first:mt-0"
+                                            className="mt-2 flex items-baseline gap-2 border-t border-[var(--lu-border)] pt-2 first:mt-0"
                                         >
-                                            <span className="text-sm font-semibold text-[var(--lu-text)]">
+                                            <span className="text-sm text-[var(--lu-text)]">
                                                 {symptom.nombre}
                                             </span>
                                             <span className="flex-grow" />
                                             {symptom.frecuencia_pct !== null && (
-                                                <span className="shrink-0 font-mono text-xs text-amber-800">
+                                                <span className="shrink-0 font-mono text-xs text-[var(--lu-text)]">
                                                     {Math.round(symptom.frecuencia_pct)}%
                                                 </span>
                                             )}

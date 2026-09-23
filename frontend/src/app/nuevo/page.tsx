@@ -1438,42 +1438,6 @@ function NuevoDiagnosticoScreen() {
                       </div>
                     </div>
 
-                    {/* Specialty ranking detail */}
-                    {!isLowConfidenceResult && genphenSpecialties && genphenSpecialties.specialty_ranking.length > 0 && (
-                      <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
-                        <p className="text-xs uppercase tracking-widest text-[var(--lu-subtle)] mb-4">
-                          Detalle por especialidad
-                        </p>
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm border-collapse">
-                            <thead>
-                              <tr className="border-b border-[var(--lu-border)] text-left text-xs uppercase tracking-wide text-[var(--lu-subtle)]">
-                                <th className="pb-2 pr-6">Especialidad</th>
-                                <th className="pb-2 pr-6 text-right">Genes</th>
-                                <th className="pb-2">Genes candidatos</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-[var(--lu-border)]">
-                              {genphenSpecialties.specialty_ranking.map((row) => (
-                                <tr key={row.specialty}>
-                                  <td className="py-2 pr-6 font-medium text-[var(--lu-text)]">{traducirEspecialidad(row.specialty)}</td>
-                                  <td className="py-2 pr-6 text-right text-[var(--lu-subtle)]">
-                                    {row.matched_genes_count}
-                                  </td>
-                                  <td className="py-2 text-xs text-[var(--lu-subtle)]">{row.genes.join(", ")}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                        {genphenSpecialties.unmapped_genes.length > 0 && (
-                          <p className="mt-4 text-xs text-[var(--lu-subtle)]">
-                            Genes sin especialidad mapeada: {genphenSpecialties.unmapped_genes.join(", ")}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
                     {/* Gene ranking. Master-detail on a wide screen, accordion below it. */}
                     {!isLowConfidenceResult && genphenResults.length > 0 && (
                       <div className="overflow-hidden rounded-3xl border border-[var(--lu-border)] bg-white shadow-sm">
@@ -1526,11 +1490,15 @@ function NuevoDiagnosticoScreen() {
                               </div>
                             )}
 
+                            {/* No accuracy figure. It moves with the model, the
+                                phenotypes and the disease, and a number on
+                                screen would be read as a promise about this
+                                child. The claim that survives is about the
+                                shape of the list, not its hit rate. */}
                             <p className="text-xs leading-relaxed text-[var(--lu-subtle)]">
                               El sistema sugiere <strong className="font-semibold">genes</strong>, no
-                              enfermedades ni diagnósticos. El gen correcto aparece entre los{" "}
-                              {visibleGeneResults.length} sugeridos en aproximadamente 9 de cada 10 casos,
-                              así que lo que importa es el conjunto y no el puesto.
+                              enfermedades ni diagnósticos. Miralos como un conjunto para investigar:
+                              el orden es orientativo y el primero no es una respuesta.
                             </p>
 
                             {/* The model's own order, ungrouped. Splitting the
@@ -1588,6 +1556,42 @@ function NuevoDiagnosticoScreen() {
                             </div>
                           )}
                         </div>
+                      </div>
+                    )}
+
+                    {/* Specialty ranking detail */}
+                    {!isLowConfidenceResult && genphenSpecialties && genphenSpecialties.specialty_ranking.length > 0 && (
+                      <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
+                        <p className="text-xs uppercase tracking-widest text-[var(--lu-subtle)] mb-4">
+                          Detalle por especialidad
+                        </p>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm border-collapse">
+                            <thead>
+                              <tr className="border-b border-[var(--lu-border)] text-left text-xs uppercase tracking-wide text-[var(--lu-subtle)]">
+                                <th className="pb-2 pr-6">Especialidad</th>
+                                <th className="pb-2 pr-6 text-right">Genes</th>
+                                <th className="pb-2">Genes candidatos</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[var(--lu-border)]">
+                              {genphenSpecialties.specialty_ranking.map((row) => (
+                                <tr key={row.specialty}>
+                                  <td className="py-2 pr-6 font-medium text-[var(--lu-text)]">{traducirEspecialidad(row.specialty)}</td>
+                                  <td className="py-2 pr-6 text-right text-[var(--lu-subtle)]">
+                                    {row.matched_genes_count}
+                                  </td>
+                                  <td className="py-2 text-xs text-[var(--lu-subtle)]">{row.genes.join(", ")}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {genphenSpecialties.unmapped_genes.length > 0 && (
+                          <p className="mt-4 text-xs text-[var(--lu-subtle)]">
+                            Genes sin especialidad mapeada: {genphenSpecialties.unmapped_genes.join(", ")}
+                          </p>
+                        )}
                       </div>
                     )}
 

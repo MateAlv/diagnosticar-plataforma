@@ -310,3 +310,35 @@ test('coverage counts reported things engaged, not symptoms matched', () => {
 test('coverage is empty when nothing matched', () => {
     assert.deepEqual(getGeneProfile('SCN1A', ['HP:0004322']).reportados_cubiertos, []);
 });
+
+test('matches are grouped by the reported term, not listed flat', () => {
+    // "Convulsiones" subsumes both of SCN1A's seizure annotations. Listing them
+    // flat made one thing the family said look like two pieces of evidence.
+    const profile = getGeneProfile('SCN1A', ['HP:0001250']);
+
+    assert.equal(profile.coincidencias.length, 2);
+    assert.equal(profile.coincidencias_por_reporte.length, 1);
+
+    const [group] = profile.coincidencias_por_reporte;
+    assert.equal(group.reportado_hpo_id, 'HP:0001250');
+    assert.equal(group.exacta, null, 'nothing reported matched exactly');
+    assert.equal(group.especificas.length, 2);
+});
+
+test('an exact match is kept apart from the terms beneath it', () => {
+    // The distinction is the point: what they reported is evidence, what sits
+    // under it in the ontology is our inference — and often more severe than
+    // the words they used.
+    const profile = getGeneProfile('SCN1A', ['HP:0001250', 'HP:0001263']);
+    const group = profile.coincidencias_por_reporte.find(
+        (entry) => entry.reportado_hpo_id === 'HP:0001263',
+    );
+
+    assert.equal(group.exacta.nombre, 'Retardo global del desarrollo');
+    assert.deepEqual(group.especificas, []);
+});
+
+test('an exact match sorts before a group that only has specific forms', () => {
+    const profile = getGeneProfile('SCN1A', ['HP:0001250', 'HP:0001263']);
+    assert.ok(profile.coincidencias_por_reporte[0].exacta, 'exact group must lead');
+});

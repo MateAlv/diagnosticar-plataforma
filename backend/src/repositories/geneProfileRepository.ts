@@ -46,6 +46,27 @@ export interface Symptom {
     coincide_con?: { hpo_id: string; distancia: number };
 }
 
+/**
+ * One thing the patient reported, and how this gene's annotations meet it.
+ *
+ * Grouped rather than flat because a single reported term can subsume many
+ * annotated ones: "convulsiones" reaches six of ARX's, and listing all six
+ * made one thing the family said look like six pieces of evidence.
+ *
+ * `exacta` is the annotation that *is* the reported term. `especificas` are
+ * the ones beneath it — real, but weaker: they are our inference from the
+ * ontology, not something the family reported. Several are also more severe
+ * than what was described ("retraso global profundo del desarrollo" under a
+ * reported "retraso del desarrollo"), so a caller must not present them as
+ * findings about this patient.
+ */
+export interface MatchedReport {
+    /** The HPO id the patient's own words were mapped to. */
+    reportado_hpo_id: string;
+    exacta: Symptom | null;
+    especificas: Symptom[];
+}
+
 export interface GeneProfile {
     simbolo: string;
     nombre_completo: string | null;
@@ -56,7 +77,10 @@ export interface GeneProfile {
     /** Plain-language rewrite. Generated, unreviewed, and not shown yet. */
     resumen_llano_es: string | null;
     enfermedades: Disease[];
+    /** Flat list, kept for callers that only need the count. */
     coincidencias: Symptom[];
+    /** The same matches, grouped by the reported term each one answers. */
+    coincidencias_por_reporte: MatchedReport[];
     frecuentes_no_reportados: Symptom[];
     total_esperados: number;
     /**
@@ -250,6 +274,36 @@ function findSubsumed(
 }
 
 /**
+ * Fold the flat match list into one entry per reported term.
+ *
+ * Ordered by how much of the reported term each entry accounts for — an exact
+ * match first, then the ones carrying the most specific variants — so the
+ * strongest evidence leads.
+ */
+function groupByReport(matches: Symptom[]): MatchedReport[] {
+    const byReport = new Map<string, MatchedReport>();
+
+    for (const symptom of matches) {
+        const reportedId = (symptom.coincide_con?.hpo_id ?? symptom.hpo_id).toUpperCase();
+        let entry = byReport.get(reportedId);
+        if (!entry) {
+            entry = { reportado_hpo_id: reportedId, exacta: null, especificas: [] };
+            byReport.set(reportedId, entry);
+        }
+        if (symptom.coincide_con) {
+            entry.especificas.push(symptom);
+        } else {
+            entry.exacta = symptom;
+        }
+    }
+
+    return [...byReport.values()].sort((a, b) => {
+        if (Boolean(a.exacta) !== Boolean(b.exacta)) return a.exacta ? -1 : 1;
+        return b.especificas.length - a.especificas.length;
+    });
+}
+
+/**
  * Count, per condition, how many reported phenotypes it accounts for.
  *
  * The results screen has to name one condition next to a gene, and it was
@@ -373,6 +427,7 @@ export function getGeneProfile(
         ),
         coincidencias,
         frecuentes_no_reportados: noReportados.slice(0, MAX_UNREPORTED),
+        coincidencias_por_reporte: groupByReport(coincidencias),
         total_esperados: symptomRows.length,
         reportados_cubiertos: [
             ...new Set(

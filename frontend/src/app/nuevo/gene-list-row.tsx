@@ -119,7 +119,7 @@ export function GeneListRow({
                             />
                             <span className="flex-grow" />
                             {professional && (
-                                <span className="shrink-0 font-mono text-[10.5px] text-[var(--lu-subtle)]">
+                                <span className="shrink-0 font-mono text-xs text-[var(--lu-text)]">
                                     score {score.toFixed(3)}
                                 </span>
                             )}

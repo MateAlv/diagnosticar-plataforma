@@ -48,6 +48,19 @@ export type GeneTechnical = {
     codigo_omim: string[];
 };
 
+/**
+ * One thing the reader reported, and how this gene's annotations meet it.
+ *
+ * `exacta` is the annotation that *is* what they said. `especificas` are the
+ * ones beneath it in the ontology — real, but our inference rather than their
+ * report, and often more severe than the words they used.
+ */
+export type MatchedReport = {
+    reportado_hpo_id: string;
+    exacta: Symptom | null;
+    especificas: Symptom[];
+};
+
 export type GeneProfile = {
     simbolo: string;
     nombre_completo: string | null;
@@ -59,6 +72,7 @@ export type GeneProfile = {
     resumen_llano_es: string | null;
     enfermedades: Disease[];
     coincidencias: Symptom[];
+    coincidencias_por_reporte: MatchedReport[];
     frecuentes_no_reportados: Symptom[];
     total_esperados: number;
     /**

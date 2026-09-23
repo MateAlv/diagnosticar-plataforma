@@ -114,6 +114,19 @@ export async function mockGeneProfiles(page: Page, { available = true } = {}) {
         const all = [...profile.coincidencias, ...profile.frecuentes_no_reportados];
         const { tecnico, ...rest } = profile;
         const coincidencias = all.filter((s) => reported.has(s.hpo_id.toUpperCase()));
+        // Mirrors the backend's grouping: one entry per reported term, so a
+        // single thing the reader said cannot read as several matches.
+        type Grouped = { reportado_hpo_id: string; exacta: SymptomFixture | null; especificas: SymptomFixture[] };
+        const porReporte: Grouped[] = [];
+        for (const symptom of coincidencias) {
+            const id = symptom.hpo_id.toUpperCase();
+            let entry: Grouped | undefined = porReporte.find((e) => e.reportado_hpo_id === id);
+            if (!entry) {
+                entry = { reportado_hpo_id: id, exacta: null, especificas: [] };
+                porReporte.push(entry);
+            }
+            entry.exacta = symptom;
+        }
         const entry: Record<string, unknown> = {
             ...rest,
             coincidencias,
@@ -125,6 +138,7 @@ export async function mockGeneProfiles(page: Page, { available = true } = {}) {
             reportados_cubiertos: [
                 ...new Set(coincidencias.map((s) => s.hpo_id.toUpperCase())),
             ],
+            coincidencias_por_reporte: porReporte,
         };
         if (view === "professional") entry.tecnico = tecnico;
         return entry;
