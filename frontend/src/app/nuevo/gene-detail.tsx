@@ -7,15 +7,10 @@ import {
     type MatchedReport,
 } from "@/lib/genes-api";
 import { ConditionRow, GeneReferenceLinks } from "./gene-links";
-import { MatchMeter, MeterCaption } from "./match-meter";
+import { MeterCaption } from "./match-meter";
 
 /**
- * The selected gene, opened beside the list.
- *
- * On a wide screen the reader should not have to choose between seeing the set
- * and seeing one candidate: the list stays on the left and this fills the rest,
- * so scanning and reading are the same motion. Below the breakpoint the list
- * collapses to accordion rows instead and this component is not used.
+ * Everything we hold about one gene, shown in the modal over the results grid.
  *
  * What it shows, in the reader's order: what lines up with their own report,
  * then what to ask a doctor about, then the conditions as labelled context,
@@ -132,14 +127,13 @@ export function GeneDetail({
     const toAsk = profile?.frecuentes_no_reportados ?? [];
     const summary = profile?.resumen_es ? stripProvenance(profile.resumen_es) : "";
     const covered = profile?.reportados_cubiertos?.length ?? 0;
-    const exact = (profile?.coincidencias_por_reporte ?? []).filter((r) => r.exacta).length;
     const reported = reportedWords.size;
     const totalExpected = profile?.total_esperados ?? 0;
 
     return (
         <article
             aria-label={`Detalle del gen ${symbol}`}
-            className="flex min-w-0 flex-1 flex-col gap-5 px-8 py-6"
+            className="flex min-w-0 flex-1 flex-col gap-5 px-5 py-5 sm:px-8 sm:py-6"
         >
             <div className="flex flex-wrap items-baseline gap-2.5">
                 <h4 className="font-mono text-3xl font-medium text-[var(--lu-text)]">
@@ -161,7 +155,10 @@ export function GeneDetail({
                 )}
                 <span className="flex-grow" />
                 <span className="shrink-0 font-mono text-[11px] text-[var(--lu-subtle)]">
-                    #{rank} de {total}
+                    #{rank} de {total} ·{" "}
+                    <span title="Puntaje del modelo: ordena la lista, no es una probabilidad">
+                        puntaje {score.toFixed(3)}
+                    </span>
                 </span>
                 <MeterCaption
                     covered={covered}
@@ -170,6 +167,10 @@ export function GeneDetail({
                     verbose
                 />
             </div>
+
+            {professional && profile?.nombre_completo && (
+                <p className="-mt-3 text-sm text-[var(--lu-subtle)]">{profile.nombre_completo}</p>
+            )}
 
             <GeneReferenceLinks symbol={symbol} omimGen={profile?.omim_gen} />
 
@@ -343,11 +344,6 @@ export function GeneDetail({
                 </section>
             )}
 
-            {professional && (
-                <p className="font-mono text-xs text-[var(--lu-text)]">
-                    score {score.toFixed(3)}
-                </p>
-            )}
         </article>
     );
 }

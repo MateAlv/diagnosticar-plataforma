@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import {
     mockModelServices,
     mockBackend,
@@ -30,62 +31,19 @@ const TEST_USER = {
 };
 
 /**
- * Wide screens get a master-detail layout and narrow ones an accordion, so a
- * handful of these assertions only make sense on one of the two. This is the
- * breakpoint the page itself uses (Tailwind `lg`).
- */
-function isDesktop(page: Page): boolean {
-    return (page.viewportSize()?.width ?? 0) >= 1024;
-}
-
-/**
- * The pane showing one gene's detail, in whichever layout is on screen: the
- * detail column on a wide screen, the opened accordion row on a narrow one.
- * Both render the same content, so an assertion about that content should not
- * have to know which is which.
- */
-function geneDetail(page: Page, symbol: string) {
-    if (isDesktop(page)) {
-        return page.getByRole("article", { name: `Detalle del gen ${symbol}` });
-    }
-    return page.getByRole("article").filter({ hasText: symbol }).first();
-}
-
-/**
- * The row for `symbol` in the ranking: the selectable list row on a wide
- * screen, the accordion article on a narrow one. This is where the meter and
- * its caption live in both layouts.
+ * The overview card for `symbol` in the results grid. The same in every
+ * viewport: the grid only changes its column count.
  */
 function geneRow(page: Page, symbol: string) {
-    if (isDesktop(page)) {
-        return page.getByRole("button", { name: new RegExp(`Gen ${symbol}\\b`) }).first();
-    }
-    return page.getByRole("article").filter({ hasText: symbol }).first();
+    return page.getByRole("button", { name: new RegExp(`Gen ${symbol}\\b`) }).first();
 }
 
-/** The control that opens `symbol`: the list row itself, or the row's toggle. */
-function geneToggle(page: Page, symbol: string) {
-    if (isDesktop(page)) return geneRow(page, symbol);
-    return geneRow(page, symbol).getByRole("button", { name: new RegExp(symbol) }).first();
-}
-
-/** Opens `symbol` in whichever layout is on screen. */
+/** Opens `symbol`'s detail modal and returns it. */
 async function openGene(page: Page, symbol: string) {
-    const control = geneToggle(page, symbol);
-    await expect(control).toBeVisible();
-
-    // Wide screens select a row (aria-current); narrow ones disclose it
-    // (aria-expanded). Either way, settle on the open state rather than
-    // sampling it once: gene profiles arrive after the ranking and regroup it,
-    // so a row read as closed can open a moment later and the click then
-    // closes it again.
-    const attr = isDesktop(page) ? "aria-current" : "aria-expanded";
-    await expect(async () => {
-        if ((await control.getAttribute(attr)) !== "true") await control.click();
-        await expect(control).toHaveAttribute(attr, "true", { timeout: 1_000 });
-    }).toPass({ timeout: 15_000 });
-
-    return geneDetail(page, symbol);
+    await geneRow(page, symbol).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("article", { name: `Detalle del gen ${symbol}` })).toBeVisible();
+    return dialog;
 }
 
 async function runToResults(page: Page) {
@@ -120,38 +78,30 @@ test("a gene card shows the curated description", async ({ page }) => {
     const errors = collectPageErrors(page);
     await runToResults(page);
 
-    await expect(page.getByText(/casete de unión a ATP/)).toBeVisible();
+    const card = await openGene(page, "CFTR");
+    await expect(card.getByText(/casete de unión a ATP/)).toBeVisible();
     expect(errors).toEqual([]);
 });
 
-test("no condition name appears on a collapsed row", async ({ page }) => {
-    test.skip(isDesktop(page), "accordion is the narrow-screen layout");
-    // Our stored conditions can be the wrong ones — TCF4 holds only a type 2
-    // diabetes susceptibility locus — and on a row the condition would be the
-    // most legible text, so it would read as the answer. The gene identifies
-    // the row; conditions live inside.
+test("no condition name appears on a card", async ({ page }) => {
+    // On a card the condition would be the most legible text, so it would read
+    // as the answer. The gene identifies the card; conditions live inside.
     await runToResults(page);
 
-    const collapsed = page.getByRole("article").filter({ hasText: "SCNN1A" }).first();
-    await expect(collapsed.getByRole("button", { name: /SCNN1A/ })).toHaveAttribute(
-        "aria-expanded",
-        "false",
-    );
-    await expect(collapsed.getByText("Pseudohipoaldosteronismo tipo 1")).toHaveCount(0);
+    await expect(geneRow(page, "SCNN1A")).toBeVisible();
+    await expect(page.getByText("Pseudohipoaldosteronismo tipo 1")).toHaveCount(0);
+    await expect(page.getByText("Fibrosis quística")).toHaveCount(0);
 });
 
 test("conditions appear inside, labelled as unordered and possibly incomplete", async ({ page }) => {
-    test.skip(isDesktop(page), "accordion is the narrow-screen layout");
     // The model does not predict diseases. Presenting one as the headline would
     // pass our own OMIM annotation off as the model's output.
     await runToResults(page);
 
     const card = await openGene(page, "CFTR");
     await expect(card.getByRole("heading", { name: /CFTR/ })).toBeVisible();
-    await expect(
-        card.getByRole("heading", { name: "Condiciones asociadas a este gen" }),
-    ).toBeVisible();
-    await expect(card.getByText(/No están ordenadas por relevancia/)).toBeVisible();
+    await expect(card.getByRole("heading", { name: /Condiciones asociadas/ })).toBeVisible();
+    await expect(card.getByText(/Sin orden de relevancia/)).toBeVisible();
     await expect(card.getByText(/puede estar incompleta/)).toBeVisible();
     await expect(card.getByText("Fibrosis quística").first()).toBeVisible();
 });
@@ -188,10 +138,9 @@ test("unreported signs are framed as questions, never as a self-check", async ({
     await runToResults(page);
     await page.getByLabel("Ver detalle médico").check();
 
-    await expect(
-        page.getByText(/no son cosas para evaluar por tu cuenta/i).first(),
-    ).toBeVisible();
-    await expect(page.getByText(/preguntá por ellos en la consulta/i).first()).toBeVisible();
+    const card = await openGene(page, "CFTR");
+    await expect(card.getByText(/no son cosas para evaluar por tu cuenta/i)).toBeVisible();
+    await expect(card.getByText(/preguntá por ellos en la consulta/i)).toBeVisible();
 });
 
 test("no accuracy figure is promised", async ({ page }) => {
@@ -209,36 +158,43 @@ test("a reported term counts once, however many annotations it reaches", async (
     // one thing the family said look like six pieces of evidence.
     await runToResults(page);
 
+    // Read before opening: the modal hides the grid from the accessibility
+    // tree. And only once the profile has arrived, or the meter reads 0.
+    const meter = geneRow(page, "CFTR").getByRole("img", { name: /Coincide con \d+/ });
+    await expect(meter).toBeVisible();
+    const covered = Number((await meter.getAttribute("aria-label"))?.match(/Coincide con (\d+)/)?.[1]);
     const card = await openGene(page, "CFTR");
-    const saidRows = card.getByText(/^Dijiste/);
-    const meterCovered = await geneRow(page, "CFTR").getByRole("img").getAttribute("aria-label");
-    const covered = Number(meterCovered?.match(/Coincide con (\d+)/)?.[1] ?? 0);
 
     // One row per reported term, matching the meter's own numerator.
-    expect(await saidRows.count()).toBe(covered);
+    await expect(card.getByText(/^Dijiste/)).toHaveCount(covered);
 });
 
 test("the technical detail is hidden until the professional view is on", async ({ page }) => {
-    // The rule is about what reaches the page, not about the widget that
-    // reveals it: the wide layout shows this inline, the narrow one behind a
-    // toggle, and neither may leak it with the box unchecked.
+    // The rule is about what reaches the page: neither the cards nor the
+    // modal may carry it with the box unchecked.
     await runToResults(page);
+    await page.getByLabel("Ver detalle médico").uncheck();
 
-    await expect(page.getByText(/score 0\./)).toHaveCount(0);
-    await expect(page.getByText(/Puntaje del modelo/)).toHaveCount(0);
-    await expect(page.getByText("ABCC7")).toHaveCount(0);
+    let card = await openGene(page, "CFTR");
+    await expect(card.getByText("ABCC7")).toHaveCount(0);
+    await expect(card.getByText(/Función de la proteína/)).toHaveCount(0);
+    await expect(page.getByText("CF transmembrane conductance regulator")).toHaveCount(0);
+    await page.keyboard.press("Escape");
 
     await page.getByLabel("Ver detalle médico").check();
 
-    const card = await openGene(page, "CFTR");
-    if (isDesktop(page)) {
-        await expect(card.getByText(/ABCC7/)).toBeVisible();
-        await expect(card.getByText(/score 0\./)).toBeVisible();
-    } else {
-        await card.getByRole("button", { name: /Ver detalle técnico/ }).click();
-        await expect(card.getByText(/Puntaje del modelo/)).toBeVisible();
-        await expect(card.getByText(/Otros nombres/)).toBeVisible();
-    }
+    card = await openGene(page, "CFTR");
+    await expect(card.getByText(/ABCC7/)).toBeVisible();
+    await expect(card.getByText("CF transmembrane conductance regulator")).toBeVisible();
+});
+
+test("the model's score is on the card, labelled as an ordering and not a probability", async ({ page }) => {
+    await runToResults(page);
+    await page.getByLabel("Ver detalle médico").uncheck();
+
+    const score = geneRow(page, "CFTR").getByText(/^puntaje 0\.\d{3}$/);
+    await expect(score).toBeVisible();
+    await expect(score).toHaveAttribute("title", /no es una probabilidad/);
 });
 
 test("the professional view is remembered across visits", async ({ page }) => {
@@ -251,7 +207,6 @@ test("the professional view is remembered across visits", async ({ page }) => {
 });
 
 test("a gene without a description still appears in the ranking", async ({ page }) => {
-    test.skip(isDesktop(page), "accordion is the narrow-screen layout");
     // The model ranks over a gene set that can move ahead of the description
     // database. Losing the prose must never cost the user the result.
     await mockGeneProfiles(page, { available: false });
@@ -300,40 +255,14 @@ test("the technical view adds the curated database links", async ({ page }) => {
 
 test("every link opens safely in a new tab", async ({ page }) => {
     await runToResults(page);
+    await page.getByLabel("Ver detalle médico").check();
 
-    const links = page.getByRole("article").first().getByRole("link");
+    const links = (await openGene(page, "CFTR")).getByRole("link");
+    expect(await links.count()).toBeGreaterThan(0);
     for (const link of await links.all()) {
         await expect(link).toHaveAttribute("target", "_blank");
         await expect(link).toHaveAttribute("rel", /noopener/);
     }
-});
-
-test("a long description is clamped until the reader opens it", async ({ page }) => {
-    test.skip(isDesktop(page), "accordion is the narrow-screen layout");
-    // Half the curated summaries run past 600 characters and some reach 3,900.
-    // Rendered in full they bury the symptom comparison below the fold.
-    await runToResults(page);
-
-    const card = await openGene(page, "CFTR");
-    const expand = card.getByRole("button", { name: /Seguir leyendo/ });
-    await expect(expand).toBeVisible();
-
-    const clamped = card.locator("p.line-clamp-3");
-    await expect(clamped).toHaveCount(1);
-
-    await expand.click();
-    await expect(card.locator("p.line-clamp-3")).toHaveCount(0);
-    await expect(card.getByRole("button", { name: /Ver menos/ })).toBeVisible();
-});
-
-test("the summary opens closed, so 'Ver menos' never shows on first render", async ({ page }) => {
-    test.skip(isDesktop(page), "accordion is the narrow-screen layout");
-    // The label used to be computed from a state that did not match the clamp,
-    // so cards nobody had touched offered to collapse themselves.
-    await runToResults(page);
-
-    await expect(page.getByRole("button", { name: /^Ver menos$/ })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Seguir leyendo/ }).first()).toBeVisible();
 });
 
 test("the ranking keeps the model's order, ungrouped", async ({ page }) => {
@@ -346,8 +275,10 @@ test("the ranking keeps the model's order, ungrouped", async ({ page }) => {
     await expect(page.getByRole("heading", { name: /Sin relación con lo que contaste/ })).toHaveCount(0);
     await expect(page.getByText(/no los descarta/)).toHaveCount(0);
 
-    // The model's first gene is the one that opens.
-    await expect(geneRow(page, "CFTR")).toBeVisible();
+    const symbols = await page
+        .locator("[data-gene-card]")
+        .evaluateAll((cards) => cards.map((card) => card.getAttribute("data-gene-card")));
+    expect(symbols).toEqual(["CFTR", "DNAH5", "SCNN1A"]);
 });
 
 test("a gene with no symptom data still says so, without a heading to explain it", async ({ page }) => {
@@ -371,31 +302,7 @@ test("the locus rides with the medical detail, not with the gene's identity", as
     await expect(page.getByText("7q31.2").first()).toBeVisible();
 });
 
-test("rows open independently, so two candidates can be compared", async ({ page }) => {
-    test.skip(isDesktop(page), "accordion is the narrow-screen layout");
-    await runToResults(page);
-
-    const first = page.getByRole("article").filter({ hasText: "CFTR" }).first();
-    await expect(first.getByRole("button", { name: /CFTR/ })).toHaveAttribute(
-        "aria-expanded",
-        "true",
-    );
-
-    const second = page.getByRole("article").filter({ hasText: "SCNN1A" }).first();
-    const toggle = second.getByRole("button", { name: /SCNN1A/ });
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    // Opening one must not close another.
-    await expect(first.getByRole("button", { name: /CFTR/ })).toHaveAttribute(
-        "aria-expanded",
-        "true",
-    );
-});
-
 test("the symptom comparison comes before the gene's biology", async ({ page }) => {
-    test.skip(isDesktop(page), "accordion is the narrow-screen layout");
     // The reader's question is "does this match my child", not "what does this
     // protein do". The summary used to open the card and run past 1,000 chars.
     await runToResults(page);
@@ -508,4 +415,48 @@ test("the gene opens GeneCards and OMIM, and each condition its own OMIM entry",
     const condition = detail.getByRole("link", { name: /Fibrosis quística/ });
     await expect(condition).toHaveAttribute("href", "https://www.omim.org/entry/219700");
     await expect(condition).toHaveAttribute("target", "_blank");
+});
+
+test("a card shows what it matched, in small type, before anything is opened", async ({ page }) => {
+    await runToResults(page);
+
+    await expect(geneRow(page, "CFTR").getByText("Infecciones respiratorias recurrentes")).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("the modal steps through the ranking and closes back to the grid", async ({ page }) => {
+    await runToResults(page);
+    const dialog = await openGene(page, "CFTR");
+
+    await expect(dialog.getByRole("button", { name: /Gen anterior/ })).toBeDisabled();
+    await dialog.getByRole("button", { name: /Gen siguiente, DNAH5/ }).click();
+    await expect(dialog.getByRole("article", { name: "Detalle del gen DNAH5" })).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    // Focus lands on the card of the gene last shown, not the top of the page.
+    await expect(geneRow(page, "DNAH5")).toBeFocused();
+});
+
+test("the grid and the open modal pass the serious accessibility rules, contrast included", async ({ page }) => {
+    // New surfaces, so no inherited contrast debt: small text uses
+    // --lu-accent-text, never the accent itself. Reduced motion, because axe
+    // measures contrast mid-fade otherwise and blames the text.
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await runToResults(page);
+    await page.getByLabel("Ver detalle médico").check();
+
+    const serious = async (include: string) =>
+        (
+            await new AxeBuilder({ page })
+                .include(include)
+                .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+                .analyze()
+        ).violations
+            .filter((v) => v.impact === "serious" || v.impact === "critical")
+            .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
+
+    expect(await serious("[data-gene-card]")).toEqual([]);
+    await openGene(page, "CFTR");
+    expect(await serious('[role="dialog"]')).toEqual([]);
 });

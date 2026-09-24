@@ -92,10 +92,8 @@ const defaultSymptoms: Symptom[] = [
   { description: "Cambios en peso", code: "HP:0004324" },
 ];
 
-import { GeneCard } from "./gene-card";
-import { GeneDetail } from "./gene-detail";
-import { GeneListRow } from "./gene-list-row";
-import { useWideScreen } from "./use-wide-screen";
+import { GeneModal } from "./gene-modal";
+import { GeneOverviewCard } from "./gene-overview-card";
 import { fetchGeneProfiles, type GeneProfile } from "@/lib/genes-api";
 
 const PROFESSIONAL_VIEW_KEY = "diagnosticar:vista-profesional";
@@ -412,8 +410,8 @@ function NuevoDiagnosticoScreen() {
   const [geneProfiles, setGeneProfiles] = useState<Map<string, GeneProfile>>(new Map());
   const [professionalView, setProfessionalView] = useState(false);
 
+  /** The gene open in the detail modal, or null with the grid alone on screen. */
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
-  const wideScreen = useWideScreen();
 
   /**
    * The ranking in the model's own order.
@@ -433,15 +431,10 @@ function NuevoDiagnosticoScreen() {
     [visibleGeneResults],
   );
 
-  /**
-   * The gene open in the detail pane: the selected one, or the model's first.
-   * Falls back when the selected symbol leaves the ranking, which a new run
-   * does.
-   */
-  const selectedGene = useMemo(() => {
-    if (orderedGenes.length === 0) return null;
-    return orderedGenes.find((entry) => entry.symbol === selectedSymbol) ?? orderedGenes[0];
-  }, [orderedGenes, selectedSymbol]);
+  const modalEntries = useMemo(
+    () => orderedGenes.map(({ gene, symbol, rank }) => ({ symbol, rank, score: Number(gene.score) })),
+    [orderedGenes],
+  );
 
   const demoPrimaryGene = isDemoMode ? genphenResults[0] : null;
 
@@ -1438,7 +1431,7 @@ function NuevoDiagnosticoScreen() {
                       </div>
                     </div>
 
-                    {/* Gene ranking. Master-detail on a wide screen, accordion below it. */}
+                    {/* Gene ranking: a grid of overview cards, each opening the full detail in a modal. */}
                     {!isLowConfidenceResult && genphenResults.length > 0 && (
                       <div className="overflow-hidden rounded-3xl border border-[var(--lu-border)] bg-white shadow-sm">
                         <div className="flex flex-wrap items-center gap-4 border-b border-[var(--lu-border)] bg-[var(--lu-surface)] px-6 py-4">
@@ -1470,92 +1463,66 @@ function NuevoDiagnosticoScreen() {
                           </label>
                         </div>
 
-                        <div className="flex flex-col lg:h-[min(820px,calc(100vh-13rem))] lg:flex-row lg:items-stretch">
-                          <div className="flex flex-col gap-3 px-6 py-5 lg:w-[420px] lg:shrink-0 lg:overflow-hidden lg:border-r lg:border-[var(--lu-border)]">
-                            {reportedWords.size > 0 && (
-                              <div className="flex flex-col gap-2 border-b border-[var(--lu-border)] pb-4">
-                                <p className="text-xs font-semibold text-[var(--lu-text)]">
-                                  Lo que nos contaste
-                                </p>
-                                <ul className="flex flex-wrap gap-1.5">
-                                  {[...reportedWords.entries()].map(([code, said]) => (
-                                    <li
-                                      key={code}
-                                      className="rounded-full border border-[var(--lu-border)] bg-[var(--lu-surface)] px-2.5 py-1 text-xs text-[var(--lu-text)]"
-                                    >
-                                      {said}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-
-                            {/* No accuracy figure. It moves with the model, the
-                                phenotypes and the disease, and a number on
-                                screen would be read as a promise about this
-                                child. The claim that survives is about the
-                                shape of the list, not its hit rate. */}
-                            <p className="text-xs leading-relaxed text-[var(--lu-subtle)]">
-                              El sistema sugiere <strong className="font-semibold">genes</strong>, no
-                              enfermedades ni diagnósticos. Miralos como un conjunto para investigar:
-                              el orden es orientativo y el primero no es una respuesta.
-                            </p>
-
-                            {/* The model's own order, ungrouped. Splitting the
-                                ranking put the top-scoring genes below a fold
-                                and made a gene with no symptom overlap look
-                                like an apology; the overlap is already on every
-                                row, so it does not need a heading too. */}
-                            {wideScreen ? (
-                              <ul className="-mr-2 flex flex-1 flex-col gap-2.5 overflow-y-auto pr-2">
-                                {orderedGenes.map(({ gene, rank, symbol }) => (
-                                  <GeneListRow
-                                    key={`${gene.gene_id}-${rank}`}
-                                    symbol={symbol}
-                                    rank={rank}
-                                    total={visibleGeneResults.length}
-                                    score={Number(gene.score)}
-                                    profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
-                                    professional={professionalView}
-                                    reportedWords={reportedWords}
-                                    selected={selectedGene?.symbol === symbol}
-                                    onSelect={() => setSelectedSymbol(symbol)}
-                                  />
+                        <div className="flex flex-col gap-4 px-6 py-5">
+                          {reportedWords.size > 0 && (
+                            <div className="flex flex-col gap-2 border-b border-[var(--lu-border)] pb-4">
+                              <p className="text-xs font-semibold text-[var(--lu-text)]">
+                                Lo que nos contaste
+                              </p>
+                              <ul className="flex flex-wrap gap-1.5">
+                                {[...reportedWords.entries()].map(([code, said]) => (
+                                  <li
+                                    key={code}
+                                    className="rounded-full border border-[var(--lu-border)] bg-[var(--lu-surface)] px-2.5 py-1 text-xs text-[var(--lu-text)]"
+                                  >
+                                    {said}
+                                  </li>
                                 ))}
                               </ul>
-                            ) : (
-                              <div className="space-y-2.5">
-                                {orderedGenes.map(({ gene, rank, symbol }, index) => (
-                                  <GeneCard
-                                    key={`${gene.gene_id}-${rank}`}
-                                    symbol={symbol}
-                                    rank={rank}
-                                    total={visibleGeneResults.length}
-                                    score={Number(gene.score)}
-                                    profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
-                                    professional={professionalView}
-                                    reportedWords={reportedWords}
-                                    defaultOpen={index === 0}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {wideScreen && selectedGene && (
-                            <div className="flex min-w-0 flex-1 overflow-y-auto">
-                              <GeneDetail
-                                symbol={selectedGene.symbol}
-                                rank={selectedGene.rank}
-                                total={visibleGeneResults.length}
-                                score={Number(selectedGene.gene.score)}
-                                profile={geneProfiles.get(selectedGene.symbol.toUpperCase()) ?? null}
-                                professional={professionalView}
-                                reportedWords={reportedWords}
-                              />
                             </div>
                           )}
+
+                          {/* No accuracy figure. It moves with the model, the
+                              phenotypes and the disease, and a number on
+                              screen would be read as a promise about this
+                              child. The claim that survives is about the
+                              shape of the list, not its hit rate. */}
+                          <p className="text-xs leading-relaxed text-[var(--lu-subtle)]">
+                            El sistema sugiere <strong className="font-semibold">genes</strong>, no
+                            enfermedades ni diagnósticos. Miralos como un conjunto para investigar:
+                            el orden es orientativo y el primero no es una respuesta.
+                          </p>
+
+                          {/* The model's own order, ungrouped. Splitting the
+                              ranking put the top-scoring genes below a fold
+                              and made a gene with no symptom overlap look
+                              like an apology; the overlap is already on every
+                              card, so it does not need a heading too. */}
+                          <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                            {orderedGenes.map(({ gene, rank, symbol }) => (
+                              <GeneOverviewCard
+                                key={`${gene.gene_id}-${rank}`}
+                                symbol={symbol}
+                                rank={rank}
+                                total={visibleGeneResults.length}
+                                score={Number(gene.score)}
+                                profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
+                                professional={professionalView}
+                                reportedWords={reportedWords}
+                                onOpen={() => setSelectedSymbol(symbol)}
+                              />
+                            ))}
+                          </ul>
                         </div>
+
+                        <GeneModal
+                          entries={modalEntries}
+                          openSymbol={selectedSymbol}
+                          onOpenSymbol={setSelectedSymbol}
+                          profiles={geneProfiles}
+                          professional={professionalView}
+                          reportedWords={reportedWords}
+                        />
                       </div>
                     )}
 
