@@ -108,8 +108,8 @@ function MatchedReportRow({
                         ))}
                     </ul>
                     <p className="mt-1.5 text-xs leading-relaxed text-[var(--lu-subtle)]">
-                        Son variantes descritas para estas condiciones, no algo que hayas contado ni
-                        que sepamos de este caso.
+                        Son manifestaciones descritas para estas condiciones, no algo que hayas
+                        contado ni que sepamos de este caso.
                     </p>
                 </details>
             )}
@@ -131,6 +131,7 @@ export function GeneDetail({
     const toAsk = profile?.frecuentes_no_reportados ?? [];
     const summary = profile?.resumen_es ? stripProvenance(profile.resumen_es) : "";
     const covered = profile?.reportados_cubiertos?.length ?? 0;
+    const exact = (profile?.coincidencias_por_reporte ?? []).filter((r) => r.exacta).length;
     const reported = reportedWords.size;
     const totalExpected = profile?.total_esperados ?? 0;
 
@@ -184,11 +185,24 @@ export function GeneDetail({
                             ))}
                         </ul>
                     ) : (
-                        <p className="text-sm leading-relaxed text-[var(--lu-subtle)]">
-                            {totalExpected === 0
-                                ? "No tenemos síntomas descritos para este gen, así que no hay nada que comparar. Eso no es evidencia en contra."
-                                : `Ninguno de los ${totalExpected} síntomas descritos para este gen coincide con lo que contaste. Sigue dentro del grupo sugerido.`}
-                        </p>
+                        // Two different situations, and conflating them misleads.
+                        // Neither says the model was wrong: it does not report
+                        // why it ranked anything, so we cannot claim it found a
+                        // similarity — only that our own comparison came up
+                        // empty, and that the comparison has known gaps.
+                        <div className="flex flex-col gap-2">
+                            <p className="text-sm leading-relaxed text-[var(--lu-subtle)]">
+                                {totalExpected === 0
+                                    ? "Todavía no tenemos síntomas descritos para este gen, así que no hay nada que comparar. El hueco es nuestro, no del gen."
+                                    : `Ninguno de los ${totalExpected} síntomas que tenemos descritos para este gen coincide con lo que contaste.`}
+                            </p>
+                            <p className="text-xs leading-relaxed text-[var(--lu-subtle)]">
+                                El modelo lo incluyó igual. No informa por qué ordena como ordena, así
+                                que no podemos decirte qué vio en este caso — y nuestra comparación
+                                mira solo los síntomas descritos para las condiciones que tenemos
+                                asociadas, que puede estar incompleta.
+                            </p>
+                        </div>
                     )}
                     {professional && matches.length > 0 && (
                         <p className="text-xs leading-relaxed text-[var(--lu-subtle)]">

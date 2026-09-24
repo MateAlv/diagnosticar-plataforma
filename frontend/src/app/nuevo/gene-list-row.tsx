@@ -39,6 +39,7 @@ export function GeneListRow({
     onSelect,
 }: GeneListRowProps) {
     const covered = profile?.reportados_cubiertos?.length ?? 0;
+    const exact = (profile?.coincidencias_por_reporte ?? []).filter((r) => r.exacta).length;
     const reported = reportedWords.size;
     const totalExpected = profile?.total_esperados ?? 0;
     const state = meterState(covered, totalExpected);
@@ -109,6 +110,7 @@ export function GeneListRow({
                         <span className="flex w-full items-center gap-2.5">
                             <MatchMeter
                                 covered={covered}
+                                exact={exact}
                                 reported={reported}
                                 totalExpected={totalExpected}
                             />

@@ -28,12 +28,15 @@ export function meterState(covered: number, totalExpected: number): MeterState {
 
 export function MatchMeter({
     covered,
+    exact,
     reported,
     totalExpected,
     size = "sm",
 }: {
-    /** How many reported phenotypes this gene engages. */
+    /** How many reported phenotypes this gene engages, exactly or partially. */
     covered: number;
+    /** Of those, how many the gene's conditions describe exactly. */
+    exact: number;
     /** How many the reader described in total. */
     reported: number;
     /** Expected symptoms we hold for the gene; 0 means we cannot compare. */
@@ -43,33 +46,46 @@ export function MatchMeter({
     const state = meterState(covered, totalExpected);
     const segments = Math.max(reported, 1);
     const width = size === "lg" ? "w-[26px] h-2" : "w-[22px] h-[7px]";
+    const partial = Math.max(covered - exact, 0);
 
     const label =
         state === "nodata"
             ? "Sin datos de síntomas para este gen"
             : covered === 0
               ? `No coincide con ninguna de las ${reported} cosas que contaste`
-              : `Coincide con ${covered} de las ${reported} cosas que contaste`;
+              : partial > 0
+                ? `Coincide con ${covered} de las ${reported} cosas que contaste, ${partial} de forma parcial`
+                : `Coincide con ${covered} de las ${reported} cosas que contaste`;
 
     return (
         <span className="flex shrink-0 gap-[3px]" role="img" aria-label={label}>
             {Array.from({ length: segments }, (_, index) => (
                 <span
                     key={index}
-                    className={`${width} shrink-0 rounded-full ${
+                    className={`${width} shrink-0 overflow-hidden rounded-full ${
                         state === "nodata"
                             ? // Dashed, not filled: the gap is ours, not the
                               // gene's, and the shape carries that without
                               // relying on colour.
                               "border border-dashed border-[var(--lu-subtle)] bg-transparent"
-                            : index < covered
-                              ? "bg-[var(--lu-accent)]"
-                              : // Bordered as well as filled, so an empty
-                                // segment stays visible on the grey surface a
-                                // no-match row uses.
-                                "border border-[var(--lu-border-strong)] bg-[var(--lu-border-strong)]"
+                            : // Bordered as well as filled, so an empty segment
+                              // stays visible on the grey surface a no-match row
+                              // uses.
+                              "border border-[var(--lu-border-strong)] bg-[var(--lu-border-strong)]"
                     }`}
-                />
+                >
+                    {/* Exact segments fill; partial ones fill half. A match
+                        reached through the ontology is weaker evidence than
+                        one the conditions name outright, and a full segment
+                        for both overstated it. */}
+                    {state !== "nodata" && index < covered && (
+                        <span
+                            className={`block h-full bg-[var(--lu-accent)] ${
+                                index < exact ? "w-full" : "w-1/2"
+                            }`}
+                        />
+                    )}
+                </span>
             ))}
         </span>
     );
