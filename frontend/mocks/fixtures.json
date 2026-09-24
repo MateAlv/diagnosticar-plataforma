@@ -156,6 +156,7 @@
       "nombre_completo": "CF transmembrane conductance regulator",
       "cromosoma": "7",
       "ubicacion": "7q31.2",
+      "omim_gen": "602421",
       "resumen_llano_es": "Este gen da las instrucciones para fabricar una proteína que funciona como un canal en las células. Ayuda a controlar el paso de sales y agua en los tejidos que recubren el cuerpo y sus órganos.",
       "enfermedades": [
         {
@@ -210,6 +211,7 @@
       "nombre_completo": "sodium channel epithelial 1 subunit alpha",
       "cromosoma": "12",
       "ubicacion": "12p13.31",
+      "omim_gen": "600228",
       "resumen_llano_es": "Este gen produce una parte de un canal que deja entrar sodio a las células de varios tejidos.",
       "enfermedades": [
         {

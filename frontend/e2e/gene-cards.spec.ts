@@ -490,3 +490,22 @@ test("symptoms added by hand are compared, not ignored", async ({ page }) => {
 
     await expect(geneRow(page, "CFTR").getByText(/1 de 1/)).toBeVisible();
 });
+
+test("the gene opens GeneCards and OMIM, and each condition its own OMIM entry", async ({ page }) => {
+    await runToResults(page);
+    const detail = await openGene(page, "CFTR");
+
+    await expect(detail.getByRole("link", { name: /^GeneCards/ })).toHaveAttribute(
+        "href",
+        "https://www.genecards.org/cgi-bin/carddisp.pl?gene=CFTR",
+    );
+    // The gene's own entry, not its disease's: 602421 is CFTR, 219700 is
+    // cystic fibrosis.
+    await expect(detail.getByRole("link", { name: /^OMIM/ })).toHaveAttribute(
+        "href",
+        "https://www.omim.org/entry/602421",
+    );
+    const condition = detail.getByRole("link", { name: /Fibrosis quística/ });
+    await expect(condition).toHaveAttribute("href", "https://www.omim.org/entry/219700");
+    await expect(condition).toHaveAttribute("target", "_blank");
+});

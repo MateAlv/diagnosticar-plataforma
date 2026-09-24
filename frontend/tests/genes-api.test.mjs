@@ -32,7 +32,7 @@ function load(fetchImpl) {
   return new Function(
     'fetch',
     'process',
-    `${body}; return { fetchGeneProfile, fetchGeneProfiles, describeFrequency, researchLinks };`,
+    `${body}; return { fetchGeneProfile, fetchGeneProfiles, describeFrequency, researchLinks, geneReferenceLinks, omimUrl };`,
   )(fetchImpl, { env: { NEXT_PUBLIC_API_URL: 'http://api.test' } });
 }
 
@@ -210,14 +210,42 @@ test('Spanish patient-facing sources come before the English databases', () => {
 test('links are built only from identifiers the profile actually has', () => {
   const { researchLinks } = load(ok);
 
-  const withOmim = researchLinks(LINKED).map((l) => l.url);
-  assert.ok(withOmim.some((u) => u.includes('omim.org/entry/219700')));
-
-  // A gene with no disease and no references still gets the Spanish searches,
-  // and nothing is invented for the identifiers it lacks.
-  const bare = researchLinks({ ...LINKED, enfermedades: [], referencias: {} });
+  // A gene with no references still gets the Spanish searches, and nothing is
+  // invented for the identifiers it lacks.
+  const bare = researchLinks({ ...LINKED, referencias: {} });
   assert.ok(bare.every((l) => l.spanish));
-  assert.ok(!bare.some((u) => u.url.includes('omim.org')));
+});
+
+test('conditions are not repeated among the reading links', () => {
+  // Each condition row opens its own OMIM entry now.
+  const { researchLinks } = load(ok);
+  assert.ok(!researchLinks(LINKED).some((l) => l.url.includes('omim.org')));
+});
+
+test('the gene links to GeneCards by symbol and to its own OMIM entry', () => {
+  const { geneReferenceLinks } = load(ok);
+  const urls = geneReferenceLinks('TCF4', '602272').map((l) => l.url);
+  assert.deepEqual(urls, [
+    'https://www.genecards.org/cgi-bin/carddisp.pl?gene=TCF4',
+    'https://www.omim.org/entry/602272',
+  ]);
+});
+
+test('a gene without an OMIM entry still gets GeneCards, and no OMIM link', () => {
+  // Linking one of its disease numbers instead would open the wrong page.
+  const { geneReferenceLinks } = load(ok);
+  for (const missing of [null, undefined, '']) {
+    const links = geneReferenceLinks('DUX4L1', missing);
+    assert.deepEqual(links.map((l) => l.label), ['GeneCards']);
+  }
+});
+
+test('only a six-digit MIM number becomes an OMIM link', () => {
+  const { omimUrl } = load(ok);
+  assert.equal(omimUrl('610954'), 'https://www.omim.org/entry/610954');
+  for (const bad of ['', '61095', 'OMIM:610954', '610954/', null]) {
+    assert.equal(omimUrl(bad), null, `${bad} made a link`);
+  }
 });
 
 test('the gene symbol is URL-encoded into every search', () => {

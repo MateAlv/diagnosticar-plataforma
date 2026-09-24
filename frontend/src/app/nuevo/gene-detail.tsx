@@ -6,6 +6,7 @@ import {
     type GeneProfile,
     type MatchedReport,
 } from "@/lib/genes-api";
+import { ConditionRow, GeneReferenceLinks } from "./gene-links";
 import { MatchMeter, MeterCaption } from "./match-meter";
 
 /**
@@ -170,6 +171,8 @@ export function GeneDetail({
                 />
             </div>
 
+            <GeneReferenceLinks symbol={symbol} omimGen={profile?.omim_gen} />
+
             <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
                 <div className="flex min-w-0 flex-1 flex-col gap-2.5">
                     <h5 className="text-lg font-semibold text-[var(--lu-text)]">Qué coincide</h5>
@@ -221,20 +224,11 @@ export function GeneDetail({
                             </h5>
                             <ul className="mt-2 flex flex-col gap-1.5">
                                 {profile.enfermedades.map((disease) => (
-                                    <li
+                                    <ConditionRow
                                         key={disease.omim || disease.nombre}
-                                        className="flex items-baseline gap-2 rounded-xl border border-[var(--lu-border)] bg-[var(--lu-surface)] px-3 py-2.5"
-                                    >
-                                        <span className="text-sm text-[var(--lu-text)]">
-                                            {disease.nombre}
-                                        </span>
-                                        <span className="flex-grow" />
-                                        {professional && disease.omim && (
-                                            <span className="shrink-0 font-mono text-[10.5px] text-[var(--lu-subtle)]">
-                                                OMIM {disease.omim}
-                                            </span>
-                                        )}
-                                    </li>
+                                        disease={disease}
+                                        professional={professional}
+                                    />
                                 ))}
                             </ul>
                             {/* Ours, not the model's, and with real gaps — said

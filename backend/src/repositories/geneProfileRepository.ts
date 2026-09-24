@@ -72,6 +72,12 @@ export interface GeneProfile {
     nombre_completo: string | null;
     cromosoma: string | null;
     ubicacion: string | null;
+    /**
+     * The gene's own OMIM entry (TCF4 → 602272), not one of its diseases.
+     * Null for the few genes OMIM has no entry for, and on a database built
+     * before the column existed.
+     */
+    omim_gen: string | null;
     /** The curated Spanish summary. Technical, and the default the card shows. */
     resumen_es: string | null;
     /** Plain-language rewrite. Generated, unreviewed, and not shown yet. */
@@ -122,6 +128,7 @@ interface GeneRow {
     uniprot_accession: string | null;
     codigo_omim: string | null;
     referencias: string | null;
+    omim_gen?: string | null;
 }
 
 interface SymptomRow {
@@ -417,6 +424,7 @@ export function getGeneProfile(
         nombre_completo: row.nombre_completo,
         cromosoma: row.cromosoma,
         ubicacion: row.ubicacion,
+        omim_gen: row.omim_gen ?? null,
         resumen_es: row.tecnico_resumen_es,
         resumen_llano_es: row.resumen_llano_es,
         enfermedades: annotateDiseases(

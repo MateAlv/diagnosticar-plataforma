@@ -7,6 +7,7 @@ import {
     type GeneProfile,
     type Symptom,
 } from "@/lib/genes-api";
+import { ConditionRow, GeneReferenceLinks } from "./gene-links";
 import { MatchMeter, MeterCaption, meterState } from "./match-meter";
 
 /**
@@ -192,6 +193,9 @@ export function GeneCard({
 
             {open && (
                 <div id={bodyId} className="border-t border-[var(--lu-border)] px-3.5 pb-4 pt-3.5">
+                    <div className="mb-5">
+                        <GeneReferenceLinks symbol={symbol} omimGen={profile?.omim_gen} />
+                    </div>
                     {matches.length > 0 && (
                         <section>
                             <h5 className="text-base font-semibold text-[var(--lu-text)]">
@@ -268,20 +272,11 @@ export function GeneCard({
                             </p>
                             <ul className="mt-2 flex flex-col gap-1.5">
                                 {profile.enfermedades.map((disease) => (
-                                    <li
+                                    <ConditionRow
                                         key={disease.omim || disease.nombre}
-                                        className="flex items-baseline gap-2 rounded-xl border border-[var(--lu-border)] bg-[var(--lu-surface)] px-3 py-2.5"
-                                    >
-                                        <span className="text-sm text-[var(--lu-text)]">
-                                            {disease.nombre}
-                                        </span>
-                                        <span className="flex-grow" />
-                                        {disease.omim && (
-                                            <span className="shrink-0 font-mono text-[10.5px] text-[var(--lu-subtle)]">
-                                                OMIM {disease.omim}
-                                            </span>
-                                        )}
-                                    </li>
+                                        disease={disease}
+                                        professional={professional}
+                                    />
                                 ))}
                             </ul>
                         </section>

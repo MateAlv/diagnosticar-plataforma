@@ -91,7 +91,7 @@ sobre `sintomas_esperados`. Conviene materializarlo en la build: una tabla
 
 ## 3. Revisión del análisis externo
 
-Un repaso punto por punto del análisis pedido aparte. **Cinco de catorce están
+Un repaso punto por punto del análisis pedido aparte. **Cuatro de catorce están
 equivocados o ya resueltos**, y vale la pena registrar por qué.
 
 ### Correctos y valiosos
@@ -113,6 +113,14 @@ punto 1.
 oficiales en español son formales ("Retraso en el medro"), y un padre escribe
 "no sube de peso". Es trabajo de datos, no de UI.
 
+**«Manejar negaciones».** Cierto, y es un problema de seguridad. Este documento
+lo marcaba como error diciendo que ya se manejaban: el contrato de
+`/extract-hpo` tiene un campo `negated` y el wizard lo filtra en tres lugares.
+Probado el 2026-09-24 contra staging, el extractor **nunca** lo pone en `true`:
+*"El paciente no presenta convulsiones"* vuelve como Convulsiones presente, en
+12 de 12 frases de prueba. El frontend filtra bien un campo que nunca llega.
+El arreglo es del extractor, en `diagnostic.ar-api`.
+
 **Guía de cantidad.** Razonable, con la salvedad de que el número correcto no
 es "5 o más" sino algo medido. No lo tenemos medido.
 
@@ -127,10 +135,6 @@ exactamente el término equivocado.
 **«Faltan sexo, edad y antecedentes».** Sexo y fecha de nacimiento **ya se
 capturan** en el paso 1 y son obligatorios (`canGoStep1`). Lo que falta no es el
 campo: es que el modelo los reciba.
-
-**«Manejar negaciones».** **Ya se manejan.** `/extract-hpo` devuelve `negated`
-por fenotipo y el wizard lo filtra en tres lugares. Lo que no existe es marcar
-una ausencia *a mano*, que es el punto de los síntomas descartados.
 
 **«El textarea tiene texto cargado: ¿es un placeholder?».** Ni placeholder ni
 default visual. `"Carga manual de síntomas sin historia clínica detallada."` es

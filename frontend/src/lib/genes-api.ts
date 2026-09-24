@@ -66,6 +66,8 @@ export type GeneProfile = {
     nombre_completo: string | null;
     cromosoma: string | null;
     ubicacion: string | null;
+    /** The gene's own OMIM entry, not one of its diseases. Null when OMIM has none. */
+    omim_gen: string | null;
     /** The curated Spanish summary — technical, and what the card shows. */
     resumen_es: string | null;
     /** Plain-language rewrite: generated, unreviewed, not shown yet. */
@@ -229,15 +231,31 @@ export function researchLinks(profile: GeneProfile): ResearchLink[] {
         if (url) links.push({ label: name, url, spanish: false });
     }
 
-    for (const disease of profile.enfermedades) {
-        if (disease.omim) {
-            links.push({
-                label: `OMIM ${disease.omim} — ${disease.nombre}`,
-                url: `https://www.omim.org/entry/${disease.omim}`,
-                spanish: false,
-            });
-        }
-    }
+    return links;
+}
 
+const MIM_RE = /^\d{6}$/;
+
+/** OMIM's page for a MIM number, or null when the number is not one. */
+export function omimUrl(mim: string | null | undefined): string | null {
+    return mim && MIM_RE.test(mim) ? `https://www.omim.org/entry/${mim}` : null;
+}
+
+/**
+ * The two pages a clinician opens first for a gene: GeneCards and the gene's
+ * own OMIM entry.
+ *
+ * GeneCards needs only the symbol, which the ranking always has, so it is
+ * offered even when the gene has no profile. OMIM needs the gene's MIM number
+ * — not a disease's — and is absent without one.
+ */
+export function geneReferenceLinks(symbol: string, omimGen: string | null | undefined): ResearchLink[] {
+    const links: ResearchLink[] = [{
+        label: "GeneCards",
+        url: `https://www.genecards.org/cgi-bin/carddisp.pl?gene=${encodeURIComponent(symbol)}`,
+        spanish: false,
+    }];
+    const omim = omimUrl(omimGen);
+    if (omim) links.push({ label: "OMIM", url: omim, spanish: false });
     return links;
 }

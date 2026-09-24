@@ -74,6 +74,9 @@ function buildFixture() {
     insertAncestor.run('HP:0012469', 'HP:0001250', 3);
     insertAncestor.run('HP:0002315', 'HP:0000118', 2);
 
+    db.exec('ALTER TABLE genes ADD COLUMN omim_gen TEXT');
+    db.prepare('UPDATE genes SET omim_gen = ? WHERE simbolo = ?').run('602421', 'CFTR');
+
     db.prepare('INSERT INTO build_info VALUES (?,?)').run('hpo_version', '2026-06-23');
     db.close();
 }
@@ -130,6 +133,13 @@ test('the symptoms not mentioned come back most frequent first', () => {
 
 test('a reported phenotype matches whatever case it arrives in', () => {
     assert.equal(getGeneProfile('CFTR', ['hp:0012236']).coincidencias.length, 1);
+});
+
+test("the gene's own OMIM entry reaches both audiences", () => {
+    for (const professional of [false, true]) {
+        assert.equal(getGeneProfile('CFTR', [], { professional }).omim_gen, '602421');
+    }
+    assert.equal(getGeneProfile('SCN1A').omim_gen, null);
 });
 
 test('an unknown gene is null, not an error', () => {
@@ -256,6 +266,7 @@ test('a database with no graph table still matches exactly', async () => {
         console.log(JSON.stringify({
             general: getGeneProfile('SCN1A', ['HP:0001250']).coincidencias.length,
             exact: getGeneProfile('SCN1A', ['HP:0002373']).coincidencias.length,
+            omimGen: getGeneProfile('SCN1A').omim_gen,
         }));
     `;
     const output = execFileSync(process.execPath, ['--input-type=module', '-e', probe], {
@@ -267,6 +278,7 @@ test('a database with no graph table still matches exactly', async () => {
     const result = JSON.parse(output.trim().split('\n').pop());
     assert.equal(result.general, 0, 'no graph, so a general term must not match');
     assert.equal(result.exact, 1, 'exact matching must still work');
+    assert.equal(result.omimGen, null, 'a build without the gene OMIM column serves null');
 });
 
 // --- Naming the condition that is actually relevant ------------------------
