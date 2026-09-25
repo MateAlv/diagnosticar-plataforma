@@ -342,3 +342,112 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=hpo-recognizer
+
+  publish-genphenai:
+    name: Build & publish genphenai
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: diagnosticar-genphenai
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - id: pins
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          . .github/recognizer.env
+          if ! printf '%s' "$GATEWAY_COMMIT" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::GATEWAY_COMMIT in .github/recognizer.env must be a full commit SHA, got '$GATEWAY_COMMIT'."
+            exit 1
+          fi
+          echo "api_ref=$GATEWAY_COMMIT" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: MateAlv/diagnostic.ar-api
+          ref: ${{ steps.pins.outputs.api_ref }}
+          ssh-key: ${{ secrets.API_DEPLOY_KEY }}
+          path: api
+
+      # The model is a release of diagnostic.ar-model, pinned by tag and
+      # sha256 in the API's model.lock; the script refuses any other file.
+      # Deploy keys only reach git, not release assets, hence the token: a
+      # classic token of diagnosticar-fiuba, a collaborator on that repo.
+      - name: Fetch the pinned model
+        env:
+          GITHUB_TOKEN: ${{ secrets.MODEL_RELEASE_TOKEN }}
+        run: api/services/genphenai/fetch_model.sh
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE }}
+          tags: |
+            type=raw,value=${{ github.ref_name }},enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+          labels: |
+            org.opencontainers.image.revision.api=${{ steps.pins.outputs.api_ref }}
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          file: ./api/services/genphenai/Dockerfile
+          push: false
+          load: true
+          tags: ${{ env.IMAGE }}:candidate
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=genphenai
+          cache-to: type=gha,scope=genphenai,mode=max
+
+      # The tests compare three clinical cases with rankings captured from
+      # production, so a wrong or corrupted model fails here, before it ships.
+      - name: Test inside the image
+        run: |
+          docker run --rm -v "$PWD/api/services/genphenai/tests:/app/tests:ro" ${{ env.IMAGE }}:candidate \
+            sh -c "pip install -q --user pytest==8.3.2 httpx==0.28.1 && python -m pytest /app/tests -q -p no:cacheprovider"
+
+      - name: Scan the candidate image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}:candidate
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          vuln-type: os,library
+
+      - name: Assert the image does not run as root
+        run: |
+          user=$(docker image inspect ${{ env.IMAGE }}:candidate --format '{{.Config.User}}')
+          if [ -z "$user" ] || [ "$user" = "root" ] || [ "$user" = "0" ]; then
+            echo "::error::${{ env.IMAGE }} runs as root."
+            exit 1
+          fi
+          echo "ok — runs as $user"
+
+      - name: Push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          file: ./api/services/genphenai/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=genphenai

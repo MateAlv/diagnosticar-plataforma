@@ -210,6 +210,29 @@ Every account on nodo0 can reach the Docker socket, so any of them can read
 the container's environment, token included. Prefer a token from an account
 used for nothing else.
 
+### Gene ranking on staging runs on nodo0 too
+
+For the same reason, staging has its own GenPhenAI: `genphenai`, with the
+GenPhenia model inside (ONNX on the CPU, ~90 MiB, no secret). It is the
+checkpoint brainy serves — `model-v3.0.0` of diagnostic.ar-model, pinned by
+sha256 in the API's `services/genphenai/model.lock` — so rankings do not
+change; its image tests compare them with production's before it ships.
+
+It starts **unrouted** (`GENPHENAI_ROUTED` defaults to `false`). After
+`ops/staging.sh up vX.Y.Z`, check it from inside the network:
+
+```bash
+docker exec diagnosticar-staging-genphenai-1 \
+  python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:18020/healthz').read().decode())"
+```
+
+`status` must be `ok`, `checkpoint_sha256` must start `ee10aa42`, and
+`specialties_available` must be `true`. Then set `GENPHENAI_ROUTED=true` in
+`.env.staging` and `up` again: a router one priority above
+`genphenai-tunnel`'s takes `/genphenai`. With both routed, staging no longer
+reaches brainy for anything but the incumbent's search and specialties.
+Routing back is the same variable set to `false`.
+
 ### Data rules
 
 - **Synthetic data only.** Never restore a production dump. It would put
