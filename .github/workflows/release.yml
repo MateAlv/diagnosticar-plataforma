@@ -210,3 +210,133 @@ jobs:
             RELEASE_VERSION=${{ github.ref_name }}
             RELEASE_COMMIT=${{ github.sha }}
             RELEASE_BUILT_AT=${{ steps.stamp.outputs.built_at }}
+
+  # The HPO gateway with the Spanish symptom recognizer serving /extract-hpo,
+  # run by staging on nodo0 as hpo-recognizer. Its code lives in two other
+  # private repositories, checked out at the commits pinned in
+  # .github/recognizer.env with read-only deploy keys, so a release tag names
+  # one build of it exactly as it does the backend and frontend.
+  #
+  # Published from this repository, not from diagnostic.ar-api, so the package
+  # is linked here and the node's pull account — a collaborator on this
+  # repository — can read it like the others.
+  publish-recognizer:
+    name: Build & publish hpo-recognizer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: diagnosticar-hpo-recognizer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - id: pins
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          . .github/recognizer.env
+          for v in GATEWAY_COMMIT RECOGNIZER_COMMIT; do
+            if ! printf '%s' "${!v}" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "::error::$v in .github/recognizer.env must be a full commit SHA, got '${!v}'."
+              exit 1
+            fi
+          done
+          echo "api_ref=$GATEWAY_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "recognizer_ref=$RECOGNIZER_COMMIT" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: MateAlv/diagnostic.ar-api
+          ref: ${{ steps.pins.outputs.api_ref }}
+          ssh-key: ${{ secrets.API_DEPLOY_KEY }}
+          path: api
+
+      - uses: actions/checkout@v4
+        with:
+          repository: MateAlv/spanish-symptoms-recognizer
+          ref: ${{ steps.pins.outputs.recognizer_ref }}
+          ssh-key: ${{ secrets.RECOGNIZER_DEPLOY_KEY }}
+          path: recognizer
+
+      # CPU torch, a 485 MB encoder and the HPO embeddings make a ~3 GB image;
+      # building, loading it for the scan and caching it overruns the runner's
+      # default free space.
+      - name: Free runner disk
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE }}
+          tags: |
+            type=raw,value=${{ github.ref_name }},enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+          labels: |
+            org.opencontainers.image.revision.api=${{ steps.pins.outputs.api_ref }}
+            org.opencontainers.image.revision.recognizer=${{ steps.pins.outputs.recognizer_ref }}
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          file: ./api/services/api-gateway/Dockerfile.recognizer
+          build-contexts: recognizer=./recognizer
+          push: false
+          load: true
+          tags: ${{ env.IMAGE }}:candidate
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=hpo-recognizer
+          cache-to: type=gha,scope=hpo-recognizer,mode=max
+
+      # Both suites run offline inside the image: this is the one environment
+      # where the gateway's and the recognizer's dependencies have to agree.
+      - name: Test inside the image
+        run: |
+          docker run --rm -e PYTHONPATH=/app/services/api-gateway:/app:/opt/recognizer \
+            -w /app/services/api-gateway ${{ env.IMAGE }}:candidate \
+            python -m pytest tests/ -q -p no:cacheprovider
+          docker run --rm -w /opt/recognizer ${{ env.IMAGE }}:candidate \
+            python -m pytest symptoms_recognizer/tests/ -q -p no:cacheprovider
+
+      - name: Scan the candidate image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}:candidate
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          vuln-type: os,library
+
+      - name: Assert the image does not run as root
+        run: |
+          user=$(docker image inspect ${{ env.IMAGE }}:candidate --format '{{.Config.User}}')
+          if [ -z "$user" ] || [ "$user" = "root" ] || [ "$user" = "0" ]; then
+            echo "::error::${{ env.IMAGE }} runs as root."
+            exit 1
+          fi
+          echo "ok — runs as $user"
+
+      - name: Push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          file: ./api/services/api-gateway/Dockerfile.recognizer
+          build-contexts: recognizer=./recognizer
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=hpo-recognizer

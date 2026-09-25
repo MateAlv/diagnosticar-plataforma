@@ -95,7 +95,7 @@ case "${1:-up}" in
       # production one — which would post every request to production.
       export FRONTEND_IMAGE="diagnosticar-frontend-staging"
       COMPOSE+=(-f docker-compose.deploy.yml)
-      "${COMPOSE[@]}" pull backend frontend
+      "${COMPOSE[@]}" pull backend frontend hpo-recognizer
       "${COMPOSE[@]}" up -d --no-build --remove-orphans
     else
       # No tag: build the working tree. This is the "does my branch survive the

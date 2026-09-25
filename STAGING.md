@@ -167,6 +167,49 @@ services**. Check with:
 ss -ltnH '( sport = :18100 or sport = :18120 )'
 ```
 
+### Symptom extraction on staging runs on nodo0, not brainy
+
+Because the tunnel is shared, turning the Spanish symptom recognizer on in
+brainy's gateway would turn it on for production. Staging runs its own
+gateway instead — `hpo-recognizer`, a CPU container in this compose project —
+and a Traefik router one priority above `hpo-tunnel`'s takes only
+`/hpo-api/extract-hpo`. Search and specialties still go to brainy.
+
+It starts **unrouted** (`HPO_RECOGNIZER_ROUTED` defaults to `false`), so a
+deploy runs the container without sending it traffic. To switch it on, in
+`.env.staging`, in this order:
+
+1. `STAGING_JWT_ACCESS_PRIVATE_KEY` / `STAGING_JWT_ACCESS_PUBLIC_KEY` — an RSA
+   pair (`openssl genrsa 2048`), each on one line with `\n` escapes, and
+   `STAGING_JWT_ACCEPT_LEGACY_HS256=true` for one access-token lifetime (15
+   min) so open sessions survive; then set it back to `false`. The gateway
+   verifies sessions with the public half, so the backend must sign RS256
+   before anything is routed — otherwise every extraction is a 401.
+2. `STAGING_CLAUDE_CODE_OAUTH_TOKEN` — from `claude setup-token`.
+3. `STAGING_TRUSTED_PROXIES` — Traefik's own address on
+   `internal-nodo0-web` (172.22.0.7 on 2026-09-24:
+   `docker inspect traefik_nodo0`). Not the network's CIDR: other teams'
+   containers share it, and trusting them lets any of them forge
+   `X-Forwarded-For`. Without this the per-IP limit keys on Traefik and one
+   caller throttles everyone — which is also what a stale address looks like,
+   so re-check it when extraction starts returning 429s.
+4. `HPO_RECOGNIZER_TAG` — the image tag to run.
+
+Run `ops/staging.sh up vX.Y.Z`, then check the container before routing:
+
+```bash
+docker exec diagnosticar-staging-hpo-recognizer-1 \
+  python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/healthz').read().decode())"
+```
+
+`extract_hpo.ready` must be `true`; when it is not, `error` says why. Then set
+`HPO_RECOGNIZER_ROUTED=true` and `up` again. Routing back is the same variable
+set to `false` — nothing has to be stopped.
+
+Every account on nodo0 can reach the Docker socket, so any of them can read
+the container's environment, token included. Prefer a token from an account
+used for nothing else.
+
 ### Data rules
 
 - **Synthetic data only.** Never restore a production dump. It would put

@@ -27,6 +27,11 @@ services:
       # authenticate against production.
       JWT_ACCESS_SECRET: ${STAGING_JWT_ACCESS_SECRET:?set STAGING_JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${STAGING_JWT_REFRESH_SECRET:?set STAGING_JWT_REFRESH_SECRET}
+      # RS256, so hpo-recognizer can verify a session with the public key
+      # alone. Unset, the backend keeps signing HS256 exactly as before.
+      JWT_ACCESS_PRIVATE_KEY: ${STAGING_JWT_ACCESS_PRIVATE_KEY:-}
+      JWT_ACCESS_PUBLIC_KEY: ${STAGING_JWT_ACCESS_PUBLIC_KEY:-}
+      JWT_ACCEPT_LEGACY_HS256: ${STAGING_JWT_ACCEPT_LEGACY_HS256:-false}
       FRONTEND_URL: https://${STAGING_HOST:?set STAGING_HOST}
     ports: !reset []
     labels:
@@ -112,6 +117,67 @@ services:
       - "traefik.http.routers.diagnosticar-staging-genphenai.priority=230"
       - "traefik.http.routers.diagnosticar-staging-genphenai.middlewares=diagnosticar-staging-genphenai-strip"
       - "traefik.http.middlewares.diagnosticar-staging-genphenai-strip.stripprefix.prefixes=/genphenai"
+    networks:
+      - traefik_net
+
+  # The Spanish symptom recognizer, answering /hpo-api/extract-hpo for staging
+  # only. Production and staging otherwise share brainy's gateway through the
+  # same tunnel, so switching the recognizer on there would switch it on for
+  # production too.
+  #
+  # Only extraction moves: a router one priority above hpo-tunnel's takes that
+  # one path, and search and specialties keep going to brainy. The router is
+  # off until HPO_RECOGNIZER_ROUTED=true, so a deploy starts the container
+  # without sending it traffic; check /healthz first, then route. Routing back
+  # is the same variable set to false and `ops/staging.sh up` again — nothing
+  # has to be stopped.
+  #
+  # No GPU: the LLM is remote and the encoder runs on CPU. The image is built
+  # by the release workflow like the other two, from the gateway and
+  # recognizer commits pinned in .github/recognizer.env, and carries the
+  # release's tag. HPO_RECOGNIZER_TAG pins it separately, to roll the
+  # recognizer back without rolling back the rest.
+  hpo-recognizer:
+    image: ghcr.io/${GHCR_OWNER:-matealv}/diagnosticar-hpo-recognizer:${HPO_RECOGNIZER_TAG:-${RELEASE_TAG:-latest}}
+    restart: unless-stopped
+    init: true
+    environment:
+      USE_RECOGNIZER: "true"
+      RECOGNIZER_PROVIDER: claude-cli
+      RECOGNIZER_MODEL: ${RECOGNIZER_MODEL:-claude-opus-5}
+      # From `claude setup-token`: a long-lived subscription token. Kept in
+      # .env.staging under ~<usuario>, never in /data, which every account
+      # on the host can read.
+      CLAUDE_CODE_OAUTH_TOKEN: ${STAGING_CLAUDE_CODE_OAUTH_TOKEN:-}
+      # The incumbent pipeline still serves this container's health checks,
+      # but never extraction here, so it needs no Ollama.
+      ENABLE_SYMPTOM_EXTRACTION: "false"
+      # No audit database on nodo0, and the record would hold the clinical
+      # text itself.
+      STORE_REQUESTS: "false"
+      CACHE_ENABLED: "false"
+      # Every call costs money, so an anonymous caller must not reach it.
+      REQUIRE_AUTH: "true"
+      JWT_PUBLIC_KEY: ${STAGING_JWT_ACCESS_PUBLIC_KEY:-}
+      # Traefik's own address, not its network's CIDR: that network is shared
+      # with other teams' containers, and trusting all of them lets any one
+      # forge X-Forwarded-For. An exact IP that goes stale when Traefik is
+      # recreated fails loudly instead — every caller shares one bucket and
+      # starts seeing 429s.
+      TRUSTED_PROXIES: ${STAGING_TRUSTED_PROXIES:-}
+      RATE_LIMIT_PER_MINUTE: ${RECOGNIZER_RATE_LIMIT_PER_MINUTE:-10}
+      MAX_CONCURRENT_EXTRACTIONS: ${RECOGNIZER_MAX_CONCURRENT:-2}
+    labels:
+      - "traefik.enable=${HPO_RECOGNIZER_ROUTED:-false}"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
+      - "traefik.http.services.diagnosticar-staging-hpo-recognizer.loadbalancer.server.port=8000"
+      - "traefik.http.routers.diagnosticar-staging-hpo-recognizer.rule=Host(`${STAGING_HOST}`) && Path(`/hpo-api/extract-hpo`)"
+      - "traefik.http.routers.diagnosticar-staging-hpo-recognizer.entrypoints=websecure"
+      - "traefik.http.routers.diagnosticar-staging-hpo-recognizer.tls=true"
+      - "traefik.http.routers.diagnosticar-staging-hpo-recognizer.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
+      - "traefik.http.routers.diagnosticar-staging-hpo-recognizer.priority=240"
+      - "traefik.http.routers.diagnosticar-staging-hpo-recognizer.middlewares=diagnosticar-staging-hpo-recognizer-strip"
+      - "traefik.http.middlewares.diagnosticar-staging-hpo-recognizer-strip.stripprefix.prefixes=/hpo-api"
     networks:
       - traefik_net
 
