@@ -73,12 +73,57 @@ test("a negated finding is not added as a present symptom", async ({ page }) => 
     await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
     await expect(page.getByText("Infecciones respiratorias recurrentes")).toBeVisible();
 
+    // Every present symptom carries its own remove button; a negated one has
+    // none, because it is not in the list.
     const negated = EXTRACT_FIXTURE.phenotypes.find((p) => p.negated)!;
-    const list = page.locator("main");
     await expect(
-        list.getByText(negated.label_es, { exact: true }),
+        page.getByRole("button", { name: `Eliminar ${negated.label_es}` }),
         "a negated phenotype was added as a present symptom",
     ).toHaveCount(0);
+});
+
+test("a negated finding is shown as not present, and can be moved back", async ({ page }) => {
+    // Showing it is how a reader sees the negation was understood; moving it
+    // back is how they fix an extractor that misread one.
+    await openDemoWizard(page);
+    await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
+    await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
+
+    const negated = EXTRACT_FIXTURE.phenotypes.find((p) => p.negated)!;
+    await expect(page.getByText("No presenta, según el texto")).toBeVisible();
+    await page.getByRole("button", { name: new RegExp(`${negated.label_es}: sí lo presenta`) }).click();
+
+    await expect(page.getByRole("button", { name: `Eliminar ${negated.label_es}` })).toBeVisible();
+    await expect(page.getByText("No presenta, según el texto")).toHaveCount(0);
+});
+
+test("a negated finding never reaches the model", async ({ page }) => {
+    await openDemoWizard(page);
+    await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
+    await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
+    await expect(page.getByText("No presenta, según el texto")).toBeVisible();
+
+    const rankRequest = page.waitForRequest("**/rank-genes");
+    await page.getByRole("button", { name: /Revisar y continuar/ }).click();
+    await page.getByRole("button", { name: /Buscar genes candidatos/ }).click();
+
+    const body = JSON.parse((await rankRequest).postData() ?? "{}");
+    const negated = EXTRACT_FIXTURE.phenotypes.find((p) => p.negated)!;
+    expect(body.hpo_ids).not.toContain(negated.hpo_id);
+    expect(body.hpo_ids.length).toBeGreaterThan(0);
+});
+
+test("a slow extraction says it can take up to a minute", async ({ page }) => {
+    // The Spanish symptom recognizer takes 20-40s on a long history; a bare
+    // spinner that long reads as a hang, and people reload.
+    await mockModelServices(page, { latencyMs: 10_000 });
+    await openDemoWizard(page);
+    await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
+    await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
+
+    await expect(page.getByText(/Puede tardar hasta un minuto/)).toBeVisible({ timeout: 9_000 });
+    await expect(page.getByText("Infecciones respiratorias recurrentes")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Puede tardar hasta un minuto/)).toHaveCount(0);
 });
 
 test("re-analysing unchanged text is blocked, avoiding a redundant model call", async ({ page }) => {

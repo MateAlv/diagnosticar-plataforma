@@ -323,6 +323,9 @@ function NuevoDiagnosticoScreen() {
   const [step, setStep] = useState<Step>(isDemoMode ? 2 : 1);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
+  // Seconds since the current wait began. The Spanish symptom recognizer takes
+  // 20-40s on a long history; a spinner alone for that long reads as a hang.
+  const [loadingElapsed, setLoadingElapsed] = useState(0);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -403,6 +406,42 @@ function NuevoDiagnosticoScreen() {
     }
     return words;
   }, [symptoms, extractedPhenotypes]);
+
+  /**
+   * What the account says the patient does *not* have ("no presenta
+   * convulsiones"), once per term and never one they also list as present.
+   *
+   * Shown so a reader can see a negation was understood, and move it back when
+   * it was misread. Never sent to the model: /rank-genes takes present
+   * phenotypes only, so a negated one there would count as present.
+   */
+  const negatedFindings = useMemo(() => {
+    const present = new Set(symptoms.map((symptom) => symptom.code.trim().toUpperCase()));
+    const byId = new Map<string, { code: string; label: string }>();
+    for (const phenotype of extractedPhenotypes) {
+      if (!phenotype?.negated || typeof phenotype.hpo_id !== "string") continue;
+      const id = phenotype.hpo_id.trim().toUpperCase();
+      if (!HPO_CODE_RE.test(id) || present.has(id) || byId.has(id)) continue;
+      const label =
+        phenotype.label_es?.trim() || phenotype.span_es?.trim() || phenotype.label?.trim() || id;
+      byId.set(id, { code: phenotype.hpo_id.trim(), label });
+    }
+    return [...byId.values()];
+  }, [symptoms, extractedPhenotypes]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingElapsed(0);
+      return;
+    }
+    const started = Date.now();
+    const timer = setInterval(
+      () => setLoadingElapsed(Math.floor((Date.now() - started) / 1000)),
+      1000,
+    );
+    return () => clearInterval(timer);
+  }, [isLoading]);
+
   const [geneProfiles, setGeneProfiles] = useState<Map<string, GeneProfile>>(new Map());
   const [professionalView, setProfessionalView] = useState(false);
 
@@ -851,6 +890,14 @@ function NuevoDiagnosticoScreen() {
     setHpoSuggestions([]);
   };
 
+  const handleMarkPresent = (code: string, description: string) => {
+    setSymptoms((prev) =>
+      prev.some((symptom) => symptom.code.trim().toUpperCase() === code.toUpperCase())
+        ? prev
+        : [...prev, { description, code, source: "texto" }],
+    );
+  };
+
   const handleRemoveSymptom = (code: string) => {
     setSymptoms((prev) => prev.filter((symptom) => symptom.code !== code));
   };
@@ -997,7 +1044,15 @@ function NuevoDiagnosticoScreen() {
                 <div className="absolute inset-0 z-10 grid place-items-center rounded-[24px] bg-white/80 backdrop-blur-sm">
                   <div className="flex flex-col items-center gap-4 text-center">
                     <div className="h-12 w-12 animate-spin rounded-full border-4 border-[var(--lu-border)] border-t-[var(--lu-accent)]" aria-hidden />
-                    <p className="text-sm font-semibold text-[var(--lu-subtle)]">{loadingMessage}</p>
+                    <p role="status" className="text-sm font-semibold text-[var(--lu-subtle)]">
+                      {loadingMessage}
+                    </p>
+                    {loadingElapsed >= 8 && (
+                      <p className="max-w-xs text-xs leading-relaxed text-[var(--lu-subtle)]">
+                        Puede tardar hasta un minuto. Seguimos trabajando, no cierres la página.{" "}
+                        <span aria-hidden className="font-mono">({loadingElapsed} s)</span>
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -1262,6 +1317,36 @@ function NuevoDiagnosticoScreen() {
                             ))}
                           </ul>
                         )}
+
+                        {negatedFindings.length > 0 && (
+                          <div className="mt-4 rounded-xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-4">
+                            <p className="text-sm font-semibold text-[var(--lu-text)]">
+                              No presenta, según el texto
+                            </p>
+                            <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
+                              Entendimos que el relato los descarta, así que no se usan para buscar
+                              genes. Si alguno sí lo presenta, pasalo a la lista.
+                            </p>
+                            <ul className="mt-3 flex flex-wrap gap-2">
+                              {negatedFindings.map((finding) => (
+                                <li
+                                  key={finding.code}
+                                  className="inline-flex items-center gap-2 rounded-full border border-dashed border-[var(--lu-border-strong)] bg-white py-1 pl-3.5 pr-1 text-sm text-[var(--lu-text)]"
+                                >
+                                  <span>{finding.label}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMarkPresent(finding.code, finding.label)}
+                                    aria-label={`${finding.label}: sí lo presenta, agregarlo a la lista`}
+                                    className="min-h-[36px] rounded-full px-3 text-xs font-semibold text-[var(--lu-accent-text)] hover:bg-[var(--lu-accent-light)]"
+                                  >
+                                    Sí lo presenta
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </div>
 
                       {genphenError && (
@@ -1409,7 +1494,7 @@ function NuevoDiagnosticoScreen() {
                         </div>
 
                         <div className="flex flex-col gap-4 px-6 py-5">
-                          {reportedWords.size > 0 && (
+                          {(reportedWords.size > 0 || negatedFindings.length > 0) && (
                             <div className="flex flex-col gap-2 border-b border-[var(--lu-border)] pb-4">
                               <p className="text-xs font-semibold text-[var(--lu-text)]">
                                 Lo que nos contaste
@@ -1424,6 +1509,13 @@ function NuevoDiagnosticoScreen() {
                                   </li>
                                 ))}
                               </ul>
+                              {negatedFindings.length > 0 && (
+                                <p className="text-xs text-[var(--lu-subtle)]">
+                                  <span className="font-semibold text-[var(--lu-text)]">No presenta:</span>{" "}
+                                  {negatedFindings.map((finding) => finding.label).join(" · ")}. No se
+                                  usaron para buscar genes.
+                                </p>
+                              )}
                             </div>
                           )}
 
@@ -1623,6 +1715,14 @@ function NuevoDiagnosticoScreen() {
               . Revisá que la lista esté completa: cuantos más síntomas específicos incluyas, mejor
               es el resultado.
             </p>
+
+            {negatedFindings.length > 0 && (
+              <p className="mt-3 text-sm leading-relaxed text-[var(--lu-subtle)]">
+                <span className="font-semibold text-[var(--lu-text)]">No presenta</span>, según el
+                texto, y no se usa en la búsqueda:{" "}
+                {negatedFindings.map((finding) => finding.label).join(", ")}.
+              </p>
+            )}
 
             <ul className="mt-5 flex max-h-64 flex-wrap gap-2 overflow-y-auto">
               {symptoms.map((symptom) => (
