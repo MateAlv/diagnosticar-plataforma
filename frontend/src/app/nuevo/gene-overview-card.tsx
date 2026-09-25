@@ -89,7 +89,7 @@ export function GeneOverviewCard({
             >
                 <span className="flex w-full items-center gap-2">
                     <span className="font-mono text-[11px] text-[var(--lu-subtle)]">
-                        #{rank} de {total}
+                        Gen #{rank} de {total}
                     </span>
                     <span className="flex-grow" />
                     {/* Shown because it is what the model returns, labelled so

@@ -156,7 +156,7 @@ export function GeneDetail({
                 )}
                 <span className="flex-grow" />
                 <span className="shrink-0 font-mono text-[11px] text-[var(--lu-subtle)]">
-                    #{rank} de {total} ·{" "}
+                    Gen #{rank} de {total} ·{" "}
                     <span title="Puntaje del modelo: ordena la lista, no es una probabilidad">
                         puntaje {formatScore(score)}
                     </span>
