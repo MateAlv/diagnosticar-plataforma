@@ -223,6 +223,8 @@ jobs:
   publish-recognizer:
     name: Build & publish hpo-recognizer
     runs-on: ubuntu-latest
+    # A cold build takes ~30 minutes; without a limit a hang runs for six hours.
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
