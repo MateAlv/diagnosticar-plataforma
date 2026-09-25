@@ -741,10 +741,8 @@ function NuevoDiagnosticoScreen() {
       if (!isDemoMode && user) {
         try {
           const csrfToken = getCookieValue("csrf_token");
-          const historiaClinicaToSave =
-            historiaClinica.trim() || "Carga manual de síntomas sin historia clínica detallada.";
           const diagnosisPayload = {
-            historiaClinica: historiaClinicaToSave,
+            historiaClinica: historiaClinica.trim(),
             symptomsExtracted: symptoms.map((s) => ({ description: s.description, code: s.code })),
             phenotypes: extractedPhenotypes,
             genphenGenes: results,
@@ -956,7 +954,7 @@ function NuevoDiagnosticoScreen() {
               <div className="space-y-2">
                 <span className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-[var(--lu-accent)] font-semibold">
                   <span className="dot-pulse inline-flex h-2 w-2 shrink-0 rounded-full bg-current text-[var(--lu-accent)]" aria-hidden />
-                  {isDemoMode ? "Prueba rápida" : "Nuevo diagnóstico"}
+                  {isDemoMode ? "Prueba rápida" : "Nueva búsqueda"}
                 </span>
                 <h1 className="text-3xl font-bold text-[var(--lu-text)] leading-tight">{stepTitle}</h1>
               </div>
@@ -1495,14 +1493,14 @@ function NuevoDiagnosticoScreen() {
                         className="inline-flex items-center justify-center h-11 px-6 rounded-xl border border-[var(--lu-border)] text-[var(--lu-subtle)] font-medium hover:bg-[var(--lu-surface)] hover:text-[var(--lu-text)] transition-colors"
                         onClick={() => router.push("/diagnosticar")}
                       >
-                        Guardar diagnóstico y cerrar
+                        Guardar y cerrar
                       </button>
                       <button
                         type="button"
                         className="inline-flex items-center justify-center h-11 px-6 rounded-xl bg-[var(--lu-green)] text-white font-bold hover:bg-[color-mix(in_oklab,var(--lu-green)_90%,#000)] shadow-md transition-all"
                         onClick={() => router.push("/diagnosticar?tab=integrantes")}
                       >
-                        Comenzar otro diagnóstico
+                        Comenzar otra búsqueda
                       </button>
                     </div>
 

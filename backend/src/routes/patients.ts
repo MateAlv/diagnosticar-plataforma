@@ -50,14 +50,10 @@ const historiaClinicaSchema = z
     .string()
     .optional()
     .nullable()
-    .transform((value) => {
-        // Strip before trimming so a paste of pure NUL bytes falls back to the
-        // placeholder rather than storing an empty historia clínica.
-        const normalized = typeof value === 'string' ? stripNullBytes(value).trim() : '';
-        return normalized.length > 0
-            ? normalized
-            : 'Carga manual de síntomas sin historia clínica detallada.';
-    });
+    // Empty when nothing was written. This used to store our own sentence
+    // instead, which then read — and was re-submitted on regeneration — as
+    // the family's clinical history. The column is NOT NULL, so '' it is.
+    .transform((value) => (typeof value === 'string' ? stripNullBytes(value).trim() : ''));
 
 const createPatientSchema = z.object({
     // Patient demographics

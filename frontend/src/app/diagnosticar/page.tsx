@@ -109,6 +109,18 @@ function mapSymptoms(rawSymptoms: unknown, memberId: string): Symptom[] {
 }
 
 
+/**
+ * The backend used to store this sentence of ours when no history was
+ * written. Existing rows still hold it; it is not the family's account, so it
+ * is read as "nothing written" rather than shown or re-submitted as theirs.
+ */
+const LEGACY_EMPTY_HISTORY = "Carga manual de síntomas sin historia clínica detallada.";
+
+function writtenHistory(raw: unknown): string {
+  const text = typeof raw === "string" ? raw.trim() : "";
+  return text === LEGACY_EMPTY_HISTORY ? "" : text;
+}
+
 function apiPatientToMember(p: ApiPatient): Member {
   const diag = p.latest_diagnosis;
   const topSpecialties = diag?.genphen_specialties?.top_specialties ?? [];
@@ -117,10 +129,7 @@ function apiPatientToMember(p: ApiPatient): Member {
       ? `Te sugerimos consultar con: ${topSpecialties.map(traducirEspecialidad).join(", ")}.`
       : "Sin orientación diagnóstica disponible.";
   const savedAt = diag?.created_at ?? p.created_at;
-  const historiaClinica =
-    typeof diag?.historia_clinica === "string" && diag.historia_clinica.trim()
-      ? diag.historia_clinica
-      : `Diagnóstico · ${new Date(savedAt).toLocaleDateString("es-AR")}`;
+  const historiaClinica = writtenHistory(diag?.historia_clinica);
   return {
     id: p.id,
     nombre: p.nombre,
@@ -150,7 +159,7 @@ function savedToMember(record: SavedDiagnostic): Member {
     sexo: null,
     localidad: null,
     pais: null,
-    historiaClinica: `Diagnóstico · ${new Date(record.savedAt).toLocaleDateString("es-AR")}`,
+    historiaClinica: "",
     sintomas: record.symptoms.map((s, i) => ({
       id: `${record.id}-${i}`,
       label: s.description,
@@ -386,7 +395,7 @@ function DiagnosticarContent() {
                         className="inline-flex items-center gap-2 rounded-full bg-[var(--lu-accent)] px-8 py-3 text-sm font-semibold text-white shadow-md hover:bg-[color-mix(in_oklab,var(--lu-accent)_90%,#000)] transition-all"
                       >
                         <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-sm font-bold">+</span>
-                        Nuevo diagnóstico
+                        Nueva búsqueda
                       </button>
                     </div>
                   ) : activeMember ? (
@@ -451,7 +460,7 @@ function DiagnosticarContent() {
                                   <polyline points="14 2 14 8 20 8" />
                                 </svg>
                                 <span className="min-w-0 flex-1 truncate font-medium group-open:hidden">
-                                  {activeMember.historiaClinica}
+                                  {activeMember.historiaClinica || "Sin historia clínica escrita"}
                                 </span>
                                 <span className="hidden flex-1 font-medium group-open:block">Historia clínica completa</span>
                                 <svg
@@ -470,7 +479,8 @@ function DiagnosticarContent() {
                                 </svg>
                               </summary>
                               <p className="mt-3 whitespace-pre-wrap break-words border-t border-[var(--lu-border)] pt-3 leading-relaxed">
-                                {activeMember.historiaClinica}
+                                {activeMember.historiaClinica ||
+                                  "No se escribió una historia clínica: los síntomas se cargaron de la lista."}
                               </p>
                             </details>
                           </div>

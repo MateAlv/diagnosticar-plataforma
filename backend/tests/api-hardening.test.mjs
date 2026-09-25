@@ -207,6 +207,20 @@ test('clinical free text survives a round trip with accents and unicode intact',
     await client.delete(`/api/patients/${created.json.patient.id}`);
 });
 
+test('an empty clinical history is stored empty, not as text we wrote', { skip }, async () => {
+    // A sentence of ours stored here was later shown, and re-submitted, as the
+    // family's own account.
+    for (const historiaClinica of [undefined, '', '   ']) {
+        const created = await client.post('/api/patients', samplePayload({ historiaClinica }));
+        assert.equal(created.status, 201);
+        const diagnosis = await client.get(
+            `/api/patients/${created.json.patient.id}/diagnoses/${created.json.diagnosisId}`,
+        );
+        assert.equal(diagnosis.json.historia_clinica, '');
+        await client.delete(`/api/patients/${created.json.patient.id}`);
+    }
+});
+
 test('a NUL byte in clinical text is stripped instead of 500ing', { skip }, async () => {
     // Clinical history gets pasted out of PDFs, OCR and hospital exports, all of
     // which emit stray NUL bytes. Postgres refuses them in text and jsonb alike,
