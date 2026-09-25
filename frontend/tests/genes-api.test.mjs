@@ -32,7 +32,7 @@ function load(fetchImpl) {
   return new Function(
     'fetch',
     'process',
-    `${body}; return { fetchGeneProfile, fetchGeneProfiles, describeFrequency, researchLinks, geneReferenceLinks, omimUrl };`,
+    `${body}; return { fetchGeneProfile, fetchGeneProfiles, describeFrequency, researchLinks, geneReferenceLinks, omimUrl, formatScore };`,
   )(fetchImpl, { env: { NEXT_PUBLIC_API_URL: 'http://api.test' } });
 }
 
@@ -255,4 +255,12 @@ test('the gene symbol is URL-encoded into every search', () => {
   for (const link of links.filter((l) => l.spanish)) {
     assert.ok(link.url.includes('HLA-DRB1') || link.url.includes('HLA%2DDRB1'));
   }
+});
+
+test('a score under 0.01 reads as low, never as a number', () => {
+  const { formatScore } = load(ok);
+  assert.equal(formatScore(0), 'bajo');
+  assert.equal(formatScore(0.0099), 'bajo');
+  assert.equal(formatScore(0.01), '0.010');
+  assert.equal(formatScore(0.37), '0.370');
 });

@@ -457,6 +457,37 @@ test("the grid and the open modal pass the serious accessibility rules, contrast
             .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
 
     expect(await serious("[data-gene-card]")).toEqual([]);
+    expect(await serious('section[aria-labelledby="especialidades-titulo"]')).toEqual([]);
     await openGene(page, "CFTR");
     expect(await serious('[role="dialog"]')).toEqual([]);
+});
+
+test("the specialities follow the genes they are derived from", async ({ page }) => {
+    await runToResults(page);
+
+    const genes = page.getByRole("heading", { name: /Genes para llevar a la consulta/ });
+    const areas = page.getByRole("heading", { name: "Especialidades para consultar" });
+    await expect(areas).toBeVisible();
+    const genesTop = (await genes.boundingBox())!.y;
+    const areasTop = (await areas.boundingBox())!.y;
+    expect(areasTop).toBeGreaterThan(genesTop);
+
+    await expect(page.getByText("BETA", { exact: true })).toHaveCount(0);
+});
+
+test("a gene named under a speciality opens its detail", async ({ page }) => {
+    await runToResults(page);
+
+    await page.getByRole("button", { name: "Ver el gen DNAH5" }).click();
+    await expect(page.getByRole("dialog").getByRole("article", { name: "Detalle del gen DNAH5" })).toBeVisible();
+});
+
+test("downloading the results is offered at the bottom, but not yet enabled", async ({ page }) => {
+    await runToResults(page);
+
+    const download = page.getByRole("button", { name: /Descargar resultados/ });
+    await expect(download).toBeDisabled();
+    const downloadTop = (await download.boundingBox())!.y;
+    const disclaimerTop = (await page.getByText(/no constituye un diagnóstico médico/i).boundingBox())!.y;
+    expect(downloadTop).toBeGreaterThan(disclaimerTop);
 });

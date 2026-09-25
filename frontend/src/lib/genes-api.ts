@@ -177,6 +177,15 @@ export async function fetchGeneProfiles(
     return profiles;
 }
 
+/**
+ * The model's score to three places, or "bajo" under 0.01. Down there the
+ * digits carry nothing a reader can use, and "0.000" reads as "irrelevant"
+ * for a gene the model did rank.
+ */
+export function formatScore(score: number): string {
+    return score < 0.01 ? "bajo" : score.toFixed(3);
+}
+
 /** "muy frecuente (95%)" — the words first, the number as support. */
 export function describeFrequency(symptom: Symptom): string | null {
     const { frecuencia_pct: pct, frecuencia_texto: text } = symptom;

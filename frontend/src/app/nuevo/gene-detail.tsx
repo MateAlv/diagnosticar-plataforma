@@ -2,6 +2,7 @@
 
 import {
     describeFrequency,
+    formatScore,
     researchLinks,
     type GeneProfile,
     type MatchedReport,
@@ -157,7 +158,7 @@ export function GeneDetail({
                 <span className="shrink-0 font-mono text-[11px] text-[var(--lu-subtle)]">
                     #{rank} de {total} ·{" "}
                     <span title="Puntaje del modelo: ordena la lista, no es una probabilidad">
-                        puntaje {score.toFixed(3)}
+                        puntaje {formatScore(score)}
                     </span>
                 </span>
                 <MeterCaption

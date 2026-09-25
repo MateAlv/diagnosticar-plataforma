@@ -1,6 +1,6 @@
 "use client";
 
-import { type GeneProfile } from "@/lib/genes-api";
+import { formatScore, type GeneProfile } from "@/lib/genes-api";
 import { MatchMeter, MeterCaption, meterState } from "./match-meter";
 
 /**
@@ -99,7 +99,7 @@ export function GeneOverviewCard({
                         title="Puntaje del modelo: ordena la lista, no es una probabilidad"
                         className="rounded-full bg-[var(--lu-surface)] px-2.5 py-0.5 font-mono text-[11px] text-[var(--lu-text)] ring-1 ring-[var(--lu-border)]"
                     >
-                        puntaje {score.toFixed(3)}
+                        puntaje {formatScore(score)}
                     </span>
                 </span>
 

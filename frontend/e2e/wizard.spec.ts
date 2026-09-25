@@ -121,9 +121,9 @@ test("a full run reaches a diagnostic orientation with the disclaimer", async ({
 
     // Specialties come back translated to Spanish, not echoed in English.
     // "pulmonology" -> "Neumonología" per src/lib/especialidades.ts.
-    // Appears twice: the recommendation chip and the ranking table.
+    // Appears twice: the recommendation chip and the per-area list.
     await expect(page.getByText("Neumonología").first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/recomendamos que busque algún especialista/i)).toBeVisible();
+    await expect(page.getByText(/qué especialista consultar/i)).toBeVisible();
 
     // Regulatory: the orientation must never be presented as a diagnosis.
     await expect(
