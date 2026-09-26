@@ -343,15 +343,15 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=hpo-recognizer
 
-  publish-genphenai:
-    name: Build & publish genphenai
+  publish-model:
+    name: Build & publish model
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
       packages: write
     env:
-      IMAGE: diagnosticar-genphenai
+      IMAGE: diagnosticar-model
     steps:
       - uses: actions/checkout@v4
         with:
@@ -413,8 +413,8 @@ jobs:
           load: true
           tags: ${{ env.IMAGE }}:candidate
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=genphenai
-          cache-to: type=gha,scope=genphenai,mode=max
+          cache-from: type=gha,scope=model
+          cache-to: type=gha,scope=model,mode=max
 
       # The tests compare three clinical cases with rankings captured from
       # production, so a wrong or corrupted model fails here, before it ships.
@@ -450,4 +450,4 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=genphenai
+          cache-from: type=gha,scope=model

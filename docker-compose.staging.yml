@@ -188,28 +188,28 @@ services:
   # diagnostic.ar-model, baked into the image), so rankings do not change.
   #
   # A router one priority above genphenai-tunnel's takes the whole path once
-  # GENPHENAI_ROUTED=true; until then the container runs and nothing reaches
+  # MODEL_ROUTED=true; until then the container runs and nothing reaches
   # it. Routing back is the same variable set to false and `ops/staging.sh up`.
   #
   # No GPU and no secret: ONNX on the CPU, ~90 MiB, a few ms per ranking.
-  # GENPHENAI_TAG pins it separately, to roll it back without the rest.
-  genphenai:
-    image: ghcr.io/${GHCR_OWNER:-matealv}/diagnosticar-genphenai:${GENPHENAI_TAG:-${RELEASE_TAG:-latest}}
+  # MODEL_IMAGE_TAG pins it separately, to roll it back without the rest.
+  model:
+    image: ghcr.io/${GHCR_OWNER:-matealv}/diagnosticar-model:${MODEL_IMAGE_TAG:-${RELEASE_TAG:-latest}}
     restart: unless-stopped
     init: true
     environment:
       CORS_ORIGINS: https://${STAGING_HOST}
     labels:
-      - "traefik.enable=${GENPHENAI_ROUTED:-false}"
+      - "traefik.enable=${MODEL_ROUTED:-false}"
       - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
-      - "traefik.http.services.diagnosticar-staging-genphenai-local.loadbalancer.server.port=18020"
-      - "traefik.http.routers.diagnosticar-staging-genphenai-local.rule=Host(`${STAGING_HOST}`) && PathPrefix(`/genphenai`)"
-      - "traefik.http.routers.diagnosticar-staging-genphenai-local.entrypoints=websecure"
-      - "traefik.http.routers.diagnosticar-staging-genphenai-local.tls=true"
-      - "traefik.http.routers.diagnosticar-staging-genphenai-local.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
-      - "traefik.http.routers.diagnosticar-staging-genphenai-local.priority=240"
-      - "traefik.http.routers.diagnosticar-staging-genphenai-local.middlewares=diagnosticar-staging-genphenai-local-strip"
-      - "traefik.http.middlewares.diagnosticar-staging-genphenai-local-strip.stripprefix.prefixes=/genphenai"
+      - "traefik.http.services.diagnosticar-staging-model.loadbalancer.server.port=18020"
+      - "traefik.http.routers.diagnosticar-staging-model.rule=Host(`${STAGING_HOST}`) && PathPrefix(`/genphenai`)"
+      - "traefik.http.routers.diagnosticar-staging-model.entrypoints=websecure"
+      - "traefik.http.routers.diagnosticar-staging-model.tls=true"
+      - "traefik.http.routers.diagnosticar-staging-model.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
+      - "traefik.http.routers.diagnosticar-staging-model.priority=240"
+      - "traefik.http.routers.diagnosticar-staging-model.middlewares=diagnosticar-staging-model-strip"
+      - "traefik.http.middlewares.diagnosticar-staging-model-strip.stripprefix.prefixes=/genphenai"
     networks:
       - traefik_net
 
