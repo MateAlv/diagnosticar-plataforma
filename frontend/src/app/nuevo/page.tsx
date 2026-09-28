@@ -95,6 +95,7 @@ import { GeneModal } from "./gene-modal";
 import { GeneOverviewCard } from "./gene-overview-card";
 import { SpecialtyCard } from "./specialty-card";
 import { fetchGeneProfiles, formatScore, type GeneProfile } from "@/lib/genes-api";
+import { mensajeErrorExtraccion } from "@/lib/extract-errors";
 
 const PROFESSIONAL_VIEW_KEY = "diagnosticar:vista-profesional";
 
@@ -671,17 +672,7 @@ function NuevoDiagnosticoScreen() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error("Tu sesión expiró. Volvé a iniciar sesión para analizar el texto.");
-        }
-        if (response.status === 429) {
-          throw new Error("Hiciste muchas consultas seguidas. Esperá un momento y volvé a intentar.");
-        }
-        if (response.status === 503) {
-          throw new Error("El servicio está ocupado en este momento. Probá de nuevo en unos segundos.");
-        }
-        const detail = payload?.detail || payload?.error || "No pudimos analizar el texto.";
-        throw new Error(detail);
+        throw new Error(mensajeErrorExtraccion(response.status, payload));
       }
       const phenotypes = Array.isArray(payload?.phenotypes) ? payload.phenotypes : [];
       setExtractedPhenotypes((prev) => {

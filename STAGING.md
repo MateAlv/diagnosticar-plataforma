@@ -210,6 +210,36 @@ Every account on nodo0 can reach the Docker socket, so any of them can read
 the container's environment, token included. Prefer a token from an account
 used for nothing else.
 
+### What extraction may spend
+
+Every extraction runs several calls to `claude-opus-5` on Mate's Claude Max
+subscription — measured at US$0.34–1.89 of API-equivalent usage each, US$0.94
+on average. A global budget in the recognizer caps how many run:
+
+| `.env.staging` | Default | Meaning |
+|---|---|---|
+| `RECOGNIZER_GLOBAL_PER_5H` | 40 | extractions per rolling 5 hours, whole site |
+| `RECOGNIZER_GLOBAL_PER_WEEK` | 1344 | the same rate over a week (40 × 168 / 5): no limit of its own |
+| `RECOGNIZER_USER_PER_HOUR` / `_PER_DAY` | 20 / 60 | per account |
+
+Mate's two requirements (2026-09-28): at least 40 extractions per 5 hours,
+and ideally no more than 15% of the subscription — **when they conflict, the
+40 wins.** At the measured cost, 40 extractions are ~US$38 of API-equivalent
+usage per 5 hours; whether that is above 15% of a Max session is not
+published and has to be measured: diagnostic.ar-api's
+`docs/EXTRACTION_LIMITS.md` ("Calibration") has the procedure. If it is above,
+the lever is the cost per extraction, not the cap.
+
+The count lives on the `staging_recognizer_state` volume, so a redeploy does
+not reset the week. How much is left:
+
+```bash
+docker exec diagnosticar-staging-hpo-recognizer-1 python -c "import urllib.request,json; print(json.loads(urllib.request.urlopen('http://127.0.0.1:8000/healthz').read())['extraction_budget'])"
+```
+
+When it runs out, the wizard says so and points to the symptom search, which
+spends nothing.
+
 ### Gene ranking on staging runs on nodo0 too
 
 For the same reason, staging has its own GenPhenAI: `model`, with the

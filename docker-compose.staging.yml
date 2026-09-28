@@ -167,6 +167,19 @@ services:
       TRUSTED_PROXIES: ${STAGING_TRUSTED_PROXIES:-}
       RATE_LIMIT_PER_MINUTE: ${RECOGNIZER_RATE_LIMIT_PER_MINUTE:-10}
       MAX_CONCURRENT_EXTRACTIONS: ${RECOGNIZER_MAX_CONCURRENT:-2}
+      USER_EXTRACTIONS_PER_HOUR: ${RECOGNIZER_USER_PER_HOUR:-20}
+      USER_EXTRACTIONS_PER_DAY: ${RECOGNIZER_USER_PER_DAY:-60}
+      # The ceiling on what staging may spend of the Claude subscription behind
+      # STAGING_CLAUDE_CODE_OAUTH_TOKEN. Mate, 2026-09-28: 40 per 5 hours, and
+      # the week is just that rate (40 x 168 / 5), so it adds no limit of its
+      # own. Where 40 would exceed 15% of the subscription, 40 wins; STAGING.md
+      # has how to measure which it is.
+      GLOBAL_EXTRACTIONS_PER_5H: ${RECOGNIZER_GLOBAL_PER_5H:-40}
+      GLOBAL_EXTRACTIONS_PER_WEEK: ${RECOGNIZER_GLOBAL_PER_WEEK:-1344}
+      # On a volume, so a redeploy does not hand out a fresh week.
+      EXTRACTION_BUDGET_STATE: /var/lib/recognizer/budget.json
+    volumes:
+      - staging_recognizer_state:/var/lib/recognizer
     labels:
       - "traefik.enable=${HPO_RECOGNIZER_ROUTED:-false}"
       - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
@@ -220,3 +233,4 @@ networks:
 
 volumes:
   staging_postgres_data:
+  staging_recognizer_state:

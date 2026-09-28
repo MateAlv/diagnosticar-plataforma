@@ -589,6 +589,9 @@ const server = http.createServer(async (req, res) => {
     // in the wizard, so each is reachable here.
     if (FAIL.has("extract-auth")) { log("401 (MOCK_FAIL=extract-auth)"); return send(res, 401, { detail: "Unauthorized" }); }
     if (FAIL.has("extract-ratelimit")) { log("429 (MOCK_FAIL=extract-ratelimit)"); return send(res, 429, { detail: "Rate limit exceeded" }); }
+    // The per-account and whole-service limits, shaped as the gateway sends them.
+    if (FAIL.has("extract-user-limit")) { log("429 (MOCK_FAIL=extract-user-limit)"); return send(res, 429, { detail: { error: "user-rate-limit", retry_after: 1200, message: "Alcanzaste el límite de análisis de texto por ahora." } }); }
+    if (FAIL.has("extract-budget")) { log("429 (MOCK_FAIL=extract-budget)"); return send(res, 429, { detail: { error: "global-budget", retry_after: 10800, message: "El análisis de texto libre llegó a su límite por ahora." } }); }
     if (FAIL.has("extract-busy")) { log("503 (MOCK_FAIL=extract-busy)"); return send(res, 503, { detail: "Service is busy, try again shortly" }); }
     const body = await readBody(req);
     const text = String(body.text_es ?? "");

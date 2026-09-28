@@ -129,9 +129,14 @@ personal):
 | `ENABLE_SYMPTOM_EXTRACTION` | `false` (apaga el extractor viejo, que necesita GPU) |
 | `STORE_REQUESTS`, `CACHE_ENABLED` | `false` — no guardar texto clínico |
 | `RATE_LIMIT_PER_MINUTE`, `MAX_CONCURRENT_EXTRACTIONS` | `10` y `2`, como staging |
+| `USER_EXTRACTIONS_PER_HOUR`, `USER_EXTRACTIONS_PER_DAY` | Tope por cuenta; staging usa `20` y `60` |
+| `GLOBAL_EXTRACTIONS_PER_WEEK`, `GLOBAL_EXTRACTIONS_PER_5H` | **El techo de gasto de todo el sitio.** Cada extracción cuesta ~US$0,94 en promedio y hasta ~US$1,90 con historias largas: semanal = presupuesto semanal ÷ 1,90 si no quieren sorpresas |
+| `EXTRACTION_BUDGET_STATE` | Un archivo en un volumen (p. ej. `/var/lib/recognizer/budget.json`), para que reiniciar no borre la cuenta de la semana |
 
 Chequeo antes de mandarle tráfico: `GET /healthz` tiene que decir
-`extract_hpo.ready: true`; si no, `error` explica por qué.
+`extract_hpo.ready: true`; si no, `error` explica por qué. El mismo healthz
+muestra cuánto queda del presupuesto (`extraction_budget`). El detalle de
+cada límite está en `docs/EXTRACTION_LIMITS.md` de diagnostic.ar-api.
 
 **Model.** Nada secreto. `CORS_ORIGINS=https://TU-DOMINIO`. `GET /healthz`
 tiene que decir `mode: in-process`, `checkpoint_sha256` empezando en
