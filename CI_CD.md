@@ -35,17 +35,17 @@ different machine.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push to `main`, every PR, and weekly
-(vulnerabilities appear without anyone pushing). Eleven checks:
+`.github/workflows/ci.yml` runs on every PR and weekly on `main`
+(vulnerabilities appear without anyone pushing), and by hand from the Actions
+tab. Not on push to `main`: a PR merges only when it is up to date with `main`
+and green, and merges are squashed, so what lands is the tree already tested.
+Six checks:
 
 | Check | Gates on |
 |---|---|
-| `Lint & typecheck (frontend)` / `(backend)` | eslint + `tsc --noEmit` |
-| `Frontend unit tests` | pure frontend logic |
+| `Checks` | eslint + `tsc --noEmit` for both workspaces, frontend unit tests, `npm audit` on runtime deps, lockfile drift, gitleaks, no tracked `.env` |
 | `Backend tests (Postgres)` | full backend suite against a Postgres service container |
 | `E2E (Playwright)` | the standalone build, model services stubbed |
-| `Dependency audit (frontend)` / `(backend)` | `npm audit` on runtime deps + lockfile drift |
-| `Secret scan` | gitleaks, plus an assertion that no `.env` is tracked |
 | `Build & scan images (frontend)` / `(backend)` | Trivy HIGH/CRITICAL, asserts non-root |
 | `Compose stack smoke test` | boots the real compose stack and drives real endpoints |
 
@@ -63,8 +63,17 @@ Three deserve explanation:
   both runner stages delete npm and run `apk upgrade` — see
   "Why the Dockerfiles delete npm" below.
 
-`.github/dependabot.yml` groups routine updates weekly and pins Next/React major
-versions, which change the standalone layout the Dockerfile depends on.
+`.github/dependabot.yml` sends routine updates monthly, one grouped PR per
+ecosystem, not rebased automatically, and pins Next/React major versions, which
+change the standalone layout the Dockerfile depends on. Security fixes still
+arrive immediately.
+
+**Actions minutes are an account-wide quota**, and in September 2026 this repo
+spent all 3,000. Where they went: Dependabot PRs rebased and re-tested on every
+push to `main` (39%), the suite re-run on `main` after each merge (23%), and six
+jobs that each took seconds but were billed a whole minute (a job is rounded up
+to the minute). The trigger, the grouping and the single `Checks` job above are
+the fixes; keep new work inside an existing job unless it needs its own runner.
 
 **There is no CodeQL workflow.** It was removed on 2026-09-14 — code scanning
 needs GitHub Advanced Security, which a private repo on this plan does not
@@ -73,7 +82,7 @@ include, so the analysis ran and its results were discarded on every push. See
 
 ### Branch protection
 
-`main` requires all eleven checks, blocks force-pushes and deletions, and
+`main` requires all six checks, blocks force-pushes and deletions, and
 requires changes to arrive by pull request. It does **not** require an approving
 review — a solo owner cannot self-approve, and requiring one would block every
 merge.
@@ -368,7 +377,7 @@ Cheaper than discovering the same failure in CI five minutes later.
 
 ### 3. Open a pull request
 
-`main` is protected, so this is the only route in. All eleven checks must pass.
+`main` is protected, so this is the only route in. All six checks must pass.
 No approving review is required, so you can merge your own PR once green.
 
 ```bash

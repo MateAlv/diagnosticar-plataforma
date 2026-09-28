@@ -13,7 +13,7 @@ navegador ──▶ proxy con TLS ──┬── /                 frontend   (
                               ├── /api              backend    (Express) ──▶ postgres
                               │                                          └─▶ genes.db (solo lectura)
                               ├── /hpo-api          extractor  (FastAPI + LLM remoto)
-                              └── /genphenai        model      (FastAPI + GenPhenia en CPU)
+                              └── /genphenai        model      (FastAPI + modelo de diagnostic.ar en CPU)
 ```
 
 | Servicio | Imagen | Qué hace | RAM medida |

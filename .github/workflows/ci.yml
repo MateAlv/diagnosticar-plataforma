@@ -1,9 +1,13 @@
 name: CI
 
+# Not on push to main. main only accepts a pull request that is up to date with
+# it and passed every check below, and merges squash it, so the commit that
+# lands has exactly the tree that was tested. Re-running the suite on that push
+# found nothing and cost about a quarter of the account's Actions minutes.
+# workflow_dispatch runs it on main by hand when that is wanted.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
   schedule:
     # Vulnerabilities appear without anyone pushing; check every Monday 06:00 UTC.
     - cron: "0 6 * * 1"
@@ -21,50 +25,90 @@ env:
 
 jobs:
   # --------------------------------------------------------------------------
-  # Fast feedback: lint + types. Runs first so an obvious mistake fails in ~1min.
+  # Everything that takes seconds, in one job: lint and types, frontend unit
+  # tests, dependency audit and secret scan. As six jobs each was billed a full
+  # minute and repeated the checkout and install; together they take about as
+  # long as E2E's install alone, so nothing waits longer. Every step runs even
+  # when an earlier one failed, so one run still reports every failure.
   # --------------------------------------------------------------------------
-  static:
-    name: Lint & typecheck
+  checks:
+    name: Checks
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        workspace: [frontend, backend]
-    defaults:
-      run:
-        working-directory: ${{ matrix.workspace }}
+    # gitleaks-action asks the API which commits a pull request contains, which
+    # `contents: read` alone does not cover ("Resource not accessible by
+    # integration", only ever on PRs).
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: ${{ matrix.workspace }}/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
 
-      - run: npm ci
-      - name: Lint
-        run: npm run lint
-      - name: Typecheck
-        run: npm run typecheck
-
-  # --------------------------------------------------------------------------
-  # Pure unit tests. No database, no network.
-  # --------------------------------------------------------------------------
-  unit-frontend:
-    name: Frontend unit tests
-    runs-on: ubuntu-latest
-    defaults:
-      run:
+      # `npm ci` fails when a lockfile has drifted from package.json, so the
+      # audit below examines the tree that actually gets built.
+      - id: install-frontend
+        name: Install (frontend)
         working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-      - run: npm test
+        run: npm ci
+      - id: install-backend
+        name: Install (backend)
+        if: ${{ !cancelled() }}
+        working-directory: backend
+        run: npm ci
+
+      - name: Lint & typecheck (frontend)
+        if: ${{ !cancelled() && steps.install-frontend.outcome == 'success' }}
+        working-directory: frontend
+        run: npm run lint && npm run typecheck
+      - name: Lint & typecheck (backend)
+        if: ${{ !cancelled() && steps.install-backend.outcome == 'success' }}
+        working-directory: backend
+        run: npm run lint && npm run typecheck
+      - name: Frontend unit tests
+        if: ${{ !cancelled() && steps.install-frontend.outcome == 'success' }}
+        working-directory: frontend
+        run: npm test
+
+      # Runtime dependencies gate the build; dev-only findings are reported
+      # but never block, since they never reach the deployed image.
+      - name: Dependency audit (frontend)
+        if: ${{ !cancelled() }}
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
+      - name: Dependency audit (backend)
+        if: ${{ !cancelled() }}
+        working-directory: backend
+        run: npm audit --omit=dev --audit-level=high
+      - name: Dev dependency audit (informational)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          (cd frontend && npm audit --audit-level=high)
+          (cd backend && npm audit --audit-level=high)
+
+      - name: Secret scan (gitleaks)
+        if: ${{ !cancelled() }}
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Assert no .env file is tracked
+        # .env holds the JWT secrets and the SMTP password.
+        if: ${{ !cancelled() }}
+        run: |
+          tracked=$(git ls-files | grep -E '(^|/)\.env(\.[A-Za-z0-9_-]+)*$' | grep -v '\.example$' || true)
+          if [ -n "$tracked" ]; then
+            echo "::error::Environment files are committed: $tracked"
+            exit 1
+          fi
+          echo "ok — no .env files tracked"
 
   # --------------------------------------------------------------------------
   # Backend suite against a real Postgres. The ownership tests here are the ones
@@ -163,70 +207,6 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report/
           retention-days: 7
-
-  # --------------------------------------------------------------------------
-  # Dependency and secret hygiene.
-  # --------------------------------------------------------------------------
-  audit:
-    name: Dependency audit
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        workspace: [frontend, backend]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      # Runtime dependencies gate the build; dev-only findings are reported
-      # but never block, since they never reach the deployed image.
-      - name: npm audit (runtime deps)
-        working-directory: ${{ matrix.workspace }}
-        run: npm audit --omit=dev --audit-level=high
-
-      - name: npm audit (dev deps, informational)
-        working-directory: ${{ matrix.workspace }}
-        continue-on-error: true
-        run: npm audit --audit-level=high
-
-      - name: Assert the lockfile matches package.json
-        # `npm ci` fails on drift; a mismatched lockfile means the audit above
-        # examined a different dependency tree than the one that gets built.
-        working-directory: ${{ matrix.workspace }}
-        run: npm ci --dry-run
-
-  secrets:
-    name: Secret scan
-    runs-on: ubuntu-latest
-    # On a pull request, gitleaks-action asks the API which commits the PR
-    # contains, which the workflow-wide `contents: read` does not cover. Without
-    # this the job dies with "Resource not accessible by integration" — and only
-    # ever on PRs, so it stayed hidden until the first one ran.
-    # Scoped to this job rather than the whole workflow: nothing else needs it.
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Assert no .env file is tracked
-        # .env holds the JWT secrets and the SMTP password.
-        run: |
-          tracked=$(git ls-files | grep -E '(^|/)\.env(\.[A-Za-z0-9_-]+)*$' | grep -v '\.example$' || true)
-          if [ -n "$tracked" ]; then
-            echo "::error::Environment files are committed: $tracked"
-            exit 1
-          fi
-          echo "ok — no .env files tracked"
 
   # --------------------------------------------------------------------------
   # Container images: build both, then scan the filesystem of each for known

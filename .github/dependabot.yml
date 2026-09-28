@@ -1,18 +1,24 @@
 version: 2
 
 # Diagnostic.ar holds clinical data, so dependency drift is a security concern
-# rather than housekeeping. Updates are grouped so the team reviews a handful of
-# PRs a week instead of thirty, but security fixes are never grouped away —
-# Dependabot always opens those separately and immediately.
+# rather than housekeeping. Security fixes are never grouped or delayed:
+# Dependabot opens those separately and immediately, whatever this file says.
+#
+# Routine updates are cheap to review and expensive to test: every pull
+# request runs the whole CI suite, and every push to main used to make
+# Dependabot rebase its open PRs and run it again — up to eight times for one
+# PR, 39% of the account's Actions minutes in September 2026. So routine
+# updates arrive once a month, one grouped PR per ecosystem, and are not
+# rebased on their own; "Update branch" does that once, right before merging.
 updates:
   - package-ecosystem: npm
     directory: /frontend
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
       time: "06:00"
       timezone: America/Argentina/Buenos_Aires
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    rebase-strategy: disabled
     groups:
       frontend-minor-and-patch:
         update-types: [minor, patch]
@@ -29,26 +35,32 @@ updates:
   - package-ecosystem: npm
     directory: /backend
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
       time: "06:00"
       timezone: America/Argentina/Buenos_Aires
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    rebase-strategy: disabled
     groups:
       backend-minor-and-patch:
         update-types: [minor, patch]
 
   - package-ecosystem: docker
-    directory: /frontend
+    directories: [/frontend, /backend]
     schedule:
-      interval: weekly
-  - package-ecosystem: docker
-    directory: /backend
-    schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 1
+    rebase-strategy: disabled
+    groups:
+      base-images:
+        patterns: ["*"]
 
   # A compromised third-party action runs with repository credentials.
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 1
+    rebase-strategy: disabled
+    groups:
+      actions:
+        patterns: ["*"]
