@@ -39,6 +39,15 @@ services:
       GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL:-http://localhost:3000/login}
       NODE_ENV: ${NODE_ENV:-development}
       GENE_PROFILES_DB_PATH: /app/data/genes.db
+      # Empty turns follow-up questions off. With the question-agent profile
+      # up, set it to http://question-agent:8010.
+      QUESTION_AGENT_URL: ${QUESTION_AGENT_URL:-}
+      QUESTION_AGENT_TOKEN: ${QUESTION_AGENT_TOKEN:-}
+      # Must stay above the agent's queue wait + round budget + margin; see
+      # PREGUNTAS_ROUND_BUDGET_S below and STAGING.md.
+      QUESTION_AGENT_TIMEOUT_MS: ${QUESTION_AGENT_TIMEOUT_MS:-100000}
+      QUESTION_AGENT_ROUNDS_PER_HOUR: ${QUESTION_AGENT_ROUNDS_PER_HOUR:-20}
+      QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H: ${QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H:-50}
     depends_on:
       db:
         condition: service_healthy
@@ -61,6 +70,48 @@ services:
       NEXT_PUBLIC_GENPHENAI_URL: ${NEXT_PUBLIC_GENPHENAI_URL:-http://localhost:18020}
     depends_on:
       - backend
+
+  # Follow-up questions (MarBL00126/diagnosticar-question-agent). Behind a
+  # profile so a plain `up` never needs its image:
+  #   docker compose --profile question-agent up -d
+  # No published port: only the backend calls it, over the default network.
+  #
+  # The agent reads PREGUNTAS_* (pydantic-settings). Entries without a value
+  # are passed only when set in .env, so an unset tunable keeps the agent's
+  # own default instead of arriving as an empty string it cannot parse.
+  question-agent:
+    image: ghcr.io/${GHCR_OWNER:-matealv}/diagnosticar-question-agent:${QUESTION_AGENT_TAG:-latest}
+    profiles: ["question-agent"]
+    init: true
+    restart: unless-stopped
+    environment:
+      PREGUNTAS_PORT: "8010"
+      PREGUNTAS_MODEL_SERVICE_URL: ${PREGUNTAS_MODEL_SERVICE_URL:-http://host.docker.internal:18020}
+      PREGUNTAS_MODEL_SERVICE_TIMEOUT_S:
+      # claude-cli (subscription, CLAUDE_CODE_OAUTH_TOKEN), anthropic (API key,
+      # ANTHROPIC_API_KEY) or template (no LLM at all).
+      PREGUNTAS_LLM_PROVIDER: ${PREGUNTAS_LLM_PROVIDER:-claude-cli}
+      PREGUNTAS_LLM_MODEL: ${PREGUNTAS_LLM_MODEL:-claude-opus-5}
+      PREGUNTAS_LLM_TIMEOUT_S:
+      PREGUNTAS_LLM_EFFORT:
+      PREGUNTAS_LLM_QUESTION_EFFORT:
+      PREGUNTAS_MAX_CONCURRENT_ROUNDS:
+      # Always set, because QUESTION_AGENT_TIMEOUT_MS above is sized against it.
+      PREGUNTAS_ROUND_BUDGET_S: ${QUESTION_AGENT_ROUND_BUDGET_S:-75}
+      PREGUNTAS_LOG_LEVEL:
+      # The backend's own token, so the two sides cannot drift apart.
+      PREGUNTAS_SERVICE_TOKEN: ${QUESTION_AGENT_TOKEN:-}
+      CLAUDE_CODE_OAUTH_TOKEN:
+      ANTHROPIC_API_KEY:
+    healthcheck:
+      # The image ships python but no curl.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   postgres_data:

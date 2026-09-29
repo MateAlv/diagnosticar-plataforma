@@ -263,3 +263,29 @@ test("demo mode does not offer to save the session", async ({ page }) => {
     await openDemoWizard(page);
     await expect(page.getByRole("button", { name: /Guardar diagnóstico/ })).toHaveCount(0);
 });
+
+test("on a phone the header shows the whole logo and both actions on one line, with no sideways scroll", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "phone widths");
+    await mockBackend(page, { user: TEST_USER });
+    for (const width of [360, 412]) {
+        await page.setViewportSize({ width, height: 780 });
+        await page.goto("/nuevo", { waitUntil: "networkidle" });
+
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+        expect(overflow, `sideways scroll at ${width}px`).toBeLessThanOrEqual(0);
+
+        const logo = (await page.getByRole("link", { name: "Regresar al home" }).getByRole("img").boundingBox())!;
+        expect(logo.x, `logo cut on the left at ${width}px`).toBeGreaterThanOrEqual(0);
+        expect(logo.x + logo.width, `logo cut on the right at ${width}px`).toBeLessThanOrEqual(width);
+        expect(logo.width, `logo squeezed at ${width}px`).toBeGreaterThan(120);
+
+        for (const name of ["Cancelar", "Cerrar sesión"]) {
+            const action = page.locator("header").getByRole("button", { name });
+            await expect(action).toBeInViewport({ ratio: 1 });
+            expect((await action.boundingBox())!.height, `"${name}" wraps at ${width}px`).toBeLessThanOrEqual(40);
+        }
+        // The account stays named for a screen reader; the logo is the way home.
+        await expect(page.locator("header").getByText(TEST_USER.email)).toBeAttached();
+        await expect(page.locator("header").getByRole("link", { name: "Home", exact: true })).toBeHidden();
+    }
+});

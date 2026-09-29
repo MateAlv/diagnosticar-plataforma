@@ -681,3 +681,83 @@ h2,
 .hero-title {
   font-family: var(--font-space), var(--font-sora), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
 }
+
+/* ====== The question panel's entrances and exits ======
+   Used under motion-safe: only, so with reduced motion the panel simply
+   appears and goes. */
+@keyframes dock-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(calc(100% + 8px));
+  }
+}
+
+@keyframes drawer-out {
+  to {
+    transform: translateX(calc(100% + 8px));
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes sheet-out {
+  to {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes panel-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes panel-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes launcher-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+}
+
+/* ====== Printing the consultation summary on its own ======
+   "Imprimir" in the question panel marks everything beside the panel on the
+   way up to <body> as data-print-hidden, and the containers it sits in as
+   data-print-path, for the length of the print dialog. */
+@media print {
+  [data-print-hidden] {
+    display: none !important;
+  }
+
+  /* A drawer or sheet locks the page's scroll while it is open, which is
+     also when "Imprimir" is pressed from it. */
+  html body[data-scroll-locked] {
+    overflow: visible !important;
+  }
+
+  [data-print-path] {
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: none !important;
+    min-height: 0 !important;
+    max-width: none !important;
+  }
+}

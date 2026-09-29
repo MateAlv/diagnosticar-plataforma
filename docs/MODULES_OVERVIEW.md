@@ -106,6 +106,21 @@ returns (`gene_symbol: "CFTR"`).
 
 ## 2. Question agent (`diagnosticar-question-agent/`)
 
+> **Status, 2026-09-28: superseded by v2.** Everything below describes the
+> v1 prototype as it arrived, and is kept as the record of what was found. v2 is
+> a rewrite on branch `feat/agente-v2` of the same repository (it keeps the
+> author's history and credits what survives): it takes HPO terms, asks up to 3
+> rounds of 3 questions chosen by information gain and worded by an LLM inside
+> guardrails, adds each confirmed symptom to what the diagnostic.ar model
+> receives, and records "no" answers and negated findings for the consultation
+> without changing the ranking. It runs as an internal service behind Express
+> (`/api/questions/*`, see `docs/INTEGRATION_PLAN.md`) and is built from
+> diagnostic.ar-api (`services/question-agent/Dockerfile`). On 501 real
+> published patients the answers leave the ranking statistically unchanged; the
+> full evaluation, including why an earlier simulated gain did not hold, is in
+> that repository's `docs/EVALUACION.md`, `docs/IMPACTO.md` and
+> `docs/NEGACIONES.md`.
+
 **What it is.** `genphenai-repreguntas` v1.0.0 — a FastAPI + LangChain + Chroma
 RAG service that asks the user follow-up questions to refine a ranking. It
 indexes Orphadata disease→HPO associations (`data/en_product4.xml`) and

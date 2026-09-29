@@ -1,4 +1,4 @@
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { DATABASE_URL } from '../config.js';
 
 export const pool = new Pool({
@@ -7,6 +7,15 @@ export const pool = new Pool({
 
 export const query = (text: string, params?: any[]) => pool.query(text, params);
 export const getClient = () => pool.connect();
+
+/**
+ * The caps look back five hours at most; the extra days only leave room to
+ * see recent usage. Run at boot and with every charged round, so the table
+ * stays small even on a backend that is never restarted.
+ */
+export async function pruneQuestionAgentRounds(db: Pool | PoolClient = pool): Promise<void> {
+    await db.query(`DELETE FROM question_agent_rounds WHERE created_at < now() - interval '7 days'`);
+}
 
 // Arbitrary but fixed: any caller using the same key serialises against the
 // others. Changing it would defeat the lock.
@@ -123,7 +132,34 @@ export async function migrate() {
         ON diagnoses (user_email_snapshot);
     `);
 
-        console.log('Migration completed: users, patients, diagnoses tables created/verified.');
+        // Follow-up questions and answers for a diagnosis (routes/questions.ts).
+        // Nullable because most diagnoses never start a session.
+        await client.query(`
+      ALTER TABLE diagnoses
+        ADD COLUMN IF NOT EXISTS preguntas_respuestas JSONB;
+    `);
+
+        // One row per question-agent round that was sent to the agent, so the
+        // spend caps hold across restarts and replicas. Who and when only:
+        // nothing clinical belongs here.
+        await client.query(`
+      CREATE TABLE IF NOT EXISTS question_agent_rounds (
+        id          BIGSERIAL PRIMARY KEY,
+        user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+        await client.query(`
+      CREATE INDEX IF NOT EXISTS question_agent_rounds_created_idx
+        ON question_agent_rounds (created_at);
+    `);
+        await client.query(`
+      CREATE INDEX IF NOT EXISTS question_agent_rounds_user_created_idx
+        ON question_agent_rounds (user_id, created_at);
+    `);
+        await pruneQuestionAgentRounds(client);
+
+        console.log('Migration completed: users, patients, diagnoses, question_agent_rounds tables created/verified.');
     } catch (err) {
         console.error('Migration failed:', err);
         throw err;

@@ -264,3 +264,4 @@ test('a score under 0.01 reads as low, never as a number', () => {
   assert.equal(formatScore(0.01), '0.010');
   assert.equal(formatScore(0.37), '0.370');
 });
+

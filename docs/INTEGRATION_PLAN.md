@@ -164,6 +164,88 @@ the ranking is recomputed with the additional HPO terms.
 ranking through `dev:mock`, with the disclaimer asserted and rate limiting
 covered by a backend test.
 
+### Status — 2026-09-26: backend side built
+
+The agent was rewritten (v2, `MarBL00126/diagnosticar-question-agent`) and is
+now keyed on HPO terms and genes, so the Orphanet bridge of day 2 is moot. It
+is **stateless**: `POST /v1/rounds` receives the whole session every call.
+
+What landed in this repository:
+
+- **Routes** (`backend/src/routes/questions.ts`), all authenticated:
+  `GET /api/questions/status` → `{enabled}`; `POST /api/questions/rounds`
+  starts, answers or finishes a session; `GET /api/questions/:diagnosisId`
+  returns it for resuming after a reload. The browser never reaches the agent.
+- **Persistence, decided:** the session is stored with its diagnosis, in the
+  nullable JSONB column `diagnoses.preguntas_respuestas`
+  (`{version: 2, finished, rounds: [{round, mode, questions, answers,
+  response}]}`), under the same ownership rules as the rest of the row. The
+  agent's validated response is stored whole, including its `versions`, so a
+  stored refinement can be traced to the knowledge base and model behind it;
+  `versions` is not sent to the browser. Stored sessions are read with a
+  schema more lenient than the agent's contract (version 1 sessions, with one
+  mode for the whole session and `separates` on questions, are migrated on
+  read); one that still cannot be read answers 409, not 500. Saves are
+  compare-and-set against the value read, so two writers cannot overwrite each
+  other's rounds.
+- **Mode per round:** each POST's `mode` is what the agent is asked for, so
+  the "Ver detalle médico" switch changes the wording from the next round on;
+  every round, stored and returned, carries the mode it was written in.
+  `genesIfYes`/`genesIfNo` (≤ 5 genes each) are clinician-mode only.
+- **Readings:** every earlier answer is sent back with the reading the agent
+  first gave it (`effective_answer`, `note_summary`), so a note is read once.
+- **Evidence sent to the agent** is rebuilt from the saved diagnosis, never
+  taken from the browser: present = the codes in `symptoms_extracted` (what
+  `/rank-genes` actually received, manual additions included); absent = the
+  `negated` entries of `phenotypes` not also present.
+- **Guards:** two spend caps, counted in Postgres (`question_agent_rounds`:
+  account id and time only, pruned after 7 days) so restarts and replicas
+  share them — `QUESTION_AGENT_ROUNDS_PER_HOUR` per account (default 20) and
+  `QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H` for the whole deployment (default 50
+  per rolling five hours), checked and recorded under one advisory lock so
+  concurrent requests cannot both take the last slot. Only rounds sent to the
+  agent count; one the agent refuses before starting (`busy`,
+  `no-known-hpo-ids`) is given back. Also a per-minute request limit, one
+  round in flight per account and backend process,
+  `QUESTION_AGENT_TIMEOUT_MS` (default 100 s,
+  above the agent's 10 s queue + 75 s round budget + 10 s model timeout), responses validated
+  with zod and capped at 1 MB before buffering, upstream bodies never
+  forwarded. A retried round with no answers, or the same answers or `finish`
+  resent after a lost response, is replayed from the database, not re-asked.
+- **Agent errors** reach the browser as: `no-known-hpo-ids` → 400
+  `no_usable_symptoms`; `busy` / `model-unavailable` → 503 `unavailable` with
+  the agent's `Retry-After` (at most 60 s); `invalid-request`, 401, 413, 500,
+  network failures and contract breaks → 503 `unavailable`; timeout → 504
+  `timeout`.
+- **Error bodies** from `/api/questions/*` are `{error, code}`: `error` is the
+  Spanish text to show, `code` is what the frontend branches on, so the
+  wording can change without breaking it.
+
+  | Status | `code` | When |
+  |---|---|---|
+  | 400 | `invalid_request` | The body does not have the expected shape |
+  | 400 | `answers_mismatch` | Answers do not cover exactly the pending questions |
+  | 400 | `no_usable_symptoms` | The diagnosis has no coded symptoms, or the agent knows none of them |
+  | 404 | `not_found` | No such diagnosis, not the caller's, or a malformed id |
+  | 409 | `finished` | The session already finished |
+  | 409 | `conflict` | The session changed (another tab or process) during the round |
+  | 409 | `unreadable_session` | The stored session cannot be read |
+  | 429 | `rate_limited` | The account's hourly round cap or the per-minute request limit; `Retry-After` set |
+  | 429 | `global_limit` | The deployment-wide cap (`QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H`); `Retry-After` is when the oldest round in the five-hour window ages out |
+  | 429 | `round_in_flight` | Another round is already running for the account; `Retry-After` set |
+  | 500 | `internal` | Anything unexpected |
+  | 503 | `disabled` | The feature is off (`QUESTION_AGENT_URL` unset) |
+  | 503 | `unavailable` | The agent is unreachable, refused, or broke the contract |
+  | 504 | `timeout` | No answer within `QUESTION_AGENT_TIMEOUT_MS` |
+- **Infra:** compose service `question-agent` behind a profile (local and
+  staging, off by default, not on `traefik_net` on staging); release job
+  `publish-question-agent`, skipped until `.github/question-agent.env` pins a
+  commit.
+
+Still open: the frontend (separate branch), pinning the agent's commit and
+deploy key, and a first run on staging — which needs Mate's go-ahead. The
+compose service already uses the agent's own `PREGUNTAS_*` settings.
+
 ---
 
 ## Day 4 — Symptom recognizer
@@ -218,7 +300,8 @@ is a separate, evidence-led decision — not a day-4 deliverable.**
 - **Any deploy.** Staging and production both need Mate's explicit go-ahead.
 - Deleting the current extraction pipeline.
 - CI for `diagnostic.ar-api` (needed, but not these four days).
-- Persisting question-agent Q&A into `diagnoses` (schema decision).
+- ~~Persisting question-agent Q&A into `diagnoses` (schema decision).~~
+  Decided 2026-09-26: `diagnoses.preguntas_respuestas`, see day 3's status.
 - Solving codex authentication for containers on nodo0 — see `LLM_ACCESS.md`.
   Codex-backed paths are a **local story** until that is answered.
 

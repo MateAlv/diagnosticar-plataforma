@@ -56,7 +56,7 @@ export function SpecialtyCard({
             aria-labelledby="especialidades-titulo"
             className="overflow-hidden rounded-3xl border border-[var(--lu-border)] bg-white shadow-sm"
         >
-            <div className="border-b border-[var(--lu-border)] bg-[var(--lu-surface)] px-6 py-4">
+            <div className="border-b border-[var(--lu-border)] bg-[var(--lu-surface)] px-4 py-4 sm:px-6">
                 <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--lu-subtle)]">
                     Según los genes de esta lista
                 </p>
@@ -65,7 +65,7 @@ export function SpecialtyCard({
                 </h3>
             </div>
 
-            <div className="flex flex-col gap-5 px-6 py-5">
+            <div className="flex flex-col gap-5 px-4 py-5 sm:px-6">
                 {top.length > 0 ? (
                     <div>
                         <p className="text-sm leading-relaxed text-[var(--lu-text)]">

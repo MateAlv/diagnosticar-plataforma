@@ -5,6 +5,8 @@ type RateLimitOptions = {
     windowMs: number;
     max: number;
     keyGenerator?: (req: Request) => string;
+    message?: string;
+    code?: string;
 };
 
 type Bucket = {
@@ -39,7 +41,8 @@ export function rateLimit(options: RateLimitOptions) {
         if (bucket.count >= options.max) {
             const retryAfterSeconds = Math.ceil((bucket.resetAt - now) / 1000);
             res.setHeader('Retry-After', retryAfterSeconds.toString());
-            return res.status(429).json({ error: 'Too many requests' });
+            const error = options.message ?? 'Too many requests';
+            return res.status(429).json(options.code ? { error, code: options.code } : { error });
         }
 
         bucket.count += 1;

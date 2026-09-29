@@ -263,6 +263,86 @@ docker exec diagnosticar-staging-model-1 \
 reaches brainy for anything but the incumbent's search and specialties.
 Routing back is the same variable set to `false`.
 
+### Follow-up questions (question agent)
+
+`question-agent` refines a saved ranking with up to three rounds of yes/no
+questions. Only the backend calls it (`/api/questions/*`), so it has **no
+Traefik labels and is not on `traefik_net`**: that network is shared with other
+teams' containers, and every round spends LLM quota. It sits on the project's
+default network, which is why `model` joins that network too — the agent
+ranks through `http://model:18020`.
+
+It is behind the `question-agent` compose profile and off by default, so
+`ops/staging.sh up` neither pulls nor starts it. The release builds its image
+from two pins: the agent's code (`MarBL00126/diagnosticar-question-agent`) at
+`QUESTION_AGENT_COMMIT` in `.github/question-agent.env`, and the Dockerfile
+(`services/question-agent/Dockerfile` in diagnostic.ar-api) at `GATEWAY_COMMIT`
+in `.github/recognizer.env`, checked out with the `MODEL_RELEASE_TOKEN` and
+`API_DEPLOY_KEY` secrets. The image only exists once a release ran with
+`QUESTION_AGENT_COMMIT` set (see `CI_CD.md`). To switch it on, in
+`.env.staging`:
+
+1. `QUESTION_AGENT_TOKEN` — `openssl rand -hex 32`. The backend runs with
+   `NODE_ENV=production`, so it refuses to boot with the URL set and no token
+   of 32+ characters. Compose hands the same value to the agent as
+   `PREGUNTAS_SERVICE_TOKEN`, the `X-Internal-Token` it expects.
+2. `STAGING_CLAUDE_CODE_OAUTH_TOKEN` — the same one hpo-recognizer uses,
+   passed to the agent as `CLAUDE_CODE_OAUTH_TOKEN` for its default
+   `claude-cli` provider.
+3. `QUESTION_AGENT_TAG` — a release that published the image.
+4. `QUESTION_AGENT_URL=http://question-agent:8010`.
+
+Then `COMPOSE_PROFILES=question-agent ops/staging.sh up vX.Y.Z`. Switching it
+off is `QUESTION_AGENT_URL=` and `up` again: the backend answers
+`GET /api/questions/status` with `{"enabled": false}` and the UI hides the
+feature.
+
+The agent reads its settings from `PREGUNTAS_*` variables, set in
+`docker-compose.yml`; the staging file only points
+`PREGUNTAS_MODEL_SERVICE_URL` at `model`. `PREGUNTAS_LLM_PROVIDER` and
+`PREGUNTAS_LLM_MODEL` default to `claude-cli` and `claude-opus-5`. The rest
+(`PREGUNTAS_LLM_EFFORT`, `PREGUNTAS_LLM_TIMEOUT_S`,
+`PREGUNTAS_MODEL_SERVICE_TIMEOUT_S`, `PREGUNTAS_MAX_CONCURRENT_ROUNDS`,
+`PREGUNTAS_LOG_LEVEL`) reach the container only when `.env.staging` sets
+them; otherwise the agent keeps its own defaults. The exception is
+`PREGUNTAS_ROUND_BUDGET_S`, always set from `QUESTION_AGENT_ROUND_BUDGET_S`
+(default 75), because the backend's timeout is sized against it:
+
+> **Invariant:** `QUESTION_AGENT_TIMEOUT_MS` (default 100 s) must exceed the
+> agent's worst case — its queue wait (10 s) + the round budget (75 s) + its
+> model-service timeout (10 s), 95 s by default — plus a margin. If it does not, the backend gives
+> up on a round the agent then finishes: the reader sees a timeout and the
+> LLM quota is spent for nothing. Raise both together.
+
+**Spend caps.** Every round spends the Claude subscription behind
+`STAGING_CLAUDE_CODE_OAUTH_TOKEN`, so the backend caps them twice:
+`QUESTION_AGENT_ROUNDS_PER_HOUR` per account (default 20) and
+`QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H` for the whole deployment, every account
+together (default 50 per rolling five hours). Past either one a round is a 429
+— `rate_limited` or `global_limit` — with `Retry-After` set to when the oldest
+round in that window ages out, and the agent is not called. Only rounds sent to
+the agent count: replays of a saved round, rejected requests and rounds the
+agent refused before starting (`busy`, `no-known-hpo-ids`) do not. The rounds
+are rows in the `question_agent_rounds` table (account id and time, nothing
+clinical, pruned after 7 days), so a redeploy does not reset the budget; both
+caps must be positive integers and cannot be switched off. The count is per
+database: staging and production each have their own, so if both run the agent
+on one subscription it can spend up to both budgets. To see how much of the
+global budget is spent:
+
+```bash
+docker exec diagnosticar-staging-db-1 sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -c \
+  "SELECT count(*) FROM question_agent_rounds WHERE created_at > now() - make_interval(hours => 5)"'
+```
+
+`PREGUNTAS_PORT` is fixed at 8010, which the backend URL and the compose
+healthcheck (`GET /healthz`, with python since the image has no curl) both
+rely on. To check it by hand:
+
+```bash
+docker inspect --format '{{.State.Health.Status}}' diagnosticar-staging-question-agent-1
+```
+
 ### Data rules
 
 - **Synthetic data only.** Never restore a production dump. It would put

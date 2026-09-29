@@ -382,6 +382,10 @@ test("symptoms added by hand are compared, not ignored", async ({ page }) => {
     // The history is written but never analysed, so extractedPhenotypes stays
     // empty — the state a returning draft or a hand-built list arrives in.
     await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
+    // The help pill beside the list opens on hover. Filling scrolls the page,
+    // which can slide it under the pointer the last click left behind, and
+    // its panel then covers the suggestions.
+    await page.mouse.move(0, 0);
     await page.getByPlaceholder("Escribí un síntoma y elegí de la lista").fill("bronquiectasias");
     await page.getByText("Bronquiectasias").first().click();
     await page.getByRole("button", { name: /Revisar y continuar/ }).click();

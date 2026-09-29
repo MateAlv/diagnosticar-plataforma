@@ -245,5 +245,274 @@
       },
       "resumen_es": "Subunidad alfa del canal de sodio epitelial sensible a amilorida."
     }
+  },
+  "questions": {
+    "_comment": "Browser shape of /api/questions v2 (camelCase), converted from the question agent's contract example (qa-agente docs/contrato/rondas-ejemplo.json). round1 and round2 are templates written in mode 'paciente' and carry the medical-view fields (rationale, genesIfYes, genesIfNo, which is always empty now that the agent sends the model only the findings answered «Sí»); the mocks null those for 'paciente' and swap in `medico` wording for 'medico', per round, as the agent does. Each round re-runs the model with the findings answered «Sí», so a ranking's `modelRank` is the gene's place in that ranking itself (the screen measures moves against the first /rank-genes list, never from it) and its `specialties` are the re-run's. Finished rounds take their summary from `summaries` by mode; interpretedAnswers are recomputed from the actual answers of every round. Each question carries `label`, the official Spanish HPO label. A summary only recaps what was asked, what was answered and how the list moved: it never suggests a study or a clinical step, in either mode.",
+    "status": {
+      "enabled": true
+    },
+    "errors": {
+      "_comment": "Every error body of /api/questions/* is {error, code}; keyed by code, as backend/src/routes/questions.ts (FAILURES) sends them.",
+      "invalid_request": { "status": 400, "error": "La solicitud no es válida." },
+      "answers_mismatch": { "status": 400, "error": "Las respuestas no corresponden a las preguntas pendientes." },
+      "no_usable_symptoms": { "status": 400, "error": "No pudimos usar los síntomas de esta búsqueda para hacer preguntas." },
+      "not_found": { "status": 404, "error": "Diagnóstico no encontrado." },
+      "finished": { "status": 409, "error": "Las preguntas de este diagnóstico ya terminaron." },
+      "conflict": { "status": 409, "error": "Las preguntas de esta búsqueda cambiaron en otra pestaña. Recargá la página para continuar." },
+      "unreadable_session": { "status": 409, "error": "No pudimos recuperar las preguntas de esta búsqueda." },
+      "rate_limited": { "status": 429, "error": "Hiciste muchas consultas seguidas. Esperá un rato y volvé a intentar." },
+      "global_limit": { "status": 429, "error": "diagnostic.ar llegó al máximo de preguntas por ahora. Probá de nuevo más tarde." },
+      "round_in_flight": { "status": 429, "error": "Ya hay una ronda de preguntas en curso. Esperá a que termine." },
+      "internal": { "status": 500, "error": "No pudimos procesar las preguntas." },
+      "disabled": { "status": 503, "error": "Las preguntas de seguimiento no están disponibles en este momento." },
+      "unavailable": { "status": 503, "error": "El servicio de preguntas no está disponible. Probá de nuevo en unos minutos." },
+      "timeout": { "status": 504, "error": "El servicio de preguntas tardó demasiado en responder. Probá de nuevo." }
+    },
+    "round1": {
+      "round": 1,
+      "mode": "paciente",
+      "status": "questions",
+      "finishReason": null,
+      "questions": [
+        {
+          "id": "r1-HP:0001738",
+          "hpoId": "HP:0001738",
+          "label": "Insuficiencia pancreática exocrina",
+          "text": "¿Notaste que la materia fecal es abundante, grasosa o con mal olor?",
+          "help": "Por ejemplo, que flota o deja manchas de grasa.",
+          "genesIfYes": [
+            "CFTR"
+          ],
+          "genesIfNo": [],
+          "rationale": "La esteatorrea sugiere insuficiencia pancreática exocrina: frecuente con CFTR, no esperable en una discinesia ciliar."
+        },
+        {
+          "id": "r1-HP:0001696",
+          "hpoId": "HP:0001696",
+          "label": "Situs inversus totalis",
+          "text": "¿Algún médico te dijo que tiene los órganos del lado contrario (por ejemplo, el corazón a la derecha)?",
+          "help": null,
+          "genesIfYes": [
+            "DNAH5"
+          ],
+          "genesIfNo": [],
+          "rationale": "El situs inversus acompaña a cerca de la mitad de las discinesias ciliares primarias por DNAH5 y no a la fibrosis quística."
+        },
+        {
+          "id": "r1-HP:0012236",
+          "hpoId": "HP:0012236",
+          "label": "Cloruro en sudor elevado",
+          "text": "¿Le hicieron alguna vez el test del sudor y dio alterado?",
+          "help": "Si no sabés qué es, respondé «No sé».",
+          "genesIfYes": [
+            "CFTR"
+          ],
+          "genesIfNo": [],
+          "rationale": "El cloruro en sudor elevado es el estudio de referencia para CFTR; con SCNN1A lo alterado suele ser el sodio."
+        }
+      ],
+      "ranking": [
+        {
+          "geneId": "CFTR",
+          "geneSymbol": "CFTR",
+          "score": 0.52,
+          "modelScore": 0.412,
+          "modelRank": 1
+        },
+        {
+          "geneId": "DNAH5",
+          "geneSymbol": "DNAH5",
+          "score": 0.27,
+          "modelScore": 0.201,
+          "modelRank": 2
+        },
+        {
+          "geneId": "SCNN1A",
+          "geneSymbol": "SCNN1A",
+          "score": 0.11,
+          "modelScore": 0.087,
+          "modelRank": 3
+        }
+      ],
+      "specialties": null,
+      "confidence": 0.78,
+      "interpretedAnswers": [],
+      "summary": null,
+      "warnings": []
+    },
+    "followUp": {
+      "_comment": "A second round that still asks, for the screens between rounds (what changed, round 2 of 3). Served between round1 and round2 when a mock asks for three rounds: the e2e `threeRounds` option and the dev mock. Its ranking is what round1's answers produce.",
+      "round": 2,
+      "mode": "paciente",
+      "status": "questions",
+      "finishReason": null,
+      "questions": [
+        {
+          "id": "r2-HP:0000246",
+          "hpoId": "HP:0000246",
+          "label": "Sinusitis",
+          "text": "¿Tiene la nariz tapada o con mocos casi todo el tiempo, o alguna vez le diagnosticaron sinusitis?",
+          "help": "Nos referimos a algo que dura meses, no a un resfrío.",
+          "genesIfYes": ["DNAH5", "CFTR"],
+          "genesIfNo": [],
+          "rationale": "La rinosinusitis crónica es casi constante en la discinesia ciliar primaria y frecuente en la fibrosis quística; no orienta a SCNN1A."
+        },
+        {
+          "id": "r2-HP:0000403",
+          "hpoId": "HP:0000403",
+          "label": "Otitis media recurrente",
+          "text": "¿Tuvo muchas otitis (infecciones de oído) o notaste que le cuesta oír?",
+          "help": null,
+          "genesIfYes": ["DNAH5"],
+          "genesIfNo": [],
+          "rationale": "La otitis media recurrente con hipoacusia conductiva es característica de la DCP por DNAH5 y poco típica en la FQ."
+        },
+        {
+          "id": "r2-HP:0002153",
+          "hpoId": "HP:0002153",
+          "label": "Hiperpotasemia",
+          "text": "¿En algún análisis de sangre le encontraron el potasio alto?",
+          "help": "Si no te acordás, respondé «No sé».",
+          "genesIfYes": ["SCNN1A"],
+          "genesIfNo": [],
+          "rationale": "Las alteraciones electrolíticas (hiperpotasemia, pérdida salina) orientan a SCNN1A (pseudohipoaldosteronismo tipo 1)."
+        }
+      ],
+      "ranking": [
+        { "geneId": "CFTR", "geneSymbol": "CFTR", "score": 0.61, "modelScore": 0.412, "modelRank": 1 },
+        { "geneId": "SCNN1A", "geneSymbol": "SCNN1A", "score": 0.2, "modelScore": 0.087, "modelRank": 2 },
+        { "geneId": "DNAH5", "geneSymbol": "DNAH5", "score": 0.12, "modelScore": 0.201, "modelRank": 3 }
+      ],
+      "specialties": {"top_specialty": "Pulmonology", "top_specialties": ["Pulmonology", "Gastroenterology"], "specialty_ranking": [{"specialty": "Pulmonology", "matched_genes_count": 2, "probability_mass": 0.58, "genes": ["CFTR", "DNAH5"], "fraction_of_selected_genes": 0.67}, {"specialty": "Gastroenterology", "matched_genes_count": 2, "probability_mass": 0.3, "genes": ["CFTR", "SCNN1A"], "fraction_of_selected_genes": 0.67}], "selected_gene_count": 3, "unmapped_genes": [], "unmapped_gene_count": 0},
+      "confidence": 0.7,
+      "interpretedAnswers": [],
+      "summary": null,
+      "warnings": []
+    },
+    "round2": {
+      "round": 2,
+      "mode": "paciente",
+      "status": "finished",
+      "finishReason": "confident",
+      "questions": [],
+      "ranking": [
+        {
+          "geneId": "CFTR",
+          "geneSymbol": "CFTR",
+          "score": 0.81,
+          "modelScore": 0.46,
+          "modelRank": 1
+        },
+        {
+          "geneId": "SCNN1A",
+          "geneSymbol": "SCNN1A",
+          "score": 0.09,
+          "modelScore": 0.08,
+          "modelRank": 2
+        },
+        {
+          "geneId": "DNAH5",
+          "geneSymbol": "DNAH5",
+          "score": 0.05,
+          "modelScore": 0.19,
+          "modelRank": 3
+        }
+      ],
+      "specialties": {
+        "top_specialty": "Pulmonology",
+        "top_specialties": [
+          "Pulmonology",
+          "Gastroenterology"
+        ],
+        "specialty_ranking": [
+          {
+            "specialty": "Pulmonology",
+            "matched_genes_count": 2,
+            "probability_mass": 0.58,
+            "genes": [
+              "CFTR",
+              "DNAH5"
+            ],
+            "fraction_of_selected_genes": 0.67
+          },
+          {
+            "specialty": "Gastroenterology",
+            "matched_genes_count": 2,
+            "probability_mass": 0.3,
+            "genes": [
+              "CFTR",
+              "SCNN1A"
+            ],
+            "fraction_of_selected_genes": 0.67
+          }
+        ],
+        "selected_gene_count": 3,
+        "unmapped_genes": [],
+        "unmapped_gene_count": 0
+      },
+      "confidence": 0.81,
+      "interpretedAnswers": [
+        {
+          "hpoId": "HP:0001738",
+          "answer": "si",
+          "effectiveAnswer": "si",
+          "noteSummary": "Desde bebé."
+        },
+        {
+          "hpoId": "HP:0001696",
+          "answer": "no",
+          "effectiveAnswer": "no",
+          "noteSummary": null
+        },
+        {
+          "hpoId": "HP:0012236",
+          "answer": "no_se",
+          "effectiveAnswer": "no_se",
+          "noteSummary": null
+        }
+      ],
+      "summary": null,
+      "warnings": [
+        "Algunas preguntas se generaron sin IA."
+      ]
+    },
+    "medico": {
+      "questions": {
+        "HP:0001738": {
+          "text": "¿Presenta esteatorrea o signos de insuficiencia pancreática exocrina (elastasa fecal baja)?",
+          "help": null
+        },
+        "HP:0001696": {
+          "text": "¿Se documentó situs inversus totalis en imágenes?",
+          "help": "Radiografía de tórax o ecografía abdominal."
+        },
+        "HP:0012236": {
+          "text": "¿Tiene un test del sudor con cloruro elevado (≥ 60 mmol/L)?",
+          "help": null
+        },
+        "HP:0000246": {
+          "text": "¿Presenta rinosinusitis crónica o poliposis nasal?",
+          "help": null
+        },
+        "HP:0000403": {
+          "text": "¿Antecedente de otitis media recurrente u otitis serosa con hipoacusia de conducción?",
+          "help": null
+        },
+        "HP:0002153": {
+          "text": "¿Hiperpotasemia o hiponatremia documentadas en ionograma?",
+          "help": null
+        }
+      }
+    },
+    "summaries": {
+      "refined": {
+        "paciente": "Con lo que confirmaste, el modelo armó una lista con tus respuestas: un gen subió del tercer al segundo lugar, otro bajó del segundo al tercero y el primero no cambió. Abajo están tus respuestas, agrupadas por lo que dijiste.",
+        "medico": "Se registró una respuesta para cada término consultado; el detalle está en la tabla. Con los hallazgos confirmados, el modelo ubicó a SCNN1A en el puesto 2 (antes 3) y a DNAH5 en el 3 (antes 2); CFTR se mantuvo primero."
+      },
+      "early": {
+        "paciente": "Terminaste sin responder preguntas, así que la lista quedó como la ordenó el modelo.",
+        "medico": "Sin respuestas: el orden es el del modelo, con CFTR primero, DNAH5 segundo y SCNN1A tercero."
+      }
+    }
   }
 }

@@ -138,6 +138,24 @@ Chequeo antes de mandarle tráfico: `GET /healthz` tiene que decir
 muestra cuánto queda del presupuesto (`extraction_budget`). El detalle de
 cada límite está en `docs/EXTRACTION_LIMITS.md` de diagnostic.ar-api.
 
+**Agente de preguntas** (opcional; sin él la app anda igual). Hace hasta 3
+rondas de preguntas sí/no después del ranking; solo lo llama el backend, así
+que va en la red interna, sin ruta pública. Su código está en
+`MarBL00126/diagnosticar-question-agent` y su imagen se construye con
+`services/question-agent/Dockerfile` de diagnostic.ar-api, con los commits
+fijados en `.github/question-agent.env` y `.github/recognizer.env`. La guía
+completa del módulo es `docs/GUIA_DE_INTEGRACION.md` en su repo.
+
+| Dónde | Variable | Valor |
+|---|---|---|
+| agente | `PREGUNTAS_LLM_PROVIDER` | `anthropic` |
+| agente | `ANTHROPIC_API_KEY` | La misma key del extractor |
+| agente | `PREGUNTAS_MODEL_SERVICE_URL` | La URL interna de `model`, p. ej. `http://model:18020` |
+| agente | `PREGUNTAS_SERVICE_TOKEN` | Un secreto aleatorio (`openssl rand -hex 32`) |
+| backend | `QUESTION_AGENT_URL` | La URL interna del agente, p. ej. `http://question-agent:8010`. Sin esto, la función queda apagada |
+| backend | `QUESTION_AGENT_TOKEN` | El mismo secreto que `PREGUNTAS_SERVICE_TOKEN` |
+| backend | `QUESTION_AGENT_ROUNDS_PER_HOUR`, `QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H` | Topes por cuenta y globales; staging usa `20` y `50`. Una ronda cuesta del orden de una o dos llamadas al LLM |
+
 **Model.** Nada secreto. `CORS_ORIGINS=https://TU-DOMINIO`. `GET /healthz`
 tiene que decir `mode: in-process`, `checkpoint_sha256` empezando en
 `ee10aa42` y `specialties_available: true`.

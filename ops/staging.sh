@@ -95,7 +95,14 @@ case "${1:-up}" in
       # production one — which would post every request to production.
       export FRONTEND_IMAGE="diagnosticar-frontend-staging"
       COMPOSE+=(-f docker-compose.deploy.yml)
-      "${COMPOSE[@]}" pull backend frontend hpo-recognizer model
+      services=(backend frontend hpo-recognizer model)
+      # Only when its profile is on: until the question agent's commit is
+      # pinned, no release publishes its image and the pull would fail.
+      profiles="${COMPOSE_PROFILES:-$(read_env COMPOSE_PROFILES)}"
+      case ",${profiles}," in
+        *,question-agent,*) services+=(question-agent) ;;
+      esac
+      "${COMPOSE[@]}" pull "${services[@]}"
       "${COMPOSE[@]}" up -d --no-build --remove-orphans
     else
       # No tag: build the working tree. This is the "does my branch survive the

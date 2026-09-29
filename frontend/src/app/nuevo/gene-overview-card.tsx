@@ -1,7 +1,9 @@
 "use client";
 
-import { formatScore, type GeneProfile } from "@/lib/genes-api";
+import { MODEL_SCORE_TITLE, formatScore, type GeneProfile } from "@/lib/genes-api";
+import { rankMovement } from "@/lib/question-insights";
 import { MatchMeter, MeterCaption, meterState } from "./match-meter";
+import { MovePill } from "./move-pill";
 
 /**
  * One gene in the results grid: the overview, and the way into its detail.
@@ -24,6 +26,12 @@ export type GeneOverviewCardProps = {
     rank: number;
     total: number;
     score: number;
+    /**
+     * Where the list shown before the questions had this gene (`from` null:
+     * it did not), when the list on screen is the one with the answers. The
+     * card then shows the movement instead of a score.
+     */
+    listOrigin?: { from: number | null } | null;
     profile: GeneProfile | null;
     professional: boolean;
     reportedWords: Map<string, string>;
@@ -55,6 +63,7 @@ export function GeneOverviewCard({
     rank,
     total,
     score,
+    listOrigin = null,
     profile,
     professional,
     reportedWords,
@@ -70,7 +79,7 @@ export function GeneOverviewCard({
     const hidden = chips.length - shown.length;
 
     return (
-        <li className="flex">
+        <li className="flex" data-flip-key={symbol}>
             <button
                 type="button"
                 onClick={onOpen}
@@ -88,19 +97,29 @@ export function GeneOverviewCard({
                 }`}
             >
                 <span className="flex w-full items-center gap-2">
-                    <span className="font-mono text-[11px] text-[var(--lu-subtle)]">
+                    <span className="whitespace-nowrap font-mono text-[11px] text-[var(--lu-subtle)]">
                         Gen #{rank} de {total}
                     </span>
                     <span className="flex-grow" />
-                    {/* Shown because it is what the model returns, labelled so
-                        it is not read as a probability: it orders the list
-                        and means nothing on its own. */}
-                    <span
-                        title="Puntaje del modelo: ordena la lista, no es una probabilidad"
-                        className="rounded-full bg-[var(--lu-surface)] px-2.5 py-0.5 font-mono text-[11px] text-[var(--lu-text)] ring-1 ring-[var(--lu-border)]"
-                    >
-                        puntaje {formatScore(score)}
-                    </span>
+                    {/* The model's score is shown because it is what orders
+                        the original list, labelled so it is not read as a
+                        probability. A refined list shows movement instead. */}
+                    {listOrigin ? (
+                        <MovePill
+                            from={listOrigin.from}
+                            to={rank}
+                            title={rankMovement(rank, listOrigin.from).title}
+                            rankNote
+                        />
+                    ) : (
+                        <span
+                            title={MODEL_SCORE_TITLE}
+                            data-rank-note
+                            className="whitespace-nowrap rounded-full bg-[var(--lu-surface)] px-2.5 py-0.5 font-mono text-[11px] text-[var(--lu-text)] ring-1 ring-[var(--lu-border)]"
+                        >
+                            puntaje {formatScore(score)}
+                        </span>
+                    )}
                 </span>
 
                 <span className="flex items-baseline gap-2.5">

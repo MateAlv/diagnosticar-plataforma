@@ -225,6 +225,32 @@ services:
       - "traefik.http.middlewares.diagnosticar-staging-model-strip.stripprefix.prefixes=/genphenai"
     networks:
       - traefik_net
+      # For question-agent, which stays off the shared network.
+      - default
+
+  # Follow-up questions, called only by the backend. Deliberately not on
+  # traefik_net and without labels: that network is shared with other teams'
+  # containers, and every call here spends LLM quota. The backend reaches it on
+  # the project's default network, and the internal token is checked on top.
+  #
+  # Behind the question-agent profile, so `ops/staging.sh up` neither pulls nor
+  # starts it until the image exists:
+  #   COMPOSE_PROFILES=question-agent ops/staging.sh up vX.Y.Z
+  # plus QUESTION_AGENT_URL=http://question-agent:8010 in .env.staging.
+  question-agent:
+    image: ghcr.io/${GHCR_OWNER:-matealv}/diagnosticar-question-agent:${QUESTION_AGENT_TAG:-${RELEASE_TAG:-latest}}
+    profiles: ["question-agent"]
+    restart: unless-stopped
+    init: true
+    # The rest of its PREGUNTAS_* settings, and the healthcheck, come from
+    # docker-compose.yml.
+    environment:
+      PREGUNTAS_MODEL_SERVICE_URL: http://model:18020
+      # The same subscription token as hpo-recognizer; see its note above.
+      CLAUDE_CODE_OAUTH_TOKEN: ${STAGING_CLAUDE_CODE_OAUTH_TOKEN:-}
+    extra_hosts: !reset []
+    networks:
+      - default
 
 networks:
   traefik_net:

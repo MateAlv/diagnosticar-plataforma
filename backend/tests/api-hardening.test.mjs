@@ -246,6 +246,8 @@ test('no error response carries a stack trace or file path', { skip }, async () 
     const probes = [
         () => client.post('/api/patients', '{'),
         () => client.get('/api/patients/not-a-uuid'),
+        () => client.get('/api/questions/not-a-uuid'),
+        () => client.post('/api/questions/rounds', { diagnosisId: 'not-a-uuid', mode: 'paciente' }),
         () => client.post('/api/patients', samplePayload({ nombre: '' })),
         () => client.get('/api/nope'),
         () => client.post('/api/auth/login', { email: 'nope', password: 'short' }),

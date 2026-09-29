@@ -123,6 +123,55 @@ export const GOOGLE_AUTH_ENABLED = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SEC
 export const GENE_PROFILES_DB_PATH =
     process.env.GENE_PROFILES_DB_PATH || '/app/data/genes.db';
 
+function readPositiveInt(name: string, fallback: number): number {
+    const raw = process.env[name];
+    if (typeof raw !== 'string' || raw.trim().length === 0) {
+        return fallback;
+    }
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value <= 0) {
+        throw new Error(`[config] ${name} must be a positive integer, got '${raw}'.`);
+    }
+    return value;
+}
+
+function readOptionalHttpUrl(name: string): string | undefined {
+    const raw = process.env[name]?.trim();
+    if (!raw) {
+        return undefined;
+    }
+    let parsed: URL;
+    try {
+        parsed = new URL(raw);
+    } catch {
+        throw new Error(`[config] ${name} is not a valid URL.`);
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new Error(`[config] ${name} must be an http(s) URL.`);
+    }
+    return raw.replace(/\/+$/, '');
+}
+
+// The follow-up question agent: an internal service that only this backend
+// calls. Leaving the URL unset switches the feature off rather than failing,
+// because most environments (CI, a laptop, production today) do not run it.
+export const QUESTION_AGENT_URL = readOptionalHttpUrl('QUESTION_AGENT_URL');
+export const QUESTION_AGENT_ENABLED = Boolean(QUESTION_AGENT_URL);
+// Every call spends LLM quota, so in production the agent must be able to tell
+// this backend apart from anything else that can reach it on the network.
+export const QUESTION_AGENT_TOKEN =
+    QUESTION_AGENT_ENABLED && (IS_PRODUCTION || process.env.QUESTION_AGENT_TOKEN?.trim())
+        ? readEnv('QUESTION_AGENT_TOKEN', { requiredInProd: true, minLength: 32 })
+        : undefined;
+// Must outlast the agent's own worst case, or a round the agent finishes is
+// thrown away here: its queue wait (10 s) + round budget (75 s,
+// PREGUNTAS_ROUND_BUDGET_S) + its model-service timeout (10 s), plus a margin.
+export const QUESTION_AGENT_TIMEOUT_MS = readPositiveInt('QUESTION_AGENT_TIMEOUT_MS', 100_000);
+// Every round spends the same Claude subscription, so besides the per-account
+// cap there is one for the whole deployment. Both count rows in Postgres.
+export const QUESTION_AGENT_ROUNDS_PER_HOUR = readPositiveInt('QUESTION_AGENT_ROUNDS_PER_HOUR', 20);
+export const QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H = readPositiveInt('QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H', 50);
+
 // Baked in at image build time by .github/workflows/release.yml. The running
 // container is the only thing that knows which release it actually is — the
 // deploy tag on nodo0 is a file, and a hand-started container would not match

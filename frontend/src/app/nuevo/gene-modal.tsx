@@ -22,6 +22,11 @@ export type GeneModalProps = {
     profiles: Map<string, GeneProfile>;
     professional: boolean;
     reportedWords: Map<string, string>;
+    /**
+     * Where the list shown before the questions had each gene, by upper-cased
+     * symbol (null: it did not), when the list is the one with the answers.
+     */
+    listOrigins?: Map<string, number | null> | null;
 };
 
 const NAV =
@@ -34,6 +39,7 @@ export function GeneModal({
     profiles,
     professional,
     reportedWords,
+    listOrigins = null,
 }: GeneModalProps) {
     const index = entries.findIndex((entry) => entry.symbol === openSymbol);
     const entry = index >= 0 ? entries[index] : null;
@@ -42,6 +48,10 @@ export function GeneModal({
     // By the time focus is restored the modal has closed and `entry` is null.
     const lastShown = useRef<string | null>(null);
     if (entry) lastShown.current = entry.symbol;
+    // What opened the modal, when it was not a card: a gene named in the
+    // questions or under a speciality. Focus goes back there rather than to a
+    // card that may be screens away.
+    const opener = useRef<HTMLElement | null>(null);
 
     return (
         <Dialog.Root open={entry !== null} onOpenChange={(open) => !open && onOpenSymbol(null)}>
@@ -49,9 +59,21 @@ export function GeneModal({
                 <Dialog.Overlay className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm motion-safe:animate-[modal-fade_.2s_ease]" />
                 <Dialog.Content
                     aria-describedby={undefined}
+                    onOpenAutoFocus={() => {
+                        const active = document.activeElement;
+                        opener.current =
+                            active instanceof HTMLElement && !active.hasAttribute("data-gene-card") ? active : null;
+                    }}
                     // Back to the card of the gene last shown, which after
                     // stepping through is not the one that opened the modal.
                     onCloseAutoFocus={(event) => {
+                        const from = opener.current;
+                        opener.current = null;
+                        if (from?.isConnected && from !== document.body) {
+                            event.preventDefault();
+                            from.focus();
+                            return;
+                        }
                         const symbol = lastShown.current;
                         const card = symbol
                             ? document.querySelector<HTMLElement>(
@@ -107,6 +129,9 @@ export function GeneModal({
                                     rank={entry.rank}
                                     total={entries.length}
                                     score={entry.score}
+                                    listOrigin={
+                                        listOrigins ? { from: listOrigins.get(entry.symbol.toUpperCase()) ?? null } : null
+                                    }
                                     profile={profiles.get(entry.symbol.toUpperCase()) ?? null}
                                     professional={professional}
                                     reportedWords={reportedWords}

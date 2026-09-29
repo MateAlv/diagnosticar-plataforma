@@ -63,7 +63,7 @@ both the dev mock and the E2E tests follow.
 
 | Layer | Where | Needs | What it protects |
 |---|---|---|---|
-| Unit (backend) | `backend/tests/tokens.test.mjs`, `backend/tests/config.test.mjs`, `backend/tests/security.test.mjs` | nothing | JWT signing/verification, password hashing, CSRF and origin checks, rate limiting, config guard rails |
+| Unit (backend) | `backend/tests/tokens.test.mjs`, `backend/tests/config.test.mjs`, `backend/tests/security.test.mjs`, `backend/tests/questions-*.test.mjs` | nothing | JWT signing/verification, password hashing, CSRF and origin checks, rate limiting, config guard rails, the question-session rules and the agent client's typed errors |
 | Integration (backend) | `backend/tests/api-*.test.mjs` | Postgres | Real routes over the real middleware chain against the real schema |
 | Unit (frontend) | `frontend/tests/*.test.mjs` | nothing | Pure logic, e.g. specialty translation |
 | E2E | `frontend/e2e/*.spec.ts` | production build | Rendering, the wizard end to end, accessibility, security headers |
@@ -79,6 +79,15 @@ because a broken service container would otherwise look like a green build.
 Each `api-*.test.mjs` file runs in its own process, which matters: the rate
 limiter keeps state in a module-level `Map`, so tests that deliberately exhaust
 the signup limit would otherwise poison every other test in the run.
+
+The question agent is faked with a `node:http` server on port 0 in
+`backend/tests/api-questions.test.mjs`, started before `dist/config.js` is
+imported because the agent's URL is read at import time. The disabled case has
+its own file for the same reason. The round caps have one too,
+`backend/tests/api-questions-caps.test.mjs`, which also creates and drops a
+scratch database of its own: the deployment-wide cap counts every account's
+rounds, so it cannot be asserted in a database other files are writing rounds
+to at the same time.
 
 `backend/tests/api-ownership.test.mjs` is the file to read first. Every route that takes an
 `:id` is probed with a well-formed id belonging to a different user, and the

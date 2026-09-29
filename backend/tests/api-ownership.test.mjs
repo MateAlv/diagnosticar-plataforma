@@ -94,6 +94,15 @@ test('Bob cannot read a single diagnosis of Alice\'s', { skip }, async () => {
     assert.ok(!res.text.includes('Fatiga persistente'), 'clinical data leaked in the 404 body');
 });
 
+test('Bob cannot read the follow-up questions of Alice\'s diagnosis', { skip }, async () => {
+    const own = await aliceClient.get(`/api/questions/${aliceDiagnosisId}`);
+    assert.equal(own.status, 200);
+
+    const res = await bobClient.get(`/api/questions/${aliceDiagnosisId}`);
+    assert.equal(res.status, 404, 'cross-tenant question session read was allowed');
+    assert.ok(!res.text.includes('session'), 'the 404 body revealed whether a session exists');
+});
+
 test('Bob cannot append a diagnosis to Alice\'s patient', { skip }, async () => {
     const res = await bobClient.post(`/api/patients/${alicePatientId}/diagnoses`, {
         historiaClinica: 'Inyectado por otro usuario',
@@ -132,6 +141,8 @@ test('every patients route rejects an unauthenticated caller', { skip }, async (
         ['get', `/api/patients/${alicePatientId}/diagnoses`],
         ['get', `/api/patients/${alicePatientId}/diagnoses/${aliceDiagnosisId}`],
         ['delete', `/api/patients/${alicePatientId}`],
+        ['get', '/api/questions/status'],
+        ['get', `/api/questions/${aliceDiagnosisId}`],
     ];
     for (const [method, path] of routes) {
         const res = await anon[method](path);
@@ -139,6 +150,8 @@ test('every patients route rejects an unauthenticated caller', { skip }, async (
     }
     const post = await anon.post('/api/patients', samplePayload());
     assert.equal(post.status, 401, 'POST /api/patients was reachable without a token');
+    const round = await anon.post('/api/questions/rounds', { diagnosisId: aliceDiagnosisId, mode: 'paciente' });
+    assert.equal(round.status, 401, 'POST /api/questions/rounds was reachable without a token');
 });
 
 test('a forged access token is rejected', { skip }, async () => {
@@ -213,6 +226,10 @@ test('a malformed id returns 404, never a 500 with a database error', { skip }, 
         const res = await aliceClient.get(`/api/patients/${encodeURIComponent(id)}`);
         assert.equal(res.status, 404, `GET /api/patients/${id} returned ${res.status}: ${res.text}`);
         assert.ok(!/invalid input syntax|uuid|postgres/i.test(res.text), `database error leaked for id ${id}`);
+
+        const questions = await aliceClient.get(`/api/questions/${encodeURIComponent(id)}`);
+        assert.equal(questions.status, 404, `GET /api/questions/${id} returned ${questions.status}`);
+        assert.ok(!/invalid input syntax|uuid|postgres/i.test(questions.text), `database error leaked for id ${id}`);
     }
 });
 

@@ -2,13 +2,16 @@
 
 import {
     describeFrequency,
+    MODEL_SCORE_TITLE,
     formatScore,
     researchLinks,
     type GeneProfile,
     type MatchedReport,
 } from "@/lib/genes-api";
+import { ENTERED_NOTE, MOVED_NOTE, rankMovement } from "@/lib/question-insights";
 import { ConditionRow, GeneReferenceLinks } from "./gene-links";
 import { MeterCaption } from "./match-meter";
+import { MovePill } from "./move-pill";
 
 /**
  * Everything we hold about one gene, shown in the modal over the results grid.
@@ -24,6 +27,11 @@ export type GeneDetailProps = {
     rank: number;
     total: number;
     score: number;
+    /**
+     * Where the list shown before the questions had this gene (`from` null:
+     * it did not), when the list is the one with the answers.
+     */
+    listOrigin?: { from: number | null } | null;
     profile: GeneProfile | null;
     professional: boolean;
     reportedWords: Map<string, string>;
@@ -119,6 +127,7 @@ export function GeneDetail({
     rank,
     total,
     score,
+    listOrigin = null,
     profile,
     professional,
     reportedWords,
@@ -155,11 +164,27 @@ export function GeneDetail({
                     </span>
                 )}
                 <span className="flex-grow" />
-                <span className="shrink-0 font-mono text-[11px] text-[var(--lu-subtle)]">
-                    Gen #{rank} de {total} ·{" "}
-                    <span title="Puntaje del modelo: ordena la lista, no es una probabilidad">
-                        puntaje {formatScore(score)}
+                <span className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+                    <span className="font-mono text-[11px] text-[var(--lu-subtle)]">
+                        Gen #{rank} de {total}
+                        {!listOrigin && (
+                            <>
+                                {" "}
+                                ·{" "}
+                                <span title={MODEL_SCORE_TITLE} data-rank-note>
+                                    puntaje {formatScore(score)}
+                                </span>
+                            </>
+                        )}
                     </span>
+                    {listOrigin ? (
+                        <MovePill
+                            from={listOrigin.from}
+                            to={rank}
+                            title={rankMovement(rank, listOrigin.from).title}
+                            rankNote
+                        />
+                    ) : null}
                 </span>
                 <MeterCaption
                     covered={covered}
@@ -171,6 +196,15 @@ export function GeneDetail({
 
             {professional && profile?.nombre_completo && (
                 <p className="-mt-3 text-sm text-[var(--lu-subtle)]">{profile.nombre_completo}</p>
+            )}
+
+            {/* Says what moved it, so a gene that rose with no symptom in
+                common does not read as a contradiction. Not which answer: the
+                model ranked the whole list again. */}
+            {listOrigin && listOrigin.from !== rank && (
+                <p data-move-note className="-mt-2 text-sm leading-relaxed text-[var(--lu-text)]">
+                    {listOrigin.from === null ? ENTERED_NOTE : MOVED_NOTE}
+                </p>
             )}
 
             <GeneReferenceLinks symbol={symbol} omimGen={profile?.omim_gen} />

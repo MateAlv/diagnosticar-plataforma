@@ -94,8 +94,28 @@ const defaultSymptoms: Symptom[] = [
 import { GeneModal } from "./gene-modal";
 import { GeneOverviewCard } from "./gene-overview-card";
 import { SpecialtyCard } from "./specialty-card";
+import { ListToggle } from "./list-toggle";
+import { scrollBehavior } from "./panel-styles";
+import {
+  QuestionLauncher,
+  QuestionSidePanel,
+  RefineButton,
+  RefineTeaser,
+  useQuestionPanel,
+} from "./question-dock";
+import { InfoIcon } from "./icons";
+import { useFlipReorder } from "./use-flip-reorder";
+import { useQuestionSession } from "./use-question-session";
+import { RESULTS_DISCLAIMER } from "@/lib/disclaimer";
 import { fetchGeneProfiles, formatScore, type GeneProfile } from "@/lib/genes-api";
 import { mensajeErrorExtraccion } from "@/lib/extract-errors";
+import { ADJUSTED_LIST_NOTE, originsIn } from "@/lib/question-insights";
+import {
+  answeredFindings,
+  fetchQuestionsStatus,
+  toGeneRows,
+  type QuestionMode,
+} from "@/lib/questions-api";
 
 const PROFESSIONAL_VIEW_KEY = "diagnosticar:vista-profesional";
 
@@ -103,6 +123,7 @@ const PROFESSIONAL_VIEW_KEY = "diagnosticar:vista-profesional";
 const HPO_CODE_RE = /^HP:\d+$/;
 
 type RankedGene = { gene: GenPhenResult; symbol: string; rank: number };
+
 const HPO_API_URL = process.env.NEXT_PUBLIC_HPO_API_URL || "http://localhost:8000";
 const HPO_EXTRACT_ENDPOINT = `${HPO_API_URL.replace(/\/$/, "")}/extract-hpo`;
 const HPO_SEARCH_ENDPOINT = `${HPO_API_URL.replace(/\/$/, "")}/hpo/es/search`;
@@ -319,7 +340,7 @@ const countries = [
 function NuevoDiagnosticoScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, logout, loading: authLoading } = useAuth();
+  const { user, logout, refreshSession, loading: authLoading } = useAuth();
   const isDemoMode = searchParams.get("demo") === "1";
   const [step, setStep] = useState<Step>(isDemoMode ? 2 : 1);
   const [isLoading, setIsLoading] = useState(false);
@@ -358,6 +379,17 @@ function NuevoDiagnosticoScreen() {
   const [genphenError, setGenphenError] = useState<string | null>(null);
   const [extractedPhenotypes, setExtractedPhenotypes] = useState<PhenotypeItem[]>([]);
   const [saveWarning, setSaveWarning] = useState(false);
+  // Where the question agent hangs its session. Null when the result was not
+  // saved to the account, which is also when the refine loop is not offered.
+  const [diagnosisId, setDiagnosisId] = useState<string | null>(null);
+  const [questionsEnabled, setQuestionsEnabled] = useState(false);
+  // The model's own list is what the grid shows. The order adjusted by the
+  // answers is a second view the reader has to ask for: on 501 published
+  // patients it ranked no better than the model alone. The choice holds for
+  // the rest of this page, rounds included, and not beyond it.
+  const [preferAnswersList, setPreferAnswersList] = useState(false);
+  // Said to a screen reader when the reader switches lists, not on load.
+  const [listAnnouncement, setListAnnouncement] = useState("");
   const [regenerationPatientId, setRegenerationPatientId] = useState<string | null>(null);
   const [hpoSuggestions, setHpoSuggestions] = useState<HpoSuggestion[]>([]);
   const [hpoSuggestOpen, setHpoSuggestOpen] = useState(false);
@@ -378,7 +410,43 @@ function NuevoDiagnosticoScreen() {
     historiaClinica.trim().length > 12 && historiaClinica.trim() !== lastAnalyzedHC;
   const isLowConfidenceResult =
     genphenConfidence !== null && genphenConfidence < GENPHENAI_LOW_CONFIDENCE_THRESHOLD;
-  const visibleGeneResults = genphenResults;
+  // Offered where the specialities are: on a saved result worth refining.
+  const canRefine =
+    questionsEnabled &&
+    !isDemoMode &&
+    diagnosisId !== null &&
+    !genphenError &&
+    !isLowConfidenceResult &&
+    genphenResults.length > 0;
+  const questionSession = useQuestionSession(canRefine ? diagnosisId : null, refreshSession);
+  const questionPanel = useQuestionPanel(questionSession.state, diagnosisId);
+  const refinedResults = useMemo<GenPhenResult[] | null>(
+    () =>
+      questionSession.state.refined
+        ? toGeneRows(questionSession.state.refined.ranking, genphenResults[0]?.input_count ?? 0)
+        : null,
+    [questionSession.state.refined, genphenResults],
+  );
+  const showingRefined = refinedResults !== null && preferAnswersList;
+  // Where the model's list, the one shown before the questions, had each gene
+  // of the list with the answers. Every move on screen is measured from it.
+  const originalSymbols = useMemo(
+    () => genphenResults.map((gene) => gene.gene_symbol || gene.gene_id),
+    [genphenResults],
+  );
+  const refinedOrigins = useMemo(
+    () =>
+      showingRefined && refinedResults
+        ? originsIn(originalSymbols, refinedResults.map((gene) => gene.gene_symbol || gene.gene_id))
+        : null,
+    [showingRefined, refinedResults, originalSymbols],
+  );
+  const visibleGeneResults = showingRefined ? refinedResults : genphenResults;
+  // Each round re-runs the model with the confirmed findings, so its
+  // specialities are those of the list with the answers, and follow it.
+  const visibleSpecialties = showingRefined
+    ? (questionSession.state.refinedSpecialties ?? genphenSpecialties)
+    : genphenSpecialties;
   // The words the reader used, keyed by the HPO term they were mapped to. The
   // results screen speaks their language back to them — "convulsiones", not
   // HP:0001250 — which is what makes a claimed match checkable.
@@ -445,6 +513,39 @@ function NuevoDiagnosticoScreen() {
 
   const [geneProfiles, setGeneProfiles] = useState<Map<string, GeneProfile>>(new Map());
   const [professionalView, setProfessionalView] = useState(false);
+  const questionMode: QuestionMode = professionalView ? "medico" : "paciente";
+
+  /**
+   * What the answers confirmed and ruled out. What they confirmed was added
+   * to the model's input for the list with the answers, so it shows with that
+   * list only. What they ruled out reaches no list at all: it is kept for the
+   * consultation and shows with either.
+   */
+  const questionFindings = useMemo(() => {
+    const present = new Set([...reportedWords.keys()]);
+    const absent = new Set(negatedFindings.map((finding) => finding.code.toUpperCase()));
+    const named = (items: ReturnType<typeof answeredFindings>["present"]) =>
+      items
+        .map((item) => ({ code: item.question.hpoId.trim().toUpperCase(), label: item.question.label }))
+        .filter((item) => HPO_CODE_RE.test(item.code));
+    const { present: yes, absent: no } = answeredFindings(questionSession.state.history);
+    return {
+      present: showingRefined ? named(yes).filter((item) => !present.has(item.code)) : [],
+      absent: named(no).filter((item) => !absent.has(item.code) && !present.has(item.code)),
+    };
+  }, [showingRefined, reportedWords, negatedFindings, questionSession.state.history]);
+
+  /** The reader's report plus what they confirmed in the questions, for matching genes. */
+  const matchedWords = useMemo(() => {
+    if (questionFindings.present.length === 0) return reportedWords;
+    const words = new Map(reportedWords);
+    for (const finding of questionFindings.present) words.set(finding.code, finding.label);
+    return words;
+  }, [reportedWords, questionFindings]);
+
+  // Keyed on the ids alone: which terms were reported decides the profiles,
+  // and a new Map with the same ids must not refetch them.
+  const matchedKey = useMemo(() => [...matchedWords.keys()].join(","), [matchedWords]);
 
   /** The gene open in the detail modal, or null with the grid alone on screen. */
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
@@ -477,6 +578,33 @@ function NuevoDiagnosticoScreen() {
     [orderedGenes],
   );
 
+  /** Where each gene sits in the list on screen, for the genes the question panel names. */
+  const geneRanks = useMemo(
+    () => new Map(orderedGenes.map(({ symbol, rank }) => [symbol.toUpperCase(), rank])),
+    [orderedGenes],
+  );
+
+  const geneListRef = useRef<HTMLUListElement | null>(null);
+  const genePanelRef = useRef<HTMLDivElement | null>(null);
+  const flipArmed = useRef(false);
+  useFlipReorder(geneListRef, orderedGenes.map(({ symbol }) => symbol).join(","), flipArmed);
+
+  const chooseList = (refined: boolean) => {
+    flipArmed.current = refined !== showingRefined;
+    setPreferAnswersList(refined);
+    setListAnnouncement(
+      refined ? "Mostrando la lista con tus respuestas." : "Mostrando la lista original del modelo.",
+    );
+  };
+
+  /** From the question panel: the list with the answers, in the grid, with focus on its title. */
+  const showUpdatedList = () => {
+    if (!showingRefined) chooseList(true);
+    const panel = genePanelRef.current;
+    panel?.scrollIntoView({ block: "start", behavior: scrollBehavior() });
+    panel?.querySelector<HTMLElement>("#genes-titulo")?.focus({ preventScroll: true });
+  };
+
   const demoPrimaryGene = isDemoMode ? genphenResults[0] : null;
 
   // The professional view is a display preference, not a permission: everything
@@ -491,6 +619,11 @@ function NuevoDiagnosticoScreen() {
     }
   }, []);
 
+  // What each profile was compared against and in which view, then the
+  // symbol. Switching between the original and the refined list changes the
+  // first key and back again, and neither direction should refetch.
+  const profileCache = useRef(new Map<string, Map<string, GeneProfile | null>>());
+
   // Descriptions enrich the ranking and never gate it, so a failure here leaves
   // the genes on screen with their symbols and no prose.
   useEffect(() => {
@@ -503,21 +636,64 @@ function NuevoDiagnosticoScreen() {
       return;
     }
 
+    const context = `${professionalView ? "profesional" : "familia"}|${matchedKey}`;
+    let known = profileCache.current.get(context);
+    if (!known) {
+      known = new Map();
+      profileCache.current.set(context, known);
+    }
+    const cached = known;
+    const onScreen = () => {
+      const profiles = new Map<string, GeneProfile>();
+      for (const symbol of symbols) {
+        const profile = cached.get(symbol.toUpperCase());
+        if (profile) profiles.set(symbol.toUpperCase(), profile);
+      }
+      return profiles;
+    };
+
+    const missing = symbols.filter((symbol) => !cached.has(symbol.toUpperCase()));
+    if (missing.length === 0) {
+      setGeneProfiles(onScreen());
+      return;
+    }
+
     const controller = new AbortController();
     // `symptoms` is the confirmed list — what the user reviewed and what the
     // model ranked on. `extractedPhenotypes` only holds the raw output of a
     // text analysis, so it is empty whenever symptoms were added by hand,
     // edited, or restored from a draft, and comparing against it reported no
     // overlap for every gene.
-    const reported = [...reportedWords.keys()];
+    const reported = matchedKey ? matchedKey.split(",") : [];
 
-    fetchGeneProfiles(symbols, reported, {
+    // The cards keep what they show until the answer arrives: clearing them
+    // first flashed "sin descripción" on every toggle.
+    fetchGeneProfiles(missing, reported, {
       professional: professionalView,
       signal: controller.signal,
-    }).then(setGeneProfiles);
+    }).then((fetched) => {
+      if (controller.signal.aborted) return;
+      // An empty answer is as likely a failed request as a set of misses,
+      // so only a real answer settles which genes have no profile.
+      if (fetched.size > 0) {
+        for (const symbol of missing) cached.set(symbol.toUpperCase(), fetched.get(symbol.toUpperCase()) ?? null);
+      }
+      const profiles = onScreen();
+      for (const [symbol, profile] of fetched) profiles.set(symbol, profile);
+      setGeneProfiles(profiles);
+    });
 
     return () => controller.abort();
-  }, [visibleGeneResults, reportedWords, professionalView, isDemoMode]);
+  }, [visibleGeneResults, matchedKey, professionalView, isDemoMode]);
+
+  useEffect(() => {
+    if (isDemoMode || !diagnosisId) return;
+    const controller = new AbortController();
+    fetchQuestionsStatus(controller.signal).then((enabled) => {
+      if (!controller.signal.aborted) setQuestionsEnabled(enabled);
+    });
+    return () => controller.abort();
+  }, [isDemoMode, diagnosisId]);
 
   const demoBlurredGeneRows =
     isDemoMode && genphenResults.length > 0 ? DEMO_BLURRED_GENE_PLACEHOLDERS : 0;
@@ -742,6 +918,7 @@ function NuevoDiagnosticoScreen() {
     setGenphenResults([]);
     setGenphenSpecialties(null);
     setGenphenConfidence(null);
+    setDiagnosisId(null);
     try {
       const hpoIds = symptoms
         .map((symptom) => symptom.code.trim().toUpperCase())
@@ -803,6 +980,8 @@ function NuevoDiagnosticoScreen() {
             body: JSON.stringify(saveBody),
           });
           if (!saveRes.ok) throw new Error(`HTTP ${saveRes.status}`);
+          const saved = await saveRes.json().catch(() => null);
+          setDiagnosisId(typeof saved?.diagnosisId === "string" ? saved.diagnosisId : null);
           setRegenerationPatientId(null);
         } catch {
           // Backend save failed — fall back to localStorage so data is never lost
@@ -900,6 +1079,21 @@ function NuevoDiagnosticoScreen() {
     "";
   const displayName = user?.name?.trim() || user?.email;
 
+  // The question panel lives beside the results, on this step only. Its ways
+  // in (the launcher, the line above the grid, the grid header's button) show
+  // while it is hidden, and all go when the search has nothing to ask about.
+  const refineOnScreen = canRefine && step === 3;
+  const refineEntries = refineOnScreen && !questionPanel.open && !questionSession.state.blocked;
+  const panelDocked = refineOnScreen && questionPanel.open && questionPanel.variant === "docked";
+
+  // Always at the foot of the results. The panel carries it too, word for
+  // word, so it stays in view while the questions are.
+  const disclaimer = (
+    <div className="rounded-2xl border border-amber-100 bg-amber-50 px-5 py-4">
+      <p className="text-xs text-amber-700 leading-relaxed">{RESULTS_DISCLAIMER}</p>
+    </div>
+  );
+
   const handleLogout = async () => {
     await logout();
     router.replace("/login");
@@ -917,35 +1111,45 @@ function NuevoDiagnosticoScreen() {
     return null;
   }
 
+  // Clipped, not hidden: an overflow-hidden <main> is a scroll container that
+  // scrollIntoView moves and the reader cannot move back, which cut the top of
+  // the results off once the questions scrolled to themselves.
   return (
-    <main className="page-root relative overflow-hidden">
+    <main className="page-root relative overflow-clip">
       {/* Background decoration */}
       <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full diagnostic-hero-bg blur-3xl pointer-events-none animate-breathe" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[40%] h-[40%] rounded-full diagnostic-hero-bg blur-3xl pointer-events-none animate-breathe" style={{ animationDelay: "3s" }} />
 
-      <header className="sticky top-0 z-20 w-full backdrop-blur-md bg-[color-mix(in_oklab,var(--lu-bg)_80%,transparent)] border-b border-[var(--lu-border)]">
-        <div className="mx-auto max-w-7xl flex items-center justify-between px-5 py-4">
-          <Link href="/home" className="flex items-center" aria-label="Regresar al home">
+      {/* Pinned from tablets up only. On a phone the question panel pins its
+          own action bar to the bottom, and a pinned header as well would leave
+          little of the screen for the questions. */}
+      <header className="top-0 z-20 w-full backdrop-blur-md sm:sticky bg-[color-mix(in_oklab,var(--lu-bg)_80%,transparent)] border-b border-[var(--lu-border)]">
+        {/* Below md the row keeps the logo and the two actions only, and the
+            logo is sized to the width: at full size it left no room and was
+            squeezed off a phone's screen. "Home" is the logo's own link, and
+            the account's address stays for screen readers. */}
+        <div className="mx-auto max-w-7xl flex items-center justify-between gap-3 px-4 md:px-5 py-4">
+          <Link href="/home" className="flex shrink-0 items-center" aria-label="Regresar al home">
             <Image
               src="/brand/logo-diagnosticar.svg"
               alt="Diagnostic.ar"
               width={360}
               height={88}
-              className="h-16 w-auto"
+              className="h-8 w-auto min-[400px]:h-10 sm:h-12 md:h-16"
               priority
             />
           </Link>
 
-          <nav className="flex items-center gap-5">
-            <Link href="/home" className="text-sm font-medium text-[var(--lu-subtle)] hover:text-[var(--lu-text)] transition-colors">
+          <nav className="flex items-center gap-3 md:gap-5">
+            <Link href="/home" className="hidden md:inline text-sm font-medium text-[var(--lu-subtle)] hover:text-[var(--lu-text)] transition-colors">
               Home
             </Link>
             {isDemoMode ? (
               <>
-                <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-bold uppercase tracking-wider border border-amber-200">
+                <span className="max-md:sr-only px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-bold uppercase tracking-wider border border-amber-200">
                   Modo demostración
                 </span>
-                <Link href="/sign-up" className="text-sm font-medium text-[var(--lu-accent)] hover:underline">
+                <Link href="/sign-up" className="whitespace-nowrap text-sm font-medium text-[var(--lu-accent)] hover:underline">
                   Crear cuenta
                 </Link>
               </>
@@ -953,17 +1157,17 @@ function NuevoDiagnosticoScreen() {
               <>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 px-4 h-9 text-sm font-medium text-red-500 hover:text-red-700 transition-colors"
+                  className="inline-flex items-center gap-2 px-2 md:px-4 h-9 text-sm font-medium text-red-500 hover:text-red-700 transition-colors"
                   onClick={() => setShowCancelModal(true)}
                 >
                   Cancelar
                 </button>
                 {displayName && (
                   <>
-                    <span className="user-badge truncate">
+                    <span className="user-badge truncate max-md:sr-only">
                       {displayName}
                     </span>
-                    <button type="button" onClick={handleLogout} className="nav-link text-sm">
+                    <button type="button" onClick={handleLogout} className="nav-link whitespace-nowrap text-sm">
                       Cerrar sesión
                     </button>
                   </>
@@ -975,7 +1179,9 @@ function NuevoDiagnosticoScreen() {
       </header>
 
       <div className="content-wrap relative z-10">
-        <section className="mx-auto max-w-[1400px] w-full px-6 lg:px-10 pt-12 pb-24 flex-1">
+        {/* Taller at the foot while the launcher floats there, so the last
+            controls can always scroll clear of it. */}
+        <section className={`mx-auto max-w-[1400px] w-full px-6 lg:px-10 pt-12 flex-1 ${refineEntries ? "pb-36" : "pb-24"}`}>
           {isDemoMode && (
             <div className="mb-6 rounded-xl bg-blue-50 border border-blue-100 p-4 flex items-start gap-3">
               <div className="text-blue-500 mt-0.5">
@@ -1424,7 +1630,8 @@ function NuevoDiagnosticoScreen() {
                     )}
                   </div>
                 ) : (
-                  <div className="space-y-6">
+                  <div className={panelDocked ? "flex items-start gap-6" : undefined}>
+                  <div className={panelDocked ? "min-w-0 flex-1 space-y-6" : "space-y-6"}>
                     {saveWarning && (
                       <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                         No se pudo guardar en tu cuenta. Los datos quedaron guardados localmente en este dispositivo.
@@ -1454,17 +1661,33 @@ function NuevoDiagnosticoScreen() {
 
                     {/* Gene ranking: a grid of overview cards, each opening the full detail in a modal. */}
                     {!isLowConfidenceResult && genphenResults.length > 0 && (
-                      <div className="overflow-hidden rounded-3xl border border-[var(--lu-border)] bg-white shadow-sm">
-                        <div className="flex flex-wrap items-center gap-4 border-b border-[var(--lu-border)] bg-[var(--lu-surface)] px-6 py-4">
-                          <div className="min-w-0">
-                            <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--lu-subtle)]">
-                              Resultado orientativo · no es un diagnóstico
+                      <div
+                        ref={genePanelRef}
+                        data-gene-panel
+                        className="scroll-mt-4 overflow-clip rounded-3xl border border-[var(--lu-border)] bg-white shadow-sm sm:scroll-mt-28"
+                      >
+                        <div className="flex flex-wrap items-center gap-3 border-b border-[var(--lu-border)] bg-[var(--lu-surface)] px-4 py-4 sm:gap-4 sm:px-6">
+                          {/* Beside a docked panel the band is too narrow for the title
+                              and both controls; they go under it together. */}
+                          <div
+                            className={`min-w-0 basis-full ${panelDocked && refinedResults !== null ? "" : "md:basis-auto"}`}
+                          >
+                            <p className="text-balance font-mono text-[10.5px] uppercase tracking-[0.14em] text-[var(--lu-subtle)]">
+                              Resultado orientativo&nbsp;· no es un diagnóstico
                             </p>
-                            <h3 className="mt-1 text-xl font-semibold text-[var(--lu-text)]">
+                            <h3
+                              id="genes-titulo"
+                              tabIndex={-1}
+                              className="mt-1 text-xl font-semibold text-[var(--lu-text)] focus:outline-none"
+                            >
                               Genes para llevar a la consulta
                             </h3>
                           </div>
-                          <span className="flex-grow" />
+                          <span className="hidden flex-grow md:block" />
+                          {refineEntries && <RefineButton control={questionPanel} />}
+                          {refinedResults !== null && (
+                            <ListToggle refined={showingRefined} onChange={chooseList} />
+                          )}
                           <label className="flex min-h-[44px] shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-[var(--lu-border-strong)] bg-white px-3.5 text-sm font-medium text-[var(--lu-text)]">
                             <input
                               type="checkbox"
@@ -1482,10 +1705,26 @@ function NuevoDiagnosticoScreen() {
                             />
                             Ver detalle médico
                           </label>
+                          {refinedResults !== null && (
+                            <p
+                              data-list-note
+                              className="flex basis-full items-start gap-1.5 text-xs leading-relaxed text-[var(--lu-subtle)] md:justify-end"
+                            >
+                              <InfoIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                              {ADJUSTED_LIST_NOTE}
+                            </p>
+                          )}
                         </div>
 
-                        <div className="flex flex-col gap-4 px-6 py-5">
-                          {(reportedWords.size > 0 || negatedFindings.length > 0) && (
+                        <p aria-live="polite" className="sr-only">
+                          {listAnnouncement}
+                        </p>
+
+                        <div className="flex flex-col gap-4 px-4 py-5 sm:px-6">
+                          {(reportedWords.size > 0 ||
+                            negatedFindings.length > 0 ||
+                            questionFindings.present.length > 0 ||
+                            questionFindings.absent.length > 0) && (
                             <div className="flex flex-col gap-2 border-b border-[var(--lu-border)] pb-4">
                               <p className="text-xs font-semibold text-[var(--lu-text)]">
                                 Lo que nos contaste
@@ -1499,12 +1738,29 @@ function NuevoDiagnosticoScreen() {
                                     {said}
                                   </li>
                                 ))}
+                                {questionFindings.present.map((finding) => (
+                                  <li
+                                    key={finding.code}
+                                    data-from-questions
+                                    className="rounded-full border border-dashed border-[var(--lu-accent-text)] bg-white px-2.5 py-1 text-xs text-[var(--lu-text)]"
+                                  >
+                                    {finding.label}
+                                    <span className="whitespace-nowrap text-[var(--lu-subtle)]"> · de las preguntas</span>
+                                  </li>
+                                ))}
                               </ul>
-                              {negatedFindings.length > 0 && (
+                              {(negatedFindings.length > 0 || questionFindings.absent.length > 0) && (
                                 <p className="text-xs text-[var(--lu-subtle)]">
                                   <span className="font-semibold text-[var(--lu-text)]">No presenta:</span>{" "}
-                                  {negatedFindings.map((finding) => finding.label).join(" · ")}. No se
-                                  usaron para buscar genes.
+                                  {[
+                                    ...negatedFindings.map((finding) => finding.label),
+                                    ...questionFindings.absent.map((finding) => `${finding.label} (de las preguntas)`),
+                                  ].join(" · ")}
+                                  .{" "}
+                                  {/* /rank-genes takes present phenotypes only,
+                                      and the agent now sends it only the
+                                      findings answered «Sí». */}
+                                  Quedan registrados para la consulta; hoy no cambian el orden de ninguna lista.
                                 </p>
                               )}
                             </div>
@@ -1521,22 +1777,33 @@ function NuevoDiagnosticoScreen() {
                             el orden es orientativo y el primero no es una respuesta.
                           </p>
 
+                          {refineEntries && (
+                            <RefineTeaser phase={questionSession.state.phase} control={questionPanel} />
+                          )}
+
                           {/* The model's own order, ungrouped. Splitting the
                               ranking put the top-scoring genes below a fold
                               and made a gene with no symptom overlap look
                               like an apology; the overlap is already on every
                               card, so it does not need a heading too. */}
-                          <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                          <ul
+                            ref={geneListRef}
+                            data-gene-grid
+                            className={`relative grid gap-4 sm:grid-cols-2 ${panelDocked ? "" : "xl:grid-cols-3"}`}
+                          >
                             {orderedGenes.map(({ gene, rank, symbol }) => (
                               <GeneOverviewCard
-                                key={`${gene.gene_id}-${rank}`}
+                                key={gene.gene_id}
                                 symbol={symbol}
                                 rank={rank}
                                 total={visibleGeneResults.length}
                                 score={Number(gene.score)}
+                                listOrigin={
+                                  refinedOrigins ? { from: refinedOrigins.get(symbol.toUpperCase()) ?? null } : null
+                                }
                                 profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
                                 professional={professionalView}
-                                reportedWords={reportedWords}
+                                reportedWords={matchedWords}
                                 onOpen={() => setSelectedSymbol(symbol)}
                               />
                             ))}
@@ -1549,26 +1816,22 @@ function NuevoDiagnosticoScreen() {
                           onOpenSymbol={setSelectedSymbol}
                           profiles={geneProfiles}
                           professional={professionalView}
-                          reportedWords={reportedWords}
+                          reportedWords={matchedWords}
+                          listOrigins={refinedOrigins}
                         />
                       </div>
                     )}
 
                     {!genphenError && !isLowConfidenceResult && (
                       <SpecialtyCard
-                        specialties={genphenSpecialties}
+                        specialties={visibleSpecialties}
                         geneCount={visibleGeneResults.length}
                         rankedSymbols={rankedSymbols}
                         onOpenGene={setSelectedSymbol}
                       />
                     )}
 
-                    {/* Medical disclaimer */}
-                    <div className="rounded-2xl border border-amber-100 bg-amber-50 px-5 py-4">
-                      <p className="text-xs text-amber-700 leading-relaxed">
-                        Este resultado no constituye un diagnóstico médico. Es una orientación generada por métodos computacionales basada en información genómica y fenotípica. Siempre consultá con un profesional médico calificado.
-                      </p>
-                    </div>
+                    {disclaimer}
 
                     <div className="flex flex-wrap gap-3">
                       <button
@@ -1612,6 +1875,29 @@ function NuevoDiagnosticoScreen() {
                         Descargar resultados — Próximamente
                       </button>
                     </div>
+                  </div>
+                  {refineOnScreen && (
+                    <QuestionSidePanel
+                      control={questionPanel}
+                      state={questionSession.state}
+                      disclaimer={RESULTS_DISCLAIMER}
+                      onSeeList={showUpdatedList}
+                      body={{
+                        professional: professionalView,
+                        drafts: questionSession.drafts,
+                        onDraft: questionSession.updateDraft,
+                        pendingSince: questionSession.pendingSince,
+                        onStart: () => questionSession.start(questionMode),
+                        onSubmit: (drafts) => questionSession.submit(questionMode, drafts),
+                        onFinish: (drafts) => questionSession.finish(questionMode, drafts),
+                        onRetry: () => questionSession.retry(questionMode),
+                        originalGenes: originalSymbols,
+                        showAdjusted: showingRefined,
+                        geneRanks,
+                        onOpenGene: setSelectedSymbol,
+                      }}
+                    />
+                  )}
                   </div>
                 ))}
             </div>
@@ -1693,6 +1979,8 @@ function NuevoDiagnosticoScreen() {
           </div>
         </section>
       </div>
+
+      {refineEntries && <QuestionLauncher control={questionPanel} />}
 
       {showConfirmModal && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm px-5 animate-in fade-in duration-200">

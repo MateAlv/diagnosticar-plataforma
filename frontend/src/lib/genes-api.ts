@@ -186,6 +186,9 @@ export function formatScore(score: number): string {
     return score < 0.01 ? "bajo" : score.toFixed(3);
 }
 
+/** The label of the model's own score, on the original ranking only. */
+export const MODEL_SCORE_TITLE = "Puntaje del modelo: ordena la lista, no es una probabilidad";
+
 /** "muy frecuente (95%)" — the words first, the number as support. */
 export function describeFrequency(symptom: Symptom): string | null {
     const { frecuencia_pct: pct, frecuencia_texto: text } = symptom;

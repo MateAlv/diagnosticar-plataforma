@@ -136,6 +136,57 @@ request reached production's API.
 Setting `NEXT_PUBLIC_*` in `.env` on the node has **no effect on an
 already-built image**. Changing one requires a new tag, not a restart.
 
+### The question agent image
+
+`diagnosticar-question-agent` is built like `hpo-recognizer`, from two private
+repositories pinned by commit:
+
+- the **Dockerfile** is `services/question-agent/Dockerfile` in
+  `MateAlv/diagnostic.ar-api`, at `GATEWAY_COMMIT` in `.github/recognizer.env`
+  (the same pin as the recognizer and the model), checked out into `api/` with
+  `API_DEPLOY_KEY`;
+- the **agent's code** is `MarBL00126/diagnosticar-question-agent`, at
+  `QUESTION_AGENT_COMMIT` in `.github/question-agent.env`, checked out into
+  `agent/` with `MODEL_RELEASE_TOKEN` (diagnosticar-fiuba, a collaborator on
+  that repository) and passed to the build as the named
+  context `agent` (`context: ./api`, `build-contexts: agent=./agent`).
+
+```
+read pins  →  checkout api + agent  →  build :candidate
+           →  pytest inside the image (-m 'not live')  →  Trivy HIGH,CRITICAL
+           →  assert non-root  →  push
+```
+
+The image carries both commits as labels, `org.opencontainers.image.revision.api`
+and `org.opencontainers.image.revision.question-agent`. The Dockerfile installs
+the agent's runtime dependencies with `-c constraints.txt`, the exact versions
+committed in the agent's repository (regenerated there with `make lock`), so
+rebuilding the same two commits installs the same packages.
+
+The pins are read by the job's first step. While `QUESTION_AGENT_COMMIT` is
+empty, every later step is **skipped** and the job succeeds with a notice, so a
+release is never blocked before a commit has been chosen. A pin that is set but
+is not a full 40-character SHA fails the release. The check is a step, not a
+job of its own that `publish-question-agent` needs, because every job is billed
+at least a minute.
+
+The tests run from the agent's checkout, mounted read-only: `tests/` at
+`/tmp/tests` and `docs/` at `/tmp/docs`, which holds the contract example some
+tests validate (without it they skip). pytest is installed for that run only
+(`pip install --user` with `HOME=/tmp`, which is why the runtime has pip and no
+virtualenv); the Dockerfile documents the same command.
+
+Before the first pinned release: `diagnosticar-fiuba` must be a collaborator on
+the agent's repository, which lives on a teammate's personal account where only
+its owner can add deploy keys; its classic token is already the
+`MODEL_RELEASE_TOKEN` secret here. `GATEWAY_COMMIT` already points at an API
+commit with `services/question-agent/Dockerfile`. `make ci` does not build this image — it
+needs both other repositories.
+
+The backend's `QUESTION_AGENT_TIMEOUT_MS` (100 s) must stay above the agent's
+queue wait (10 s) + round budget (`PREGUNTAS_ROUND_BUDGET_S`, 75 s) + its
+model-service timeout (10 s), plus a margin; compose sets both. See `STAGING.md`.
+
 ### Why the Dockerfiles delete npm
 
 Both runner stages end with:

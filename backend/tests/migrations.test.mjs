@@ -78,13 +78,16 @@ test('concurrent migrations from separate processes do not race', { skip }, asyn
 
 test('every table and index the app queries exists afterwards', { skip }, async () => {
     const { query } = await import('../dist/database/pool.js');
-    for (const table of ['users', 'patients', 'diagnoses']) {
+    for (const table of ['users', 'patients', 'diagnoses', 'question_agent_rounds']) {
         const res = await query('SELECT to_regclass($1) AS t', [`public.${table}`]);
         assert.ok(res.rows[0].t, `table ${table} is missing after migrate()`);
     }
     const idx = await query(
         `SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND indexname = ANY($1)`,
-        [['patients_user_id_idx', 'diagnoses_patient_id_idx', 'diagnoses_user_id_created', 'users_google_id_idx']],
+        [[
+            'patients_user_id_idx', 'diagnoses_patient_id_idx', 'diagnoses_user_id_created', 'users_google_id_idx',
+            'question_agent_rounds_created_idx', 'question_agent_rounds_user_created_idx',
+        ]],
     );
-    assert.equal(idx.rows.length, 4, `missing indexes: got ${idx.rows.map((r) => r.indexname).join(', ')}`);
+    assert.equal(idx.rows.length, 6, `missing indexes: got ${idx.rows.map((r) => r.indexname).join(', ')}`);
 });

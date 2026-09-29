@@ -23,7 +23,8 @@ type AuthContextValue = {
   login: (input: { email: string; password: string }) => Promise<void>;
   register: (input: { email: string; password: string; name?: string | null }) => Promise<void>;
   logout: () => Promise<void>;
-  refreshSession: () => Promise<void>;
+  /** Renews the access token from the refresh cookie; resolves to whether it worked. */
+  refreshSession: () => Promise<boolean>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -89,11 +90,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const payload = await parseResponse(res);
       if (!res.ok || !payload.user) {
         setUser(null);
-        return;
+        return false;
       }
       setUser(payload.user);
+      return true;
     } catch (e) {
       setUser(null);
+      return false;
     }
   }, []);
 

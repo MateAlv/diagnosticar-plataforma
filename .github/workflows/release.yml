@@ -451,3 +451,160 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=model
+
+  # The follow-up question agent, run by staging on nodo0 as question-agent.
+  # Built like hpo-recognizer: the Dockerfile is diagnostic.ar-api's
+  # services/question-agent/Dockerfile at GATEWAY_COMMIT, and the agent's code,
+  # from another private repository pinned in .github/question-agent.env, is
+  # its `agent` build context.
+  #
+  # While QUESTION_AGENT_COMMIT is empty every step after the pin check is
+  # skipped, so a release is not blocked before a commit has been chosen. The
+  # pin is read here rather than in a job of its own because every job is
+  # billed at least a minute.
+  publish-question-agent:
+    name: Build & publish question-agent
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: diagnosticar-question-agent
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - id: pins
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          . .github/question-agent.env
+          if [ -z "${QUESTION_AGENT_COMMIT:-}" ]; then
+            echo "::notice::QUESTION_AGENT_COMMIT is empty in .github/question-agent.env; not building the question agent."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! printf '%s' "$QUESTION_AGENT_COMMIT" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::QUESTION_AGENT_COMMIT in .github/question-agent.env must be a full commit SHA, got '$QUESTION_AGENT_COMMIT'."
+            exit 1
+          fi
+          if ! printf '%s' "$QUESTION_AGENT_REPO" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'; then
+            echo "::error::QUESTION_AGENT_REPO in .github/question-agent.env must be owner/name, got '$QUESTION_AGENT_REPO'."
+            exit 1
+          fi
+          # shellcheck disable=SC1091
+          . .github/recognizer.env
+          if ! printf '%s' "$GATEWAY_COMMIT" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::GATEWAY_COMMIT in .github/recognizer.env must be a full commit SHA, got '$GATEWAY_COMMIT'."
+            exit 1
+          fi
+          {
+            echo "build=true"
+            echo "api_ref=$GATEWAY_COMMIT"
+            echo "agent_repo=$QUESTION_AGENT_REPO"
+            echo "agent_ref=$QUESTION_AGENT_COMMIT"
+          } >> "$GITHUB_OUTPUT"
+
+      - if: steps.pins.outputs.build == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: MateAlv/diagnostic.ar-api
+          ref: ${{ steps.pins.outputs.api_ref }}
+          ssh-key: ${{ secrets.API_DEPLOY_KEY }}
+          path: api
+
+      - if: steps.pins.outputs.build == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.pins.outputs.agent_repo }}
+          ref: ${{ steps.pins.outputs.agent_ref }}
+          # The repository belongs to a teammate's account, where only its owner
+          # can add a deploy key; diagnosticar-fiuba is a collaborator there
+          # instead, and this is its read token (the same one that fetches the
+          # model release).
+          token: ${{ secrets.MODEL_RELEASE_TOKEN }}
+          path: agent
+
+      - if: steps.pins.outputs.build == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - if: steps.pins.outputs.build == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        if: steps.pins.outputs.build == 'true'
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE }}
+          tags: |
+            type=raw,value=${{ github.ref_name }},enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+          labels: |
+            org.opencontainers.image.revision.api=${{ steps.pins.outputs.api_ref }}
+            org.opencontainers.image.revision.question-agent=${{ steps.pins.outputs.agent_ref }}
+
+      - name: Build
+        if: steps.pins.outputs.build == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          file: ./api/services/question-agent/Dockerfile
+          build-contexts: agent=./agent
+          push: false
+          load: true
+          tags: ${{ env.IMAGE }}:candidate
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=question-agent
+          cache-to: type=gha,scope=question-agent,mode=max
+
+      # pytest is a dev dependency and stays out of the runtime image, so it is
+      # installed for this run only. docs/ holds the contract example some tests
+      # validate; without it they skip. Tests marked `live` call a real LLM or
+      # model and need secrets this job does not have.
+      - name: Test inside the image
+        if: steps.pins.outputs.build == 'true'
+        run: |
+          docker run --rm -e HOME=/tmp -v "$PWD/agent/tests:/tmp/tests:ro" -v "$PWD/agent/docs:/tmp/docs:ro" \
+            ${{ env.IMAGE }}:candidate \
+            sh -c "pip install -q --user pytest==8.3.2 && python -m pytest /tmp/tests -q -p no:cacheprovider -m 'not live'"
+
+      - name: Scan the candidate image
+        if: steps.pins.outputs.build == 'true'
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}:candidate
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          vuln-type: os,library
+
+      - name: Assert the image does not run as root
+        if: steps.pins.outputs.build == 'true'
+        run: |
+          user=$(docker image inspect ${{ env.IMAGE }}:candidate --format '{{.Config.User}}')
+          if [ -z "$user" ] || [ "$user" = "root" ] || [ "$user" = "0" ]; then
+            echo "::error::${{ env.IMAGE }} runs as root."
+            exit 1
+          fi
+          echo "ok — runs as $user"
+
+      - name: Push
+        if: steps.pins.outputs.build == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          file: ./api/services/question-agent/Dockerfile
+          build-contexts: agent=./agent
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=question-agent

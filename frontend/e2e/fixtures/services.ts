@@ -1,12 +1,14 @@
 import type { Page, Route } from "@playwright/test";
 import fixtures from "../../mocks/fixtures.json";
+import { createQuestionsEngine } from "../../mocks/questions-engine.mjs";
+import type { QuestionErrorCode } from "../../src/lib/questions-api";
 
 /**
  * Stand-ins for the three services the browser talks to:
  *
  *   - the HPO gateway on brainy   (POST /extract-hpo, GET /hpo/es/search)
  *   - GenPhenAI on brainy         (POST /rank-genes)
- *   - the Express API on nodo0    (/api/*)
+ *   - the Express API on nodo0    (/api/*, the question agent included)
  *
  * Response bodies come from mocks/fixtures.json, which mirrors diagnostic.ar-api
  * (`services/api-gateway/app/schemas.py`, `services/genphenai/app/main.py`) and is
@@ -31,6 +33,35 @@ export const NEGATED_PHENOTYPE_FIXTURE = fixtures.extract.phenotypes.find((p) =>
 export const EXTRACT_FIXTURE = fixtures.extract;
 export const RANK_FIXTURE = fixtures.rank;
 export const SEARCH_FIXTURE = fixtures.search;
+export const QUESTIONS_FIXTURE = fixtures.questions;
+
+/** The diagnosis id every stubbed save answers with. */
+export const SAVED_DIAGNOSIS_ID = "22222222-2222-4222-8222-222222222222";
+
+export type QuestionsMockOptions = {
+    /** What GET /api/questions/status says. */
+    enabled?: boolean;
+    /** Answer every round POST with the backend's `{ error, code }` body for this code. */
+    failCode?: QuestionErrorCode;
+    /** Answer every round POST with this status and a body without a code, as a proxy in front of the backend would. */
+    failStatus?: number;
+    /** Sent with a `failCode` or `failStatus` failure. */
+    retryAfter?: string;
+    /** Delay in ms before a round answers, holding the account's round lock meanwhile. */
+    latencyMs?: number;
+    /** A session already on the server for the saved diagnosis, for resume. */
+    seed?: { finished: boolean; rounds: object[]; latest: object };
+    /** Break the contract and send the medical fields in patient mode. */
+    leakMedicalFields?: boolean;
+    /** Every new session is the 400 for a search with no usable symptoms. */
+    noUsableSymptoms?: boolean;
+    /** Apply the first round of this kind on the server and then drop its reply, as a lost connection would. */
+    dropReplyTo?: "start" | "answers" | "finish";
+    /** Answer this many round POSTs with 401 before serving them, as an expired access token would. */
+    expireTokens?: number;
+    /** Serve a second round that still asks (`followUp`) before the closing one. */
+    threeRounds?: boolean;
+};
 
 const json = (route: Route, status: number, body: unknown) =>
     route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
@@ -64,7 +95,11 @@ export async function mockModelServices(page: Page, overrides: ServiceOverrides 
  */
 export async function mockBackend(
     page: Page,
-    { user = null as null | { id: string; email: string; full_name?: string | null; role?: string }, patients = [] as unknown[] } = {},
+    {
+        user = null as null | { id: string; email: string; full_name?: string | null; role?: string },
+        patients = [] as unknown[],
+        questions = {} as QuestionsMockOptions,
+    } = {},
 ) {
     await page.route("**/api/auth/me", (route) =>
         user ? json(route, 200, { user }) : json(route, 401, { error: "Unauthorized" }),
@@ -75,11 +110,118 @@ export async function mockBackend(
     await page.route("**/api/auth/logout", (route) => json(route, 200, { message: "Logged out" }));
     await page.route("**/api/patients", (route) => {
         if (route.request().method() === "POST") {
-            return json(route, 201, { patient: { id: "11111111-1111-4111-8111-111111111111" }, diagnosisId: "22222222-2222-4222-8222-222222222222" });
+            return json(route, 201, { patient: { id: "11111111-1111-4111-8111-111111111111" }, diagnosisId: SAVED_DIAGNOSIS_ID });
         }
         return json(route, 200, patients);
     });
-    await page.route("**/api/patients/**", (route) => json(route, 201, { id: "33333333-3333-4333-8333-333333333333" }));
+    // The real append answers { diagnosisId }, like the create does.
+    await page.route("**/api/patients/**", (route) =>
+        route.request().method() === "POST"
+            ? json(route, 201, { diagnosisId: "33333333-3333-4333-8333-333333333333" })
+            : json(route, 201, { id: "33333333-3333-4333-8333-333333333333" }),
+    );
+    return { questions: await mockQuestions(page, questions) };
+}
+
+/**
+ * Stands in for /api/questions with the same session rules as the dev mock
+ * (mocks/questions-engine.mjs): every pending question must be answered, a
+ * finished session is a 409, a resend of applied answers is replayed, one
+ * round runs at a time, and patient mode gets no medical fields.
+ *
+ * Returns the engine, so a test can change the session behind the page's
+ * back, as another tab would.
+ */
+async function mockQuestions(page: Page, options: QuestionsMockOptions) {
+    const {
+        enabled = true,
+        failCode,
+        failStatus,
+        retryAfter,
+        latencyMs = 0,
+        seed,
+        leakMedicalFields = false,
+        noUsableSymptoms = false,
+        threeRounds = false,
+    } = options;
+    let dropReplyTo = options.dropReplyTo;
+    const kindOf = (body: { answers?: unknown[]; finish?: boolean }) =>
+        body.finish ? "finish" : body.answers?.length ? "answers" : "start";
+    let expireTokens = options.expireTokens ?? 0;
+    const { round1, followUp, round2 } = fixtures.questions;
+    const engine = createQuestionsEngine(fixtures.questions, {
+        withholdMedical: !leakMedicalFields,
+        noUsableSymptoms,
+        sequence: threeRounds ? [round1, followUp, round2] : [round1, round2],
+    });
+    if (seed) engine.seed(SAVED_DIAGNOSIS_ID, seed);
+    const wait = () => (latencyMs ? new Promise((r) => setTimeout(r, latencyMs)) : Promise.resolve());
+    // Cross-origin here, same-origin in production, where the header is
+    // readable without being exposed.
+    const retryHeaders = (seconds?: string): Record<string, string> =>
+        seconds ? { "Retry-After": seconds, "Access-Control-Expose-Headers": "Retry-After" } : {};
+
+    await page.route("**/api/questions/**", async (route) => {
+        const request = route.request();
+        const url = new URL(request.url());
+
+        if (url.pathname.endsWith("/questions/status")) return json(route, 200, { enabled });
+
+        if (url.pathname.endsWith("/questions/rounds") && request.method() === "POST") {
+            if (expireTokens > 0) {
+                expireTokens -= 1;
+                return json(route, 401, { error: "Unauthorized" });
+            }
+            if (failCode) {
+                await wait();
+                const { status, body } = engine.failure(failCode);
+                return route.fulfill({
+                    status,
+                    contentType: "application/json",
+                    headers: retryHeaders(retryAfter),
+                    body: JSON.stringify(body),
+                });
+            }
+            if (failStatus) {
+                await wait();
+                return route.fulfill({
+                    status: failStatus,
+                    contentType: "text/html",
+                    headers: retryHeaders(retryAfter),
+                    body: `<html><body><h1>${failStatus}</h1></body></html>`,
+                });
+            }
+            const release = engine.tryAcquire(SAVED_DIAGNOSIS_ID);
+            if (!release) {
+                const busy = engine.inFlightError;
+                return route.fulfill({
+                    status: busy.status,
+                    contentType: "application/json",
+                    headers: retryHeaders(busy.retryAfter),
+                    body: JSON.stringify(busy.body),
+                });
+            }
+            try {
+                await wait();
+                const body = JSON.parse(request.postData() ?? "{}");
+                const result = engine.round(body);
+                if (dropReplyTo && result.status === 200 && kindOf(body) === dropReplyTo) {
+                    dropReplyTo = undefined;
+                    return route.abort("connectionreset");
+                }
+                return json(route, result.status, result.body);
+            } finally {
+                release();
+            }
+        }
+
+        if (request.method() === "GET") {
+            const id = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+            return json(route, 200, engine.session(id));
+        }
+        return json(route, 404, { error: "Not found" });
+    });
+    return engine;
 }
 
 /** The gene profile fixtures, keyed by symbol, as /api/genes would return them. */

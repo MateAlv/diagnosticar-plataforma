@@ -30,6 +30,12 @@ async function loadConfig(env, { entry = 'dist/config.js' } = {}) {
         FRONTEND_URL: config.FRONTEND_URL,
         GOOGLE_AUTH_ENABLED: config.GOOGLE_AUTH_ENABLED,
         PORT: config.PORT,
+        QUESTION_AGENT_ENABLED: config.QUESTION_AGENT_ENABLED,
+        QUESTION_AGENT_URL: config.QUESTION_AGENT_URL ?? null,
+        QUESTION_AGENT_TOKEN_SET: Boolean(config.QUESTION_AGENT_TOKEN),
+        QUESTION_AGENT_TIMEOUT_MS: config.QUESTION_AGENT_TIMEOUT_MS,
+        QUESTION_AGENT_ROUNDS_PER_HOUR: config.QUESTION_AGENT_ROUNDS_PER_HOUR,
+        QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H: config.QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H,
       }));
     `;
     try {
@@ -130,4 +136,87 @@ test('Google OAuth stays disabled unless both client id and secret are present',
 test('PORT falls back to 4000, matching the Dockerfile EXPOSE and compose mapping', async () => {
     const result = await loadConfig(PROD_BASE);
     assert.equal(result.config.PORT, 4000);
+});
+
+test('the question agent is off unless its URL is set', async () => {
+    const result = await loadConfig(PROD_BASE);
+    assert.ok(result.ok, result.stderr);
+    assert.equal(result.config.QUESTION_AGENT_ENABLED, false);
+    assert.equal(result.config.QUESTION_AGENT_TIMEOUT_MS, 100_000);
+});
+
+test('production refuses a question agent URL without its internal token', async () => {
+    const result = await loadConfig({ ...PROD_BASE, QUESTION_AGENT_URL: 'http://question-agent:8010' });
+    assert.equal(result.ok, false, 'the agent was reachable without a token in production');
+    assert.match(result.stderr, /QUESTION_AGENT_TOKEN/);
+
+    const short = await loadConfig({
+        ...PROD_BASE, QUESTION_AGENT_URL: 'http://question-agent:8010', QUESTION_AGENT_TOKEN: 'short',
+    });
+    assert.equal(short.ok, false);
+    assert.match(short.stderr, /QUESTION_AGENT_TOKEN.*32/s);
+});
+
+test('a configured question agent boots, with the trailing slash dropped', async () => {
+    const result = await loadConfig({
+        ...PROD_BASE,
+        QUESTION_AGENT_URL: 'http://question-agent:8010/',
+        QUESTION_AGENT_TOKEN: 'q'.repeat(40),
+        QUESTION_AGENT_TIMEOUT_MS: '45000',
+    });
+    assert.ok(result.ok, result.stderr);
+    assert.equal(result.config.QUESTION_AGENT_ENABLED, true);
+    assert.equal(result.config.QUESTION_AGENT_URL, 'http://question-agent:8010');
+    assert.equal(result.config.QUESTION_AGENT_TOKEN_SET, true);
+    assert.equal(result.config.QUESTION_AGENT_TIMEOUT_MS, 45_000);
+});
+
+test('development may call a local question agent without a token', async () => {
+    const result = await loadConfig({
+        NODE_ENV: 'development',
+        DATABASE_URL: 'postgresql://u:p@127.0.0.1:5432/dev',
+        JWT_ACCESS_SECRET: 'dev-secret-that-is-long-enough-to-pass',
+        JWT_REFRESH_SECRET: 'dev-secret-that-is-also-long-enough-ok',
+        QUESTION_AGENT_URL: 'http://localhost:8010',
+    });
+    assert.ok(result.ok, result.stderr);
+    assert.equal(result.config.QUESTION_AGENT_ENABLED, true);
+    assert.equal(result.config.QUESTION_AGENT_TOKEN_SET, false);
+});
+
+test('malformed question agent settings refuse to boot', async () => {
+    for (const env of [
+        { QUESTION_AGENT_URL: 'question-agent:8010' },
+        { QUESTION_AGENT_URL: 'ftp://question-agent' },
+        { QUESTION_AGENT_TIMEOUT_MS: 'soon' },
+        { QUESTION_AGENT_ROUNDS_PER_HOUR: '0' },
+    ]) {
+        const result = await loadConfig({ ...PROD_BASE, QUESTION_AGENT_TOKEN: 'q'.repeat(40), ...env });
+        assert.equal(result.ok, false, JSON.stringify(env));
+        assert.match(result.stderr, /QUESTION_AGENT_/);
+    }
+});
+
+test('the round caps default to 20 per account per hour and 50 per five hours overall', async () => {
+    const defaults = await loadConfig(PROD_BASE);
+    assert.ok(defaults.ok, defaults.stderr);
+    assert.equal(defaults.config.QUESTION_AGENT_ROUNDS_PER_HOUR, 20);
+    assert.equal(defaults.config.QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H, 50);
+
+    const set = await loadConfig({
+        ...PROD_BASE, QUESTION_AGENT_ROUNDS_PER_HOUR: '5', QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H: '12',
+    });
+    assert.ok(set.ok, set.stderr);
+    assert.equal(set.config.QUESTION_AGENT_ROUNDS_PER_HOUR, 5);
+    assert.equal(set.config.QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H, 12);
+});
+
+test('a round cap must be a positive integer; there is no value that turns one off', async () => {
+    for (const name of ['QUESTION_AGENT_ROUNDS_PER_HOUR', 'QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H']) {
+        for (const value of ['0', '-1', '2.5', 'unlimited']) {
+            const result = await loadConfig({ ...PROD_BASE, [name]: value });
+            assert.equal(result.ok, false, `${name}=${value} was accepted`);
+            assert.match(result.stderr, new RegExp(`${name} must be a positive integer`));
+        }
+    }
 });

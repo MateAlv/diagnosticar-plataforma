@@ -4,7 +4,8 @@
  *
  * Stands in for all three services the browser talks to, on a single port:
  *
- *   /api/auth/*, /api/patients*   the Express API that normally runs on nodo0
+ *   /api/auth/*, /api/patients*,  the Express API that normally runs on nodo0
+ *   /api/genes*, /api/questions*
  *   /extract-hpo, /hpo/es/search  the HPO gateway on brainy
  *   /rank-genes                   GenPhenAI on brainy
  *
@@ -24,6 +25,7 @@ import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { createQuestionsEngine } from "./questions-engine.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const fixtures = JSON.parse(readFileSync(path.join(HERE, "fixtures.json"), "utf8"));
@@ -33,6 +35,12 @@ const ORIGIN = process.env.MOCK_ALLOWED_ORIGIN ?? "http://localhost:3000";
 const LATENCY_MS = Number(process.env.MOCK_LATENCY_MS ?? 0);
 // Comma-separated list of endpoints to fail, for exercising error states:
 //   MOCK_FAIL=extract,rank,save,auth npm run dev:mock
+// The question agent has its own: questions-off (status says disabled),
+// questions (503), questions-timeout (504), questions-ratelimit (the hourly
+// 429), questions-global-limit (the platform-wide 429), questions-nosymptoms
+// (the 400 for a search it cannot ask about). A
+// second round while one is running is a 429 without any flag, as in
+// production; MOCK_LATENCY_MS makes that easy to reach from two tabs.
 const FAIL = new Set((process.env.MOCK_FAIL ?? "").split(",").map((s) => s.trim()).filter(Boolean));
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -60,6 +68,20 @@ const adminStaff = [
 ];
 const sessions = new Map(); // access_token -> email
 const patients = new Map(); // id -> patient (with diagnoses[])
+// Three rounds, so the screens between rounds can be seen locally too.
+const questions = createQuestionsEngine(fixtures.questions, {
+  noUsableSymptoms: FAIL.has("questions-nosymptoms"),
+  sequence: [fixtures.questions.round1, fixtures.questions.followUp, fixtures.questions.round2],
+});
+
+/** Whether `diagnosisId` belongs to one of `user`'s patients. */
+function ownsDiagnosis(user, diagnosisId) {
+  for (const patient of patients.values()) {
+    if (patient.user_id !== user.id) continue;
+    if (patient.diagnoses.some((d) => d.id === diagnosisId)) return true;
+  }
+  return false;
+}
 
 function makeUser(email, fullName = "Usuario de Prueba") {
   const user = {
@@ -364,6 +386,73 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, body);
   }
 
+  // --- Express API: question agent ----------------------------------------
+  // Authenticated and owner-scoped like every route that touches a diagnosis:
+  // another account's diagnosis id is a 404, never a 403.
+  if (pathname === "/api/questions/status" && method === "GET") {
+    const user = currentUser(cookies);
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+    const enabled = !FAIL.has("questions-off") && fixtures.questions.status.enabled;
+    log(`200 enabled=${enabled}`);
+    return send(res, 200, { enabled });
+  }
+
+  if (pathname === "/api/questions/rounds" && method === "POST") {
+    const user = currentUser(cookies);
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+    const refuse = (code, headers) => {
+      const { status, body } = questions.failure(code);
+      return send(res, status, body, headers);
+    };
+    if (FAIL.has("questions-off")) { log("503 (MOCK_FAIL=questions-off)"); return refuse("disabled"); }
+    if (FAIL.has("questions")) { log("503 (MOCK_FAIL=questions)"); return refuse("unavailable"); }
+    if (FAIL.has("questions-timeout")) { log("504 (MOCK_FAIL=questions-timeout)"); return refuse("timeout"); }
+    // Exposed because the dev mock is cross-origin; production is same-origin.
+    const retryHeaders = (seconds) => ({ "Retry-After": seconds, "Access-Control-Expose-Headers": "Retry-After" });
+    if (FAIL.has("questions-ratelimit")) {
+      log("429 (MOCK_FAIL=questions-ratelimit)");
+      return refuse("rate_limited", retryHeaders("1800"));
+    }
+    if (FAIL.has("questions-global-limit")) {
+      log("429 (MOCK_FAIL=questions-global-limit)");
+      const capped = questions.globalLimitError;
+      return send(res, capped.status, capped.body, retryHeaders(capped.retryAfter));
+    }
+    const body = await readBody(req);
+    if (typeof body?.diagnosisId === "string" && !(UUID_RE.test(body.diagnosisId) && ownsDiagnosis(user, body.diagnosisId))) {
+      log("404 (diagnosis not found for this user)");
+      return refuse("not_found");
+    }
+    const release = questions.tryAcquire(user.id);
+    if (!release) {
+      log("429 (a round is already running for this account)");
+      const busy = questions.inFlightError;
+      return send(res, busy.status, busy.body, retryHeaders(busy.retryAfter));
+    }
+    try {
+      // The global latency above already ran; this holds the lock for as long
+      // as the agent would, so a second tab can meet it.
+      if (LATENCY_MS) await sleep(LATENCY_MS);
+      const result = questions.round(body);
+      log(`${result.status} round ${result.body?.round ?? "-"} ${result.body?.status ?? result.body?.code ?? ""}`);
+      return send(res, result.status, result.body);
+    } finally {
+      release();
+    }
+  }
+
+  if (pathname.startsWith("/api/questions/") && method === "GET") {
+    const diagnosisId = decodeURIComponent(pathname.slice("/api/questions/".length));
+    const notFound = questions.failure("not_found");
+    if (!UUID_RE.test(diagnosisId)) { log("404 (non-uuid id)"); return send(res, notFound.status, notFound.body); }
+    const user = currentUser(cookies);
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+    if (!ownsDiagnosis(user, diagnosisId)) { log("404"); return send(res, notFound.status, notFound.body); }
+    const result = questions.session(diagnosisId);
+    log(`200 session ${result.session ? "found" : "none"}`);
+    return send(res, 200, result);
+  }
+
   // --- Express API: admin (backoffice) -------------------------------------
   // Faithful to the real thing in the way that matters: a caller without the
   // admin role gets 404, not 403, so the panel is invisible rather than merely
@@ -567,7 +656,7 @@ const server = http.createServer(async (req, res) => {
       };
       patient.diagnoses.push(diag);
       log("201 diagnosis appended");
-      return send(res, 201, diag);
+      return send(res, 201, { diagnosisId: diag.id });
     }
 
     if (segments[3] === "diagnoses" && segments.length === 5 && method === "GET") {
