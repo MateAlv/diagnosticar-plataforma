@@ -186,8 +186,8 @@ function GuiaHistoria() {
           <p className="mt-1 text-sm leading-relaxed text-[var(--lu-subtle)]">
             Este campo es útil cuando partís de una historia clínica escrita. Pero la detección
             automática puede equivocarse o quedarse en términos poco precisos: si ya tenés claros
-            los síntomas, usá{" "}
-            <strong className="font-semibold text-[var(--lu-text)]">Elegir síntomas de la lista</strong> y
+            los síntomas, buscalos en el panel{" "}
+            <strong className="font-semibold text-[var(--lu-text)]">Síntomas del paciente</strong> y
             cargalos uno por uno.
           </p>
         </div>

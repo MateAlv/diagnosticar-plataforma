@@ -2055,19 +2055,6 @@ function NuevoDiagnosticoScreen() {
                 )}
 
                 <div className="flex flex-wrap items-center gap-3">
-                  {step === 2 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setExtractError(null);
-                        sintomaInputRef.current?.focus();
-                        sintomaInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-                      }}
-                      className="inline-flex items-center justify-center h-10 px-5 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors"
-                    >
-                      Elegir síntomas de la lista
-                    </button>
-                  )}
                   {step < 3 && (
                   <button
                     type="button"

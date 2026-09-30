@@ -452,37 +452,44 @@ function DiagnosticarContent() {
 
                         <div className="mt-6 space-y-6 text-sm text-[var(--lu-subtle)]">
                           <div>
-                            <p className="mb-1 text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Historia Clínica</p>
-                            <details className="group min-w-0 rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] px-4 py-3">
-                              <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
-                                  <path d="M14 2H6a2 2 0 0 0-2 2v16l4-2 4 2 4-2 4 2V8z" />
-                                  <polyline points="14 2 14 8 20 8" />
-                                </svg>
-                                <span className="min-w-0 flex-1 truncate font-medium group-open:hidden">
-                                  {activeMember.historiaClinica || "Sin historia clínica escrita"}
-                                </span>
-                                <span className="hidden flex-1 font-medium group-open:block">Historia clínica completa</span>
-                                <svg
-                                  width="16"
-                                  height="16"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  aria-hidden="true"
-                                  className="shrink-0 text-[var(--lu-accent)] transition-transform group-open:rotate-180"
-                                >
-                                  <path d="M6 9l6 6 6-6" />
-                                </svg>
-                              </summary>
-                              <p className="mt-3 whitespace-pre-wrap break-words border-t border-[var(--lu-border)] pt-3 leading-relaxed">
-                                {activeMember.historiaClinica ||
-                                  "No se escribió una historia clínica: los síntomas se cargaron de la lista."}
+                            {/* What was pasted can be a clinical history, a doctor's report or a
+                                family's notes, so it is named for what the platform did with it. */}
+                            <p className="mb-1 text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Texto analizado</p>
+                            {activeMember.historiaClinica ? (
+                              <details className="group min-w-0 rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] px-4 py-3">
+                                <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2">
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16l4-2 4 2 4-2 4 2V8z" />
+                                    <polyline points="14 2 14 8 20 8" />
+                                  </svg>
+                                  <span className="min-w-0 flex-1 truncate font-medium group-open:hidden">
+                                    {activeMember.historiaClinica}
+                                  </span>
+                                  <span className="hidden flex-1 font-medium group-open:block">Texto completo</span>
+                                  <svg
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden="true"
+                                    className="shrink-0 text-[var(--lu-accent)] transition-transform group-open:rotate-180"
+                                  >
+                                    <path d="M6 9l6 6 6-6" />
+                                  </svg>
+                                </summary>
+                                <p className="mt-3 whitespace-pre-wrap break-words border-t border-[var(--lu-border)] pt-3 leading-relaxed">
+                                  {activeMember.historiaClinica}
+                                </p>
+                              </details>
+                            ) : (
+                              <p className="rounded-2xl border border-dashed border-[var(--lu-border)] px-4 py-3 leading-relaxed">
+                                No se analizó ningún texto: los síntomas se eligieron de la lista.
                               </p>
-                            </details>
+                            )}
                           </div>
 
                           <div>
