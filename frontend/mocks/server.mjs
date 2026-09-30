@@ -308,6 +308,37 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { message: "Verified" });
   }
 
+  // --- Express API: the HPO tree ------------------------------------------
+  // Authenticated like the real route. Served from a real slice of the tree
+  // (fixtures.hpoTree), three levels under the terms the fixtures use.
+  if (pathname === "/api/hpo/terms" && method === "GET") {
+    const user = currentUser(cookies);
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+    const ids = (url.searchParams.get("ids") ?? "").split(",").map((id) => id.trim().toUpperCase())
+      .filter((id) => /^HP:\d{7}$/.test(id));
+    if (ids.length === 0 || ids.length > 100) return send(res, 400, { error: "ids must be 1 to 100 HPO ids" });
+    const tree = fixtures.hpoTree ?? { terms: {}, children: {} };
+    const terminos = [...new Set(ids)].flatMap((id) => {
+      const t = tree.terms[id];
+      return t ? [{ hpo_id: id, nombre: t.nombre, genes: t.genes, tiene_hijos: Boolean(tree.children[id]?.length) }] : [];
+    });
+    return send(res, 200, { terminos });
+  }
+  {
+    const m = pathname.match(/^\/api\/hpo\/terms\/([^/]+)\/children$/);
+    if (m && method === "GET") {
+      const user = currentUser(cookies);
+      if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+      const id = decodeURIComponent(m[1]).toUpperCase();
+      if (!/^HP:\d{7}$/.test(id)) return send(res, 400, { error: "id must be an HPO id" });
+      const tree = fixtures.hpoTree ?? { terms: {}, children: {} };
+      const t = tree.terms[id];
+      if (!t) return send(res, 404, { error: "unknown HPO term" });
+      const summary = (hid) => ({ hpo_id: hid, nombre: tree.terms[hid].nombre, genes: tree.terms[hid].genes, tiene_hijos: Boolean(tree.children[hid]?.length) });
+      return send(res, 200, { termino: summary(id), hijos: (tree.children[id] ?? []).map(summary) });
+    }
+  }
+
   // --- Express API: gene profiles ------------------------------------------
   // Authenticated like the real route: the request carries the phenotypes the
   // patient reported, and an open endpoint would let anyone enumerate the

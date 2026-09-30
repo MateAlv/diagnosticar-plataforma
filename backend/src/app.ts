@@ -8,6 +8,7 @@ import authRouter from './routes/auth.js';
 import patientsRouter from './routes/patients.js';
 import adminRouter from './routes/admin.js';
 import genesRouter from './routes/genes.js';
+import hpoRouter from './routes/hpo.js';
 import questionsRouter from './routes/questions.js';
 import { enforceCsrf, enforceOrigin } from './middleware/csrfMiddleware.js';
 import { globalRateLimit } from './middleware/rateLimit.js';
@@ -52,6 +53,7 @@ export function createApp() {
     app.use('/api/patients', patientsRouter);
     app.use('/api/admin', adminRouter);
     app.use('/api/genes', genesRouter);
+    app.use('/api/hpo', hpoRouter);
     app.use('/api/questions', questionsRouter);
 
     // Also mounted under /api because Traefik routes the backend on

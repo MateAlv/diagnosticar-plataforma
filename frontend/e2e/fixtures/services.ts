@@ -314,6 +314,39 @@ export async function mockGeneProfiles(page: Page, { available = true } = {}) {
     });
 }
 
+type HpoTreeFixture = {
+    terms: Record<string, { nombre: string; genes: number; tiene_hijos: boolean }>;
+    children: Record<string, string[]>;
+};
+export const HPO_TREE_FIXTURE = (fixtures as unknown as { hpoTree: HpoTreeFixture }).hpoTree;
+
+/**
+ * The HPO tree behind the "too general" warning, from the real slice in
+ * fixtures.hpoTree. Opt-in, like the gene profiles: without it the lookups
+ * fail and the wizard shows no warning, which is what every other spec expects.
+ */
+export async function mockHpoTree(page: Page, { failChildren = false } = {}) {
+    const tree = HPO_TREE_FIXTURE;
+    const summary = (id: string) => ({
+        hpo_id: id,
+        nombre: tree.terms[id].nombre,
+        genes: tree.terms[id].genes,
+        tiene_hijos: Boolean(tree.children[id]?.length),
+    });
+    await page.route("**/api/hpo/terms?**", (route) => {
+        const ids = (new URL(route.request().url()).searchParams.get("ids") ?? "")
+            .split(",").map((id) => id.trim().toUpperCase()).filter((id) => tree.terms[id]);
+        return json(route, 200, { terminos: [...new Set(ids)].map(summary) });
+    });
+    await page.route("**/api/hpo/terms/*/children", (route) => {
+        if (failChildren) return json(route, 500, { error: "Internal server error" });
+        const parts = new URL(route.request().url()).pathname.split("/");
+        const id = decodeURIComponent(parts[parts.length - 2]).toUpperCase();
+        if (!tree.terms[id]) return json(route, 404, { error: "unknown HPO term" });
+        return json(route, 200, { termino: summary(id), hijos: (tree.children[id] ?? []).map(summary) });
+    });
+}
+
 /**
  * Waits until every <img> inside `selector` has actually decoded. next/image
  * lazy-loads, and an undecoded image still occupies its intrinsic width — which

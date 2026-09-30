@@ -462,3 +462,110 @@ export function getGeneProfile(
 
     return profile;
 }
+
+// --- The HPO tree, for refining a general term --------------------------------
+
+/**
+ * An HPO term as the "too general" dialog shows it.
+ *
+ * `genes` is how many genes the term reaches: genes with a disease annotated
+ * with it or with anything beneath it. The fewer, the more the term narrows the
+ * ranking, which is what makes a child worth offering over its parent.
+ * `tiene_hijos` says whether anything beneath it reaches a gene, so the dialog
+ * only offers to go deeper where there is something to find.
+ */
+export interface TermSummary {
+    hpo_id: string;
+    nombre: string;
+    genes: number;
+    tiene_hijos: boolean;
+}
+
+export interface TermChildren {
+    termino: TermSummary | null;
+    hijos: TermSummary[];
+}
+
+let termTree: boolean | null = null;
+
+/** Whether this database carries the tree; one built before it cannot. */
+function hasTermTree(conn: DatabaseSync): boolean {
+    if (termTree === null) {
+        const found = conn
+            .prepare(
+                "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' " +
+                "AND name IN ('hpo_terminos', 'hpo_hijos', 'termino_cobertura')",
+            )
+            .get() as { n: number } | undefined;
+        termTree = found?.n === 3;
+        if (!termTree) {
+            console.warn(
+                '[gene-profiles] no HPO term tree; the wizard will not flag general ' +
+                'symptoms. Run scripts/add_term_tree.py against the database.',
+            );
+        }
+    }
+    return termTree;
+}
+
+const TERM_COLUMNS = `
+    t.hpo_id AS hpo_id,
+    t.nombre AS nombre,
+    COALESCE(c.genes, 0) AS genes,
+    EXISTS (
+        SELECT 1 FROM hpo_hijos h
+        JOIN termino_cobertura hc ON hc.hpo_id = h.hijo
+        WHERE h.padre = t.hpo_id
+    ) AS tiene_hijos`;
+
+interface TermRow {
+    hpo_id: string;
+    nombre: string;
+    genes: number;
+    tiene_hijos: number;
+}
+
+function toTerm(row: TermRow): TermSummary {
+    return { hpo_id: row.hpo_id, nombre: row.nombre, genes: row.genes, tiene_hijos: Boolean(row.tiene_hijos) };
+}
+
+/** The given terms, in the order asked; unknown ids are left out. */
+export function getTerms(hpoIds: string[]): TermSummary[] {
+    const conn = connect();
+    if (!conn || hpoIds.length === 0 || !hasTermTree(conn)) return [];
+    const ids = [...new Set(hpoIds.map((id) => id.toUpperCase()))];
+    const rows = conn
+        .prepare(
+            `SELECT ${TERM_COLUMNS}
+             FROM hpo_terminos t LEFT JOIN termino_cobertura c ON c.hpo_id = t.hpo_id
+             WHERE t.hpo_id IN (${ids.map(() => '?').join(',')})`,
+        )
+        .all(...ids) as unknown as TermRow[];
+    const byId = new Map(rows.map((row) => [row.hpo_id, toTerm(row)]));
+    return ids.flatMap((id) => byId.get(id) ?? []);
+}
+
+/**
+ * A term and the terms directly beneath it that reach at least one gene, the
+ * ones reaching most genes first, so the common forms lead and the rare ones
+ * trail. A child that reaches no gene is left out: choosing it would give the
+ * model a term it knows nothing about.
+ */
+export function getTermChildren(hpoId: string): TermChildren {
+    const conn = connect();
+    if (!conn || !hasTermTree(conn)) return { termino: null, hijos: [] };
+    const id = hpoId.toUpperCase();
+    const termino = getTerms([id])[0] ?? null;
+    if (!termino) return { termino: null, hijos: [] };
+    const hijos = conn
+        .prepare(
+            `SELECT ${TERM_COLUMNS}
+             FROM hpo_hijos h
+             JOIN hpo_terminos t ON t.hpo_id = h.hijo
+             JOIN termino_cobertura c ON c.hpo_id = h.hijo
+             WHERE h.padre = ?
+             ORDER BY c.genes DESC, t.nombre`,
+        )
+        .all(id) as unknown as TermRow[];
+    return { termino, hijos: hijos.map(toTerm) };
+}

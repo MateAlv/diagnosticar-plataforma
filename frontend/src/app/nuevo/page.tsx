@@ -109,6 +109,8 @@ import { useQuestionSession } from "./use-question-session";
 import { RESULTS_DISCLAIMER } from "@/lib/disclaimer";
 import { fetchGeneProfiles, formatScore, type GeneProfile } from "@/lib/genes-api";
 import { mensajeErrorExtraccion } from "@/lib/extract-errors";
+import { fetchTerms, genesLabel, isGeneralTerm, type HpoTerm } from "@/lib/hpo-terms";
+import { RefineTermDialog, type RefineTarget } from "./refine-term-dialog";
 import { ADJUSTED_LIST_NOTE, originsIn } from "@/lib/question-insights";
 import {
   answeredFindings,
@@ -369,6 +371,12 @@ function NuevoDiagnosticoScreen() {
     return "";
   });
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
+  // How general each loaded symptom is, by upper-cased HPO id; fetched as
+  // symptoms arrive. A term that reaches many genes barely orders the ranking,
+  // so the list offers to refine it. Dismissing the offer lasts the session.
+  const [termInfo, setTermInfo] = useState<Map<string, HpoTerm>>(new Map());
+  const [keptGeneral, setKeptGeneral] = useState<Set<string>>(new Set());
+  const [refineTarget, setRefineTarget] = useState<RefineTarget | null>(null);
   const [lastAnalyzedHC, setLastAnalyzedHC] = useState("");
   const [newSymptom, setNewSymptom] = useState({ description: "", code: "" });
   const [extractError, setExtractError] = useState<string | null>(null);
@@ -484,6 +492,35 @@ function NuevoDiagnosticoScreen() {
    * it was misread. Never sent to the model: /rank-genes takes present
    * phenotypes only, so a negated one there would count as present.
    */
+  useEffect(() => {
+    const missing = symptoms
+      .map((symptom) => symptom.code.trim().toUpperCase())
+      .filter((code) => code && !termInfo.has(code));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    void fetchTerms(missing).then((found) => {
+      if (cancelled) return;
+      setTermInfo((prev) => {
+        const next = new Map(prev);
+        // Unknown or failed ids are recorded too, so they are not asked again.
+        for (const code of missing) next.set(code, found.get(code) ?? { hpo_id: code, nombre: "", genes: 0, tiene_hijos: false });
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [symptoms, termInfo]);
+
+  const generalSymptoms = useMemo(
+    () =>
+      symptoms.filter((symptom) => {
+        const code = symptom.code.trim().toUpperCase();
+        return isGeneralTerm(termInfo.get(code)) && !keptGeneral.has(code);
+      }),
+    [symptoms, termInfo, keptGeneral],
+  );
+
   const negatedFindings = useMemo(() => {
     const present = new Set(symptoms.map((symptom) => symptom.code.trim().toUpperCase()));
     const byId = new Map<string, { code: string; label: string }>();
@@ -1072,6 +1109,23 @@ function NuevoDiagnosticoScreen() {
     setSymptoms((prev) => prev.filter((symptom) => symptom.code !== code));
   };
 
+  // The more specific term replaces the general one rather than joining it:
+  // both would count the same finding twice.
+  const handleRefineChoose = (parentCode: string, term: HpoTerm) => {
+    const code = term.hpo_id.trim().toUpperCase();
+    setTermInfo((prev) => new Map(prev).set(code, term));
+    setSymptoms((prev) => {
+      const parent = prev.find((symptom) => symptom.code === parentCode);
+      if (!parent || code === parentCode.trim().toUpperCase()) return prev;
+      const already = prev.some((symptom) => symptom.code.trim().toUpperCase() === code);
+      return already
+        ? prev.filter((symptom) => symptom.code !== parentCode)
+        : prev.map((symptom) =>
+            symptom.code === parentCode ? { ...symptom, description: term.nombre, code } : symptom,
+          );
+    });
+  };
+
   const visibleStepsMeta = isDemoMode ? stepsMeta.filter((meta) => meta.id !== 1) : stepsMeta;
   const stepTitle =
     visibleStepsMeta.find((meta) => meta.id === step)?.title ??
@@ -1502,6 +1556,16 @@ function NuevoDiagnosticoScreen() {
                                 {symptom.code && (
                                   <span className="text-sm text-[var(--lu-subtle)]">{symptom.code}</span>
                                 )}
+                                {generalSymptoms.includes(symptom) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setRefineTarget({ code: symptom.code, description: symptom.description })}
+                                    className="inline-flex min-h-[32px] items-center gap-1 rounded-full bg-amber-50 px-2.5 text-xs font-semibold text-amber-800 ring-1 ring-inset ring-amber-200 transition-colors hover:bg-amber-100"
+                                    aria-label={`Precisar ${symptom.description}: es un síntoma muy general`}
+                                  >
+                                    Precisar
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   className="inline-flex h-8 w-8 items-center justify-center rounded-full text-lg leading-none text-[var(--lu-subtle)] transition-colors hover:bg-red-50 hover:text-red-600"
@@ -1514,6 +1578,65 @@ function NuevoDiagnosticoScreen() {
                             ))}
                           </ul>
                         )}
+
+                        {generalSymptoms.length > 0 && (
+                          <div
+                            className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-4"
+                            data-testid="general-terms-notice"
+                          >
+                            <p className="text-sm font-semibold text-[var(--lu-text)]">
+                              {generalSymptoms.length === 1
+                                ? "Hay un síntoma muy general"
+                                : `Hay ${generalSymptoms.length} síntomas muy generales`}
+                            </p>
+                            <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
+                              Aparecen en tantos genes que casi no ayudan a ordenar los resultados. Si sabés
+                              de qué tipo son, precisarlos mejora la búsqueda. Es opcional.
+                            </p>
+                            <ul className="mt-3 space-y-2">
+                              {generalSymptoms.map((symptom) => {
+                                const code = symptom.code.trim().toUpperCase();
+                                const info = termInfo.get(code);
+                                return (
+                                  <li
+                                    key={symptom.code}
+                                    className="flex flex-col gap-2 rounded-lg bg-white px-3 py-2.5 ring-1 ring-inset ring-amber-100 sm:flex-row sm:items-center sm:gap-3"
+                                  >
+                                    <span className="min-w-0 flex-1 text-sm text-[var(--lu-text)]">
+                                      <span className="font-semibold">{symptom.description}</span>
+                                      {info && (
+                                        <span className="text-[var(--lu-subtle)]"> · aparece en {genesLabel(info.genes)}</span>
+                                      )}
+                                    </span>
+                                    <span className="flex gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => setRefineTarget({ code: symptom.code, description: symptom.description })}
+                                        className="min-h-[36px] rounded-full bg-[var(--lu-accent-text)] px-3.5 text-xs font-semibold text-white hover:bg-[#134e4a]"
+                                      >
+                                        Precisar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setKeptGeneral((prev) => new Set(prev).add(code))}
+                                        className="min-h-[36px] rounded-full px-3 text-xs font-semibold text-[var(--lu-subtle)] hover:bg-white hover:text-[var(--lu-text)]"
+                                        aria-label={`Dejar ${symptom.description} así`}
+                                      >
+                                        Dejarlo así
+                                      </button>
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                        )}
+
+                        <RefineTermDialog
+                          target={refineTarget}
+                          onClose={() => setRefineTarget(null)}
+                          onChoose={(term) => refineTarget && handleRefineChoose(refineTarget.code, term)}
+                        />
 
                         {negatedFindings.length > 0 && (
                           <div className="mt-4 rounded-xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-4">

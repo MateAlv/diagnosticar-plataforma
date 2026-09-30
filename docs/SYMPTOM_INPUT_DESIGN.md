@@ -31,6 +31,17 @@ Entonces:
 
 ## 2. Avisar cuando un término aporta poco, y bajar por el grafo
 
+> **Construido (2026-09-30), con un cambio sobre este diseño:** en vez de una
+> fila con tres hijos, un diálogo que recorre el árbol completo (`Precisar` →
+> `refine-term-dialog.tsx`), porque Mate pidió poder bajar varios niveles.
+> Elegir un término en cualquier nivel reemplaza al síntoma y cierra el
+> diálogo; «Ver tipos» baja un nivel. Umbral: 100 genes y al menos un hijo con
+> datos (`frontend/src/lib/hpo-terms.ts`). La cobertura cuenta todos los
+> descendientes, no tres niveles, así que "Convulsiones" da 1.560 y no 1.269.
+> Datos: `hpo_terminos`, `hpo_hijos` y `termino_cobertura` en la base de genes
+> (`scripts/add_term_tree.py` en diagnostic.ar-gene-profiles), servidos por
+> `GET /api/hpo/terms` y `/api/hpo/terms/:id/children`.
+
 ### La métrica: cuántos genes toca el término
 
 La intuición falla acá. *"Fiebre baja"* suena vago y **toca 1 solo gen**;
