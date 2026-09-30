@@ -19,7 +19,7 @@ const js = ts.transpileModule(source, {
 const EXPORTS = [
   'fetchQuestionsStatus', 'postQuestionRound', 'fetchQuestionSession', 'roundErrorMessage',
   'toGeneRows', 'canSubmitRound', 'buildAnswers', 'mergeAnswered', 'historyFromSession',
-  'answeredFindings', 'answerLabel', 'describeWarning', 'questionWording', 'humanizeWait',
+  'answeredFindings', 'answerLabel', 'describeWarning', 'isSimpleMode', 'questionWording', 'humanizeWait',
   'failureCode', 'MAX_NOTE_LENGTH', 'NO_SYMPTOMS_MESSAGE',
 ];
 
@@ -348,4 +348,13 @@ test('a bare warning code never reaches the reader', () => {
 test('answers are labelled in Spanish', () => {
   const { answerLabel } = load();
   assert.deepEqual(['si', 'no', 'no_se'].map(answerLabel), ['Sí', 'No', 'No sé']);
+});
+
+test('a round written from templates is simple mode; a notes warning is not', () => {
+  const { isSimpleMode } = load();
+  assert.equal(isSimpleMode(['Algunas preguntas se generaron sin IA.']), true);
+  assert.equal(isSimpleMode(['El resumen se generó sin IA.']), true);
+  assert.equal(isSimpleMode(['No pudimos interpretar las notas; se usaron las respuestas tal como se marcaron.']), false);
+  assert.equal(isSimpleMode([]), false);
+  assert.equal(isSimpleMode(undefined), false);
 });

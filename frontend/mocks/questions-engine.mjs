@@ -77,12 +77,15 @@ const sameAnswers = (stored, given) =>
  * whose symptoms the agent cannot ask around.
  *
  * @param {object} questionFixtures  `fixtures.questions`
- * @param {{ sequence?: object[], withholdMedical?: boolean, noUsableSymptoms?: boolean }} [options]
+ * @param {{ sequence?: object[], withholdMedical?: boolean, noUsableSymptoms?: boolean, simpleMode?: boolean }} [options]
  */
 export function createQuestionsEngine(questionFixtures, options = {}) {
   const rounds = options.sequence ?? [questionFixtures.round1, questionFixtures.round2];
   const withholdMedical = options.withholdMedical ?? true;
   const noUsableSymptoms = options.noUsableSymptoms ?? false;
+  // The agent's warning when the language model was unavailable and the
+  // questions came from templates (over quota, timed out, down).
+  const simpleMode = options.simpleMode ?? false;
   const { errors, medico, summaries } = questionFixtures;
   const sessions = new Map();
   const locks = new Set();
@@ -99,6 +102,7 @@ export function createQuestionsEngine(questionFixtures, options = {}) {
     const response = clone(template);
     delete response._comment;
     response.mode = mode;
+    if (simpleMode) response.warnings = ["Algunas preguntas se generaron sin IA."];
     response.questions = response.questions.map((question) => {
       if (mode === "medico") {
         const wording = medico.questions[question.hpoId];

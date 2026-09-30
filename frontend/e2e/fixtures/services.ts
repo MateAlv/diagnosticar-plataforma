@@ -61,6 +61,8 @@ export type QuestionsMockOptions = {
     expireTokens?: number;
     /** Serve a second round that still asks (`followUp`) before the closing one. */
     threeRounds?: boolean;
+    /** Rounds carry the agent's "sin IA" warning, as when the language model is out of quota. */
+    simpleMode?: boolean;
 };
 
 const json = (route: Route, status: number, body: unknown) =>
@@ -152,6 +154,7 @@ async function mockQuestions(page: Page, options: QuestionsMockOptions) {
     const engine = createQuestionsEngine(fixtures.questions, {
         withholdMedical: !leakMedicalFields,
         noUsableSymptoms,
+        simpleMode: options.simpleMode ?? false,
         sequence: threeRounds ? [round1, followUp, round2] : [round1, round2],
     });
     if (seed) engine.seed(SAVED_DIAGNOSIS_ID, seed);

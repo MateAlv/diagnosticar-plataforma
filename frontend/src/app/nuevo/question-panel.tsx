@@ -5,6 +5,7 @@ import { originsIn, sessionChanges, symbolOf } from "@/lib/question-insights";
 import {
     MAX_ROUNDS,
     describeWarning,
+    isSimpleMode,
     type DraftAnswer,
     type FinishReason,
     type QuestionMode,
@@ -255,7 +256,23 @@ export function QuestionPanelBody({
             />
         ) : null;
 
-    const notices =
+    // Shown to everyone, unlike the per-warning detail below: a family should
+    // know the questions are generic right now, not wonder why they read alike.
+    const simpleMode = isSimpleMode(latest?.warnings) ? (
+        <div role="status" className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3">
+            <p className="flex items-center gap-2 text-sm font-semibold text-[var(--lu-text)]">
+                <InfoIcon className="h-4 w-4 shrink-0 text-amber-700" />
+                Preguntas en modo simple
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
+                Estamos recibiendo muchas consultas, así que por un rato las preguntas se arman con un
+                formato estándar en lugar de redactarse para este caso. Siguen siendo válidas y tus
+                respuestas se usan igual. Si preferís preguntas más a medida, probá de nuevo más tarde.
+            </p>
+        </div>
+    ) : null;
+
+    const warningList =
         warnings.length > 0 ? (
             <ul className="flex flex-col gap-1">
                 {warnings.map((warning) => (
@@ -267,6 +284,14 @@ export function QuestionPanelBody({
                     </li>
                 ))}
             </ul>
+        ) : null;
+
+    const notices =
+        simpleMode || warningList ? (
+            <div className="flex flex-col gap-3">
+                {simpleMode}
+                {warningList}
+            </div>
         ) : null;
 
     // A column at least as tall as the panel, so each state's action bar
@@ -290,29 +315,32 @@ export function QuestionPanelBody({
                     professional={professional}
                     hidden={busy}
                     lead={
-                        <RoundLead
-                            receipt={
-                                latest.round >= 2 ? (
-                                    <RoundReceipt
-                                        state={state}
-                                        originalGenes={originalGenes}
-                                        geneRanks={geneRanks}
-                                        onOpenGene={onOpenGene}
-                                        onShowList={onShowList}
-                                        listCue={listCue}
-                                    />
-                                ) : null
-                            }
-                            modeNote={
-                                latest.mode !== viewMode
-                                    ? professional
-                                        ? "Esta ronda se escribió para la vista de familias. La próxima ya va a venir con el detalle médico."
-                                        : "Esta ronda se escribió para la vista médica, así que te mostramos solo el nombre de cada signo. La próxima se va a escribir para vos."
-                                    : null
-                            }
-                        />
+                        <>
+                            {simpleMode && <div className="px-5 pt-4">{simpleMode}</div>}
+                            <RoundLead
+                                receipt={
+                                    latest.round >= 2 ? (
+                                        <RoundReceipt
+                                            state={state}
+                                            originalGenes={originalGenes}
+                                            geneRanks={geneRanks}
+                                            onOpenGene={onOpenGene}
+                                            onShowList={onShowList}
+                                            listCue={listCue}
+                                        />
+                                    ) : null
+                                }
+                                modeNote={
+                                    latest.mode !== viewMode
+                                        ? professional
+                                            ? "Esta ronda se escribió para la vista de familias. La próxima ya va a venir con el detalle médico."
+                                            : "Esta ronda se escribió para la vista médica, así que te mostramos solo el nombre de cada signo. La próxima se va a escribir para vos."
+                                        : null
+                                }
+                            />
+                        </>
                     }
-                    notices={notices ? <div className="px-5 pt-4">{notices}</div> : null}
+                    notices={warningList ? <div className="px-5 pt-4">{warningList}</div> : null}
                     // No retry here: sending again is the retry, and two buttons
                     // for one thing read as two different things.
                     error={errorNotice(false)}

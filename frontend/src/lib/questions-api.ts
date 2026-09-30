@@ -487,6 +487,16 @@ export function answerLabel(answer: AnswerValue): string {
  * designed around: part of the round ran on the fallback, without the
  * language model.
  */
+/**
+ * Whether the round's questions or summary were written from templates
+ * because the language model was unavailable -- over quota, timed out or down.
+ * The agent reports that as prose warnings ending "sin IA"; the notes warning
+ * is about reading free-text answers and does not change what is shown.
+ */
+export function isSimpleMode(warnings: readonly string[] | undefined): boolean {
+    return (warnings ?? []).some((warning) => /sin IA\.?$/i.test(warning.trim()));
+}
+
 export function describeWarning(warning: string): string {
     return /\s/.test(warning.trim()) ? warning.trim() : "Algunas preguntas se generaron sin IA.";
 }

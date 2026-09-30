@@ -1603,3 +1603,24 @@ test("the question panel passes the serious accessibility rules, contrast includ
     expect(await seriousViolations(page, "[data-question-launcher]")).toEqual([]);
     expect(await seriousViolations(page, "[data-gene-panel]")).toEqual([]);
 });
+
+test("questions written from templates say so to the family too", async ({ page }) => {
+    // With the language model out of quota the agent falls back to templates,
+    // which all read alike. Without a word about it, the family would think
+    // that is how the questions are meant to be.
+    await setup(page, { simpleMode: true });
+    await runToResults(page);
+    await startQuestions(page);
+
+    const notice = panel(page).getByRole("status").filter({ hasText: "Preguntas en modo simple" });
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText("Estamos recibiendo muchas consultas");
+    await expect(notice).toContainText("tus respuestas se usan igual");
+});
+
+test("questions written by the model carry no simple-mode notice", async ({ page }) => {
+    await setup(page);
+    await runToResults(page);
+    await startQuestions(page);
+    await expect(panel(page).getByText("Preguntas en modo simple")).toHaveCount(0);
+});
