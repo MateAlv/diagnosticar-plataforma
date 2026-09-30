@@ -98,6 +98,68 @@ Two modes:
   branch survive the real model services", but it compiles on a host running 62
   containers and ships something no CI run ever scanned. Prefer a tag.
 
+Any `up` must run with `COMPOSE_PROFILES=question-agent`, or the question agent
+is neither pulled nor updated (see *Follow-up questions* below).
+
+### Deploying by hand, when CI cannot publish
+
+Used for `v0.9.3-manual` to `v0.9.5-manual` (2026-09-28 to 09-30) while the
+account's Actions minutes were exhausted. It reproduces what `release.yml`
+does, on TARS instead of a runner, and ships the images over SSH instead of
+GHCR. Replace it with a real tag as soon as CI can publish again.
+
+1. **Merge first, build from `main`.** Check out the merged commit detached.
+   Run the full `make ci` on it (never `make ci | tail && …`; gate on its exit
+   code). The API pins in `.github/recognizer.env` and
+   `.github/question-agent.env` must already name the commits you are about to
+   build.
+2. **Build the five images with the release's arguments**, tag
+   `ghcr.io/matealv/diagnosticar-<name>:vX.Y.Z-manual`:
+   - `backend`: `--build-arg RELEASE_VERSION/RELEASE_COMMIT/RELEASE_BUILT_AT`.
+   - `frontend-staging`: the same three, plus `NEXT_PUBLIC_API_URL` and
+     `NEXT_PUBLIC_API_BASE_URL` = `https://staging.diagnosticar.infra.cluster.qb.fcen.uba.ar/api`,
+     `NEXT_PUBLIC_HPO_API_URL` = `…/hpo-api`, `NEXT_PUBLIC_GENPHENAI_URL` =
+     `…/genphenai`.
+   - `model`: diagnostic.ar-api at `GATEWAY_COMMIT`, after
+     `services/genphenai/fetch_model.sh` (checks the bundle's sha256);
+     `-f services/genphenai/Dockerfile .`
+   - `hpo-recognizer`: diagnostic.ar-api at `GATEWAY_COMMIT`,
+     `-f services/api-gateway/Dockerfile.recognizer --build-context recognizer=<recognizer checkout at RECOGNIZER_COMMIT>`.
+     About 20 minutes cold.
+   - `question-agent`: diagnostic.ar-api at `GATEWAY_COMMIT`,
+     `-f services/question-agent/Dockerfile --build-context agent=<agent checkout at QUESTION_AGENT_COMMIT>`.
+3. **Test inside each image, as the release does**:
+   - model: `pytest /app/tests`;
+   - recognizer: the gateway suite and `symptoms_recognizer/tests`;
+   - question agent: the agent's `tests -m 'not live'`.
+4. **Gate every image** on Trivy (`--ignore-unfixed --severity HIGH,CRITICAL`
+   exit 0) and a non-root `Config.User`. Then ship it:
+   `docker save IMG | gzip -1 | ssh nodo0-diagnostic.ar 'gunzip | docker load'`.
+   Ship each one right after building: other sessions prune images on TARS.
+5. **On nodo0**, in the staging checkout: `git fetch && git checkout <sha>`,
+   then the same compose files as `ops/staging.sh`, without the `pull` (the
+   tag is not on GHCR):
+
+   ```bash
+   COMPOSE_PROFILES=question-agent GENE_PROFILES_DB=$PWD/data/genes.db \
+   RELEASE_TAG=vX.Y.Z-manual FRONTEND_IMAGE=diagnosticar-frontend-staging \
+   docker compose -p diagnosticar-staging --env-file .env.staging \
+     -f docker-compose.yml -f docker-compose.staging.yml \
+     -f docker-compose.genes.yml -f docker-compose.deploy.yml \
+     up -d --no-build
+   ops/staging.sh smoke
+   ```
+
+   Before and after, count containers (`docker ps -q | wc -l`: 65 as of
+   2026-09-30) and check that production's uptimes did not change.
+
+**Two traps from 2026-09-30.**
+- `python:3.12-slim` lags on Debian security fixes. That day it still shipped
+  an openssl with two HIGH advisories fixed a day earlier, so every Python
+  image runs `apt-get upgrade`.
+- BuildKit caches the upgrade layer, so it keeps the old packages. When Trivy
+  flags an OS package that already has a fix, rebuild with `--no-cache`.
+
 ### Repository variables
 
 Eight, four per environment. Set with `gh variable set`.
@@ -373,8 +435,9 @@ anything there.**
 
 ## Still missing
 
-- **The wizard has never been run on staging.** That is the entire point of
-  staging and the first thing to do.
+- **Nobody has run the whole wizard on staging by hand since v0.9.5-manual.**
+  CI and the smoke test cover the paths, but a person should go through a real
+  search once: text → symptoms → genes → specialties → questions → logout.
 - **No backup of staging.** Acceptable — the data is synthetic and
   `ops/staging.sh reset-db` recreates it.
 - **`ops/deploy.sh` has never run**, on either environment. The rollback path

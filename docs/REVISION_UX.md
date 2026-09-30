@@ -14,6 +14,32 @@ viejo, que no), y la metodología de la landing describe el extractor viejo.
 
 Rutas relativas a `frontend/src/` salvo que se indique.
 
+## Estado al 2026-09-30 (noche)
+
+Resuelto en #64 y desplegado en staging (`v0.9.5-manual`):
+
+- **0.1** Sin síntomas precargados. Si no hay borrador, la lista queda vacía con un aviso.
+- **0.2** Todas las especialidades del modelo tienen su nombre en español. Multispecialty, Unknown y Viral research se descartan. Un nombre sin traducción no se muestra. Ultra-rare disorders pasa a «Genética médica».
+- **0.3 y 0.4** El aviso legal aparece también en la demo y en el detalle de «Mis búsquedas». Dice «Resultado orientativo» en lugar de «Diagnóstico automático».
+- **0.5** `/terminos`: términos de uso y privacidad en una sola página, con ancla `#privacidad`. Está enlazada desde el registro y el pie de la landing. **Falta que Mate revise el mail de contacto y el texto.**
+- **0.9** 404 y páginas de error propias, en español.
+- **0.11** Ningún texto del servidor llega a la pantalla (`lib/api-errors.ts`). Se muestran el `?error=` de Google y los errores del backoffice.
+- **Prioridad 1, parcial:**
+  - Cambiaron «Resultados orientativos», «Volver a buscar», «Nueva búsqueda +» y el modal de cancelar.
+  - «GenPhenAI/GenPhenIA» ya no aparece en la carga, los errores ni el «Resumen».
+  - Se agregó un recuadro fijo «Si pensás que puede tratarse de una enfermedad genética… genética médica».
+  - «¡Cuenta creada!» ya no aparece con un email existente.
+  - «Todavía no tenés…» ya no se muestra mientras carga la lista ni cuando falla.
+
+**Sigue abierto:**
+- **Prioridad 0:**
+  - 0.6: promesas de la landing y el registro;
+  - 0.7: el relato queda en `localStorage`;
+  - 0.8: recuperación de contraseña y borrado;
+  - 0.10: el integrante duplicado.
+- **Vocabulario:** falta decidir el vocabulario y hacer el barrido del resto de «diagnóstico» (landing, metadata, textos de «Mis búsquedas», ruta `/diagnosticar`).
+- **Resto de prioridad 1 y todo prioridad 2.**
+
 ---
 
 ## Prioridad 0 — errores reales, legales o de seguridad
