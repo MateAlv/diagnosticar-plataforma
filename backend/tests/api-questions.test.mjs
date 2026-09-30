@@ -904,9 +904,11 @@ test('the per-minute limit answers with the same coded body as the hourly one', 
         assert.equal(res.status, 400, res.text);
     }
     assert.equal(res.status, 429, 'the per-minute limit never applied');
-    assert.ok(Number(res.headers.get('retry-after')) > 0);
+    const retryAfter = Number(res.headers.get('retry-after'));
+    assert.ok(retryAfter > 0);
     assert.deepEqual(res.json, {
         error: 'Hiciste muchas consultas seguidas. Esperá un rato y volvé a intentar.',
         code: 'rate_limited',
+        retryAfter,
     });
 });

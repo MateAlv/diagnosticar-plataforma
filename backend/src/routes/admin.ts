@@ -8,6 +8,7 @@ import {
 } from '../middleware/authMiddleware.js';
 import { requireAdmin } from '../middleware/requireAdmin.js';
 import { rateLimit } from '../middleware/rateLimit.js';
+import { internalError, sendError } from '../utils/httpErrors.js';
 import { hashPassword } from '../services/authService.js';
 import {
     getUserByEmail,
@@ -89,7 +90,7 @@ router.get('/overview', ...adminGuards, async (req: AuthRequest, res) => {
         res.json({ totals, diagnosesPerDay: perDay, signupsPerDay: signups, authProviders: providers, days });
     } catch (error) {
         console.error('[admin] overview failed', (error as Error)?.message);
-        res.status(500).json({ error: 'Internal server error' });
+        internalError(res);
     }
 });
 
@@ -104,7 +105,7 @@ router.get('/insights', ...adminGuards, async (req: AuthRequest, res) => {
         res.json({ specialties, phenotypes, confidence, countries });
     } catch (error) {
         console.error('[admin] insights failed', (error as Error)?.message);
-        res.status(500).json({ error: 'Internal server error' });
+        internalError(res);
     }
 });
 
@@ -147,7 +148,7 @@ router.get('/staff', ...adminGuards, async (_req: AuthRequest, res) => {
         });
     } catch (error) {
         console.error('[admin] staff list failed', (error as Error)?.message);
-        res.status(500).json({ error: 'Internal server error' });
+        internalError(res);
     }
 });
 
@@ -177,7 +178,7 @@ router.post(
                 typeof req.body?.organization === 'string' ? req.body.organization.trim().slice(0, 255) : null;
 
             if (!EMAIL_RE.test(rawEmail) || rawEmail.length > 255) {
-                return res.status(400).json({ error: 'A valid email is required' });
+                return sendError(res, 400, 'invalid_email', 'A valid email is required');
             }
 
             const existing = await getUserByEmail(rawEmail);
@@ -185,7 +186,7 @@ router.post(
                 // Deliberately explicit: the caller is already an authenticated
                 // admin, so this leaks nothing they could not learn from the
                 // staff list, and silently doing nothing would be worse.
-                return res.status(409).json({ error: 'An account with that email already exists' });
+                return sendError(res, 409, 'email_taken', 'An account with that email already exists');
             }
 
             const temporaryPassword = generateTemporaryPassword();
@@ -202,12 +203,10 @@ router.post(
             res.status(201).json({
                 user: { id: created.id, email: created.email, fullName: created.full_name },
                 temporaryPassword,
-                notice:
-                    'Share this password out of band. It is shown once and cannot be recovered; the account must change it at first sign-in.',
             });
         } catch (error) {
             console.error('[admin] invite failed', (error as Error)?.message);
-            res.status(500).json({ error: 'Internal server error' });
+            internalError(res);
         }
     },
 );
@@ -228,18 +227,18 @@ router.post(
         try {
             const targetId = String(req.params.id);
             if (!UUID_RE.test(targetId)) {
-                return res.status(404).json({ error: 'Not found' });
+                return sendError(res, 404, 'not_found', 'Not found');
             }
             if (targetId === req.userRecord?.id) {
-                return res.status(400).json({ error: 'You cannot revoke your own admin access' });
+                return sendError(res, 400, 'cannot_revoke_self', 'You cannot revoke your own admin access');
             }
 
             const staff = await listStaff();
             if (!staff.some((u) => u.id === targetId)) {
-                return res.status(404).json({ error: 'Not found' });
+                return sendError(res, 404, 'not_found', 'Not found');
             }
             if (staff.length <= 1) {
-                return res.status(400).json({ error: 'Refusing to remove the last admin' });
+                return sendError(res, 400, 'last_admin', 'Refusing to remove the last admin');
             }
 
             await setUserRole(targetId, 'user');
@@ -247,7 +246,7 @@ router.post(
             res.json({ ok: true });
         } catch (error) {
             console.error('[admin] revoke failed', (error as Error)?.message);
-            res.status(500).json({ error: 'Internal server error' });
+            internalError(res);
         }
     },
 );

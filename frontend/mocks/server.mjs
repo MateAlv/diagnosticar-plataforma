@@ -256,12 +256,12 @@ const server = http.createServer(async (req, res) => {
   if (!SAFE_METHODS.has(method) && pathname.startsWith("/api/")) {
     const origin = req.headers.origin;
     if (origin && origin !== ORIGIN) {
-      return send(res, 403, { error: "Invalid origin" });
+      return send(res, 403, { error: "Invalid origin", code: "invalid_origin" });
     }
-    if (cookies.access_token || cookies.refresh_token) {
+    if ((cookies.access_token || cookies.refresh_token) && pathname !== "/api/auth/logout") {
       const header = req.headers["x-csrf-token"];
       if (!cookies.csrf_token || !header || cookies.csrf_token !== header) {
-        return send(res, 403, { error: "CSRF token mismatch" });
+        return send(res, 403, { error: "CSRF token mismatch", code: "csrf_mismatch" });
       }
     }
   }
@@ -271,25 +271,25 @@ const server = http.createServer(async (req, res) => {
   // --- Express API: auth ---------------------------------------------------
   if (pathname === "/api/auth/me") {
     const user = currentUser(cookies);
-    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized", code: "unauthenticated" }); }
     log(`200 ${user.email}`);
     return send(res, 200, { user: publicUser(user) });
   }
 
   if (pathname === "/api/auth/refresh" && method === "POST") {
     const user = currentUser(cookies);
-    if (!user) { log("401"); return send(res, 401, { error: "No refresh token" }); }
+    if (!user) { log("401"); return send(res, 401, { error: "No refresh token", code: "no_refresh_token" }); }
     log("200 refreshed");
     return send(res, 200, { user: publicUser(user) }, issueSession(res, user));
   }
 
   if ((pathname === "/api/auth/login" || pathname === "/api/auth/signup") && method === "POST") {
-    if (FAIL.has("auth")) { log("500 (MOCK_FAIL=auth)"); return send(res, 500, { error: "Internal server error" }); }
+    if (FAIL.has("auth")) { log("500 (MOCK_FAIL=auth)"); return send(res, 500, { error: "Internal server error", code: "internal" }); }
     const body = await readBody(req);
     const email = String(body.email ?? "").trim().toLowerCase();
     const password = String(body.password ?? "");
-    if (!email.includes("@")) { log("400 bad email"); return send(res, 400, { error: "Invalid payload" }); }
-    if (password.length < 8) { log("400 short password"); return send(res, 400, { error: "Invalid payload" }); }
+    if (!email.includes("@")) { log("400 bad email"); return send(res, 400, { error: "Invalid payload", code: "invalid_payload", field: "email" }); }
+    if (password.length < 8) { log("400 short password"); return send(res, 400, { error: "Invalid payload", code: "invalid_payload", field: "password" }); }
 
     // Any email works and is created on demand — this is a frontend sandbox,
     // not an auth system. The real backend rejects unknown users with 401.
@@ -313,10 +313,10 @@ const server = http.createServer(async (req, res) => {
   // (fixtures.hpoTree), three levels under the terms the fixtures use.
   if (pathname === "/api/hpo/terms" && method === "GET") {
     const user = currentUser(cookies);
-    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized", code: "unauthenticated" }); }
     const ids = (url.searchParams.get("ids") ?? "").split(",").map((id) => id.trim().toUpperCase())
       .filter((id) => /^HP:\d{7}$/.test(id));
-    if (ids.length === 0 || ids.length > 100) return send(res, 400, { error: "ids must be 1 to 100 HPO ids" });
+    if (ids.length === 0 || ids.length > 100) return send(res, 400, { error: "ids must be 1 to 100 HPO ids", code: "invalid_request" });
     const tree = fixtures.hpoTree ?? { terms: {}, children: {} };
     const terminos = [...new Set(ids)].flatMap((id) => {
       const t = tree.terms[id];
@@ -328,12 +328,12 @@ const server = http.createServer(async (req, res) => {
     const m = pathname.match(/^\/api\/hpo\/terms\/([^/]+)\/children$/);
     if (m && method === "GET") {
       const user = currentUser(cookies);
-      if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+      if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized", code: "unauthenticated" }); }
       const id = decodeURIComponent(m[1]).toUpperCase();
-      if (!/^HP:\d{7}$/.test(id)) return send(res, 400, { error: "id must be an HPO id" });
+      if (!/^HP:\d{7}$/.test(id)) return send(res, 400, { error: "id must be an HPO id", code: "invalid_request" });
       const tree = fixtures.hpoTree ?? { terms: {}, children: {} };
       const t = tree.terms[id];
-      if (!t) return send(res, 404, { error: "unknown HPO term" });
+      if (!t) return send(res, 404, { error: "unknown HPO term", code: "not_found" });
       const summary = (hid) => ({ hpo_id: hid, nombre: tree.terms[hid].nombre, genes: tree.terms[hid].genes, tiene_hijos: Boolean(tree.children[hid]?.length) });
       return send(res, 200, { termino: summary(id), hijos: (tree.children[id] ?? []).map(summary) });
     }
@@ -345,7 +345,7 @@ const server = http.createServer(async (req, res) => {
   // database. The technical block only ships when the caller asks for it.
   if (pathname === "/api/genes/batch" && method === "POST") {
     const user = currentUser(cookies);
-    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized", code: "unauthenticated" }); }
 
     const body = await readBody(req);
     {
@@ -379,13 +379,13 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname.startsWith("/api/genes/")) {
     const user = currentUser(cookies);
-    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized", code: "unauthenticated" }); }
 
     const symbol = decodeURIComponent(pathname.slice("/api/genes/".length)).toUpperCase();
     const profile = fixtures.genes?.[symbol];
     if (!profile) {
       log(`404 (no profile for ${symbol})`);
-      return send(res, 404, { error: "Gen sin descripción disponible", disponible: true });
+      return send(res, 404, { error: "Gen sin descripción disponible", code: "profile_unavailable", disponible: true });
     }
 
     const reported = new Set(
@@ -422,7 +422,7 @@ const server = http.createServer(async (req, res) => {
   // another account's diagnosis id is a 404, never a 403.
   if (pathname === "/api/questions/status" && method === "GET") {
     const user = currentUser(cookies);
-    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized", code: "unauthenticated" }); }
     const enabled = !FAIL.has("questions-off") && fixtures.questions.status.enabled;
     log(`200 enabled=${enabled}`);
     return send(res, 200, { enabled });
@@ -430,7 +430,7 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === "/api/questions/rounds" && method === "POST") {
     const user = currentUser(cookies);
-    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized", code: "unauthenticated" }); }
     const refuse = (code, headers) => {
       const { status, body } = questions.failure(code);
       return send(res, status, body, headers);
@@ -477,7 +477,7 @@ const server = http.createServer(async (req, res) => {
     const notFound = questions.failure("not_found");
     if (!UUID_RE.test(diagnosisId)) { log("404 (non-uuid id)"); return send(res, notFound.status, notFound.body); }
     const user = currentUser(cookies);
-    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized", code: "unauthenticated" }); }
     if (!ownsDiagnosis(user, diagnosisId)) { log("404"); return send(res, notFound.status, notFound.body); }
     const result = questions.session(diagnosisId);
     log(`200 session ${result.session ? "found" : "none"}`);
@@ -490,10 +490,10 @@ const server = http.createServer(async (req, res) => {
   // forbidden. Sign in as an address containing "admin" to get the role.
   if (pathname.startsWith("/api/admin")) {
     const user = currentUser(cookies);
-    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized" }); }
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized", code: "unauthenticated" }); }
     if (!user.email.includes("admin")) {
       log("404 (not an admin)");
-      return send(res, 404, { error: "Not found" });
+      return send(res, 404, { error: "Not found", code: "not_found" });
     }
 
     const days = Math.min(Math.max(parseInt(new URL(req.url, "http://x").searchParams.get("days") ?? "30", 10) || 30, 1), 365);
@@ -572,11 +572,11 @@ const server = http.createServer(async (req, res) => {
       const email = String(body.email ?? "").trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         log("400 bad email");
-        return send(res, 400, { error: "A valid email is required" });
+        return send(res, 400, { error: "A valid email is required", code: "invalid_email" });
       }
       if (adminStaff.some((m) => m.email === email)) {
         log("409 duplicate");
-        return send(res, 409, { error: "An account with that email already exists" });
+        return send(res, 409, { error: "An account with that email already exists", code: "email_taken" });
       }
       const member = {
         id: crypto.randomUUID(), email, fullName: body.fullName ?? null,
@@ -589,22 +589,21 @@ const server = http.createServer(async (req, res) => {
         user: { id: member.id, email: member.email, fullName: member.fullName },
         temporaryPassword: Array.from({ length: 20 }, () =>
           "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"[Math.floor(Math.random() * 56)]).join(""),
-        notice: "Share this password out of band.",
       });
     }
 
     const revoke = pathname.match(/^\/api\/admin\/staff\/([^/]+)\/revoke$/);
     if (revoke && method === "POST") {
       const idx = adminStaff.findIndex((m) => m.id === revoke[1]);
-      if (idx === -1) { log("404 unknown member"); return send(res, 404, { error: "Not found" }); }
-      if (adminStaff.length <= 1) { log("400 last admin"); return send(res, 400, { error: "Refusing to remove the last admin" }); }
+      if (idx === -1) { log("404 unknown member"); return send(res, 404, { error: "Not found", code: "not_found" }); }
+      if (adminStaff.length <= 1) { log("400 last admin"); return send(res, 400, { error: "Refusing to remove the last admin", code: "last_admin" }); }
       adminStaff.splice(idx, 1);
       log("200 revoked");
       return send(res, 200, { ok: true });
     }
 
     log("404");
-    return send(res, 404, { error: "Not found" });
+    return send(res, 404, { error: "Not found", code: "not_found" });
   }
 
   // --- Express API: patients ----------------------------------------------
@@ -616,10 +615,10 @@ const server = http.createServer(async (req, res) => {
     // ahead of a route's middleware chain — so the real backend answers 404 here
     // even for an anonymous caller. Getting this order wrong would send someone
     // hunting a phantom auth bug.
-    if (id && !UUID_RE.test(id)) { log("404 (non-uuid id)"); return send(res, 404, { error: "Not found" }); }
+    if (id && !UUID_RE.test(id)) { log("404 (non-uuid id)"); return send(res, 404, { error: "Not found", code: "not_found" }); }
 
     const user = currentUser(cookies);
-    if (!user) { log("401"); return send(res, 401, { error: "Unauthorized" }); }
+    if (!user) { log("401"); return send(res, 401, { error: "Unauthorized", code: "unauthenticated" }); }
     const owned = (p) => p && p.user_id === user.id;
 
     if (segments.length === 2 && method === "GET") {
@@ -629,10 +628,10 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (segments.length === 2 && method === "POST") {
-      if (FAIL.has("save")) { log("500 (MOCK_FAIL=save)"); return send(res, 500, { error: "Failed to save patient" }); }
+      if (FAIL.has("save")) { log("500 (MOCK_FAIL=save)"); return send(res, 500, { error: "Internal server error", code: "internal" }); }
       const body = await readBody(req);
       const nombre = String(body.nombre ?? "").trim();
-      if (!nombre) { log("400 missing nombre"); return send(res, 400, { error: "Invalid request" }); }
+      if (!nombre) { log("400 missing nombre"); return send(res, 400, { error: "Invalid request", code: "invalid_request" }); }
       const now = new Date().toISOString();
       const pid = crypto.randomUUID();
       const diagId = crypto.randomUUID();
@@ -657,7 +656,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     const patient = patients.get(id);
-    if (!owned(patient)) { log("404"); return send(res, 404, { error: "Not found" }); }
+    if (!owned(patient)) { log("404"); return send(res, 404, { error: "Not found", code: "not_found" }); }
 
     if (segments.length === 3 && method === "GET") { log("200"); return send(res, 200, toApiPatient(patient)); }
 
@@ -673,7 +672,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (segments[3] === "diagnoses" && segments.length === 4 && method === "POST") {
-      if (FAIL.has("save")) { log("500 (MOCK_FAIL=save)"); return send(res, 500, { error: "Failed to save diagnosis" }); }
+      if (FAIL.has("save")) { log("500 (MOCK_FAIL=save)"); return send(res, 500, { error: "Internal server error", code: "internal" }); }
       const body = await readBody(req);
       const diag = {
         id: crypto.randomUUID(), patient_id: id,
@@ -692,7 +691,7 @@ const server = http.createServer(async (req, res) => {
 
     if (segments[3] === "diagnoses" && segments.length === 5 && method === "GET") {
       const diag = patient.diagnoses.find((d) => d.id === segments[4]);
-      if (!diag) { log("404"); return send(res, 404, { error: "Not found" }); }
+      if (!diag) { log("404"); return send(res, 404, { error: "Not found", code: "not_found" }); }
       log("200");
       return send(res, 200, diag);
     }
@@ -749,7 +748,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === "/healthz") return send(res, 200, { status: "ok", mode: "mock" });
 
   log("404 (unhandled)");
-  return send(res, 404, { error: "Not found" });
+  return send(res, 404, { error: "Not found", code: "not_found" });
 });
 
 server.listen(PORT, "127.0.0.1", () => {

@@ -2,8 +2,21 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { errorMessage } from "@/lib/api-errors";
 import { useAuth } from "../../lib/auth-context";
+
+// Where the backend's Google callback sends a failed sign-in (?error=...).
+const GOOGLE_ERRORS: Record<string, string> = {
+  google_auth_unavailable: "El ingreso con Google no está disponible ahora. Entrá con tu email y contraseña.",
+};
+const GOOGLE_FAILED = "No pudimos completar el ingreso con Google. Probá de nuevo o entrá con tu email y contraseña.";
+
+/** Only a path on this site, never another origin. */
+function safeNext(value: string | null): string {
+  return value && value.startsWith("/") && !value.startsWith("//") ? value : "/";
+}
 
 export default function LoginPage() {
   const r = useRouter();
@@ -14,37 +27,37 @@ export default function LoginPage() {
   const [show, setShow]   = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [next, setNext] = useState("/");
   const { login, user, loading } = useAuth();
-  const friendlyErrors = useMemo(
-    () => ({
-      "invalid-credentials": "Email o contraseña incorrectos.",
-      "user-inactive": "Tu cuenta está deshabilitada. Escribinos para reactivarla.",
-      "backend-unreachable": "Servidor no disponible. Reintentá en unos segundos.",
-      "login-failed": "No pudimos iniciar sesión. Revisá tus datos.",
-    }),
-    [],
-  );
+
+  // Read once on arrival rather than with useSearchParams, which would need a
+  // Suspense boundary around the whole page.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setNext(safeNext(params.get("next")));
+    const google = params.get("error");
+    if (google?.startsWith("google_")) setError(GOOGLE_ERRORS[google] ?? GOOGLE_FAILED);
+    else if (params.get("motivo") === "sesion") setNotice("Tu sesión se cerró. Iniciá sesión de nuevo para seguir.");
+  }, []);
 
   useEffect(() => {
     if (!loading && user) {
-      r.replace("/");
+      r.replace(next);
     }
-  }, [loading, user, r]);
+  }, [loading, user, r, next]);
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!email || !pass) return;
     setSubmitting(true);
     setError(null);
+    setNotice(null);
     login({ email, password: pass })
-      .then(() => r.replace("/"))
+      .then(() => r.replace(next))
       .catch((err) => {
-        const raw = err instanceof Error ? err.message : String(err);
-        const normalized = raw.toLowerCase();
-        const friendly =
-          friendlyErrors[normalized as keyof typeof friendlyErrors] ??
-          "No pudimos iniciar sesión. Verificá tus datos e intentá nuevamente.";
-        setError(friendly);
+        console.error("[login]", err);
+        setError(errorMessage(err, "login"));
       })
       .finally(() => setSubmitting(false));
   };
@@ -155,11 +168,12 @@ export default function LoginPage() {
               </button>
             </div>
 
-            {error && (
-              <p className="text-sm text-red-500" role="alert">
-                {error}
+            {notice && (
+              <p role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                {notice}
               </p>
             )}
+            <ErrorNotice message={error} />
 
             <button type="submit" className="btn-success w-full justify-center" disabled={submitting}>
               {submitting ? "Ingresando…" : "Ingresar"}

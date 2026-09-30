@@ -5,6 +5,7 @@ import {
     blockUntilPasswordChanged,
 } from '../middleware/authMiddleware.js';
 import { userRateLimit } from '../middleware/rateLimit.js';
+import { sendError } from '../utils/httpErrors.js';
 import { getGeneProfile, isAvailable, buildInfo } from '../repositories/geneProfileRepository.js';
 
 /**
@@ -58,7 +59,7 @@ router.post('/batch', ...guards, (req, res) => {
     const body = req.body as { symbols?: unknown; reported?: unknown; view?: unknown };
 
     if (!Array.isArray(body?.symbols)) {
-        return res.status(400).json({ error: 'symbols debe ser una lista' });
+        return sendError(res, 400, 'invalid_request', 'symbols debe ser una lista');
     }
 
     const symbols = body.symbols
@@ -87,7 +88,7 @@ router.get('/:symbol', ...guards, (req, res) => {
     // A malformed symbol can never name a real gene, so it is a 404 before any
     // lookup runs — the same ordering the patient routes use for ids.
     if (!SYMBOL_RE.test(symbol)) {
-        return res.status(404).json({ error: 'Gen no encontrado' });
+        return sendError(res, 404, 'gene_not_found', 'Gen no encontrado');
     }
 
     const profile = getGeneProfile(symbol, parseReported(req.query.reported), {
@@ -97,8 +98,7 @@ router.get('/:symbol', ...guards, (req, res) => {
     if (!profile) {
         // Distinguishable from an unknown gene so the UI can say "no
         // description available" rather than implying the gene is not real.
-        return res.status(404).json({
-            error: 'Gen sin descripción disponible',
+        return sendError(res, 404, 'profile_unavailable', 'Gen sin descripción disponible', {
             disponible: isAvailable(),
         });
     }

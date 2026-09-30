@@ -9,6 +9,8 @@
  * accounts without the role.
  */
 
+import { type ErrorContext, errorMessage, isSessionError, jsonOrThrow, readApiError } from "@/lib/api-errors";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
 export class AdminAccessError extends Error {
@@ -47,23 +49,22 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
         credentials: "include",
     });
 
-    if (res.status === 404) throw new AdminAccessError();
-    if (res.status === 401) throw new AdminAccessError();
-    if (res.status === 403) {
-        const body = await res.json().catch(() => ({}));
-        if (body?.code === "PASSWORD_CHANGE_REQUIRED") throw new PasswordChangeRequiredError();
-        throw new AdminAccessError();
-    }
-    if (res.status === 429) {
-        throw new Error("Demasiadas solicitudes. Esperá un momento y volvé a intentar.");
-    }
-    if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error ?? "Algo salió mal.");
-    }
-
-    return (await res.json()) as T;
+    if (res.ok) return jsonOrThrow<T>(res);
+    const failure = await readApiError(res);
+    if (failure.code === "PASSWORD_CHANGE_REQUIRED") throw new PasswordChangeRequiredError();
+    // A staff member revoked in the middle of the request gets 404 like any
+    // non-admin; only a GET means "this panel is not for you".
+    if (res.status === 404 && method === "GET") throw new AdminAccessError();
+    throw failure;
 }
+
+/** The message for a failed backoffice call, in the panel's own words where it has them. */
+export function adminErrorMessage(error: unknown, context: ErrorContext = "admin"): string {
+    if (error instanceof AdminAccessError || error instanceof PasswordChangeRequiredError) return error.message;
+    return errorMessage(error, context);
+}
+
+export { isSessionError };
 
 export type TimePoint = { day: string; count: number };
 export type Bucket = { label: string; count: number };
@@ -121,7 +122,6 @@ export const adminApi = {
         request<{
             user: { id: string; email: string; fullName: string | null };
             temporaryPassword: string;
-            notice: string;
         }>("/admin/staff", { method: "POST", body: JSON.stringify(body) }),
     revoke: (id: string) => request<{ ok: true }>(`/admin/staff/${id}/revoke`, { method: "POST", body: "{}" }),
     changePassword: (body: { currentPassword: string; newPassword: string }) =>

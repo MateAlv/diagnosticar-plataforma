@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { adminApi, Overview, Release } from "./admin-api";
+import { adminApi, adminErrorMessage, Overview, Release } from "./admin-api";
 import { Donut, TimeSeries } from "./charts";
 import { Banner, Card, CardHeader, Eyebrow, Skeleton, StatTile } from "./ui";
 
@@ -33,7 +33,7 @@ export default function AdminOverviewPage() {
             setData(overview);
             setRelease(rel);
         } catch (e) {
-            setError((e as Error).message);
+            setError(adminErrorMessage(e));
         }
     }, []);
 

@@ -45,7 +45,7 @@ test.beforeEach(async ({ page }) => {
     await mockModelServices(page);
 });
 
-for (const path of ["/home", "/login", "/sign-up"]) {
+for (const path of ["/home", "/login", "/sign-up", "/terminos", "/no-existe"]) {
     test(`${path} has no serious accessibility violations`, async ({ page }) => {
         await page.goto(path, { waitUntil: "networkidle" });
         expect(await scan(page)).toEqual([]);

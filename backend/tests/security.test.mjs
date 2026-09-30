@@ -54,6 +54,7 @@ test('enforceOrigin rejects a foreign origin with 403', () => {
   const { res, nextCalled } = run(enforceOrigin, mockReq({ headers: { origin: 'https://evil.example' } }));
   assert.equal(nextCalled, false);
   assert.equal(res.statusCode, 403);
+  assert.equal(res.body.code, 'invalid_origin');
 });
 
 test('enforceOrigin ignores safe methods', () => {
@@ -76,6 +77,7 @@ test('enforceCsrf rejects authenticated request without token', () => {
   const { res, nextCalled } = run(enforceCsrf, req);
   assert.equal(nextCalled, false);
   assert.equal(res.statusCode, 403);
+  assert.equal(res.body.code, 'csrf_mismatch');
 });
 
 test('enforceCsrf rejects mismatched token', () => {
@@ -104,6 +106,16 @@ test('rateLimit blocks past the max and sets Retry-After', () => {
   assert.equal(third.nextCalled, false);
   assert.equal(third.res.statusCode, 429);
   assert.ok(third.res.headers['Retry-After']);
+  assert.equal(third.res.body.code, 'rate_limited');
+  assert.equal(third.res.body.retryAfter, Number(third.res.headers['Retry-After']));
+});
+
+test('rateLimit keeps a route-specific code and message', () => {
+  const mw = rateLimit({ windowMs: 60000, max: 1, keyGenerator: () => 'k-code', message: 'Esperá.', code: 'custom' });
+  run(mw, mockReq());
+  const { res } = run(mw, mockReq());
+  assert.equal(res.body.error, 'Esperá.');
+  assert.equal(res.body.code, 'custom');
 });
 
 test('rateLimit isolates distinct keys', () => {

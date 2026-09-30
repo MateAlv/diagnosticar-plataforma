@@ -1,45 +1,59 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
+import { importTs } from './helpers/ts-module.mjs';
 
-// The module is plain TS with no runtime deps, so strip the type annotations
-// rather than pulling in a transpiler just for this.
-const src = readFileSync(new URL('../src/lib/especialidades.ts', import.meta.url), 'utf8')
-  .replace(/: Record<string, string>/g, '')
-  .replace(/\(nombre: string\): string/g, '(nombre)')
-  .replace(/export /g, '');
+/**
+ * The specialty names a family reads. The rule under test: every name the
+ * model's post-processing can return is shown in Spanish, and nothing reaches
+ * the screen in English -- a name that is not a specialty, or is unknown, is
+ * dropped instead.
+ */
 
-const mod = new Function(`${src}; return { ESPECIALIDADES_ES, traducirEspecialidad };`)();
-const { ESPECIALIDADES_ES, traducirEspecialidad } = mod;
+const { ESPECIALIDADES_ES, traducirEspecialidad, especialidadesParaConsultar } =
+  await importTs('lib/especialidades.ts');
 
-test('translates the specialties seen in production', () => {
-  assert.equal(traducirEspecialidad('Developmental disorders'), 'Trastornos del desarrollo');
-  assert.equal(traducirEspecialidad('Renal'), 'Nefrología');
+// SPECIALTY_CANONICAL's values in diagnostic.ar-api's specialist_recommendation.py.
+const FROM_THE_MODEL = [
+  'Audiology', 'Cancer', 'Cardiology', 'Dermatology', 'Developmental disorders', 'Endocrinology',
+  'Gastrohepatology', 'Growth disorders', 'Haematology', 'Immunology', 'Metabolic', 'Musculoskeletal',
+  'Neurology', 'Ophthalmology', 'Renal', 'Respiratory', 'Ultra-rare disorders',
+];
+const NOT_A_SPECIALTY = ['Multispecialty', 'Viral research', 'Unknown', ''];
+
+test('every specialty the model returns has a Spanish name', () => {
+  for (const name of FROM_THE_MODEL) {
+    const es = traducirEspecialidad(name);
+    assert.ok(es, `${name} has no translation`);
+    assert.notEqual(es.toLowerCase(), name.toLowerCase());
+  }
+  assert.equal(traducirEspecialidad('Haematology'), 'Hematología');
+  assert.equal(traducirEspecialidad('Respiratory'), 'Neumonología');
+  assert.equal(traducirEspecialidad('Gastrohepatology'), 'Gastroenterología y hepatología');
 });
 
-test('is case and whitespace insensitive', () => {
+test('categories that are not a specialty to consult are dropped', () => {
+  for (const name of NOT_A_SPECIALTY) assert.equal(traducirEspecialidad(name), null, name);
+});
+
+test('an unknown name is dropped, never shown in English', () => {
+  assert.equal(traducirEspecialidad('Xenobiology'), null);
+});
+
+test('case and surrounding spaces do not matter', () => {
   assert.equal(traducirEspecialidad('  NEUROLOGY  '), 'Neurología');
   assert.equal(traducirEspecialidad('CaRdIoLoGy'), 'Cardiología');
 });
 
-test('passes unknown specialties through unchanged', () => {
-  assert.equal(traducirEspecialidad('Xenobiology'), 'Xenobiology');
+test('the list to consult is translated, filtered and without repeats', () => {
+  assert.deepEqual(
+    especialidadesParaConsultar(['Neurology', 'Unknown', 'Ultra-rare disorders', 'Ciliopathies', 'Viral research', 'Renal']),
+    ['Neurología', 'Genética médica', 'Nefrología'],
+  );
 });
 
-test('never returns empty for a non-empty input', () => {
-  for (const key of Object.keys(ESPECIALIDADES_ES)) {
-    assert.ok(traducirEspecialidad(key).length > 0);
-  }
-});
-
-test('every mapping is translated, not echoed back', () => {
+test('every mapping is actually translated', () => {
   for (const [en, es] of Object.entries(ESPECIALIDADES_ES)) {
-    assert.notEqual(en, es, `"${en}" is not actually translated`);
-  }
-});
-
-test('all keys are already lowercase so lookups can hit', () => {
-  for (const key of Object.keys(ESPECIALIDADES_ES)) {
-    assert.equal(key, key.toLowerCase(), `key "${key}" would never match`);
+    assert.notEqual(en, es.toLowerCase(), `"${en}" is echoed back`);
+    assert.ok(es.length > 0);
   }
 });

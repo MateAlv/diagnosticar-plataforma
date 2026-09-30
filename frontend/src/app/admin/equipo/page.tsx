@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { adminApi, StaffMember } from "../admin-api";
+import { adminApi, adminErrorMessage, StaffMember } from "../admin-api";
 import { Banner, Button, Card, CardHeader, Eyebrow, Field, Skeleton } from "../ui";
 
 type Invitation = { email: string; password: string };
@@ -29,7 +29,7 @@ export default function AdminTeamPage() {
             const { staff: list } = await adminApi.staff();
             setStaff(list);
         } catch (e) {
-            setError((e as Error).message);
+            setError(adminErrorMessage(e));
         }
     }, []);
 
@@ -53,7 +53,7 @@ export default function AdminTeamPage() {
             setFullName("");
             await load();
         } catch (e) {
-            setFormError((e as Error).message);
+            setFormError(adminErrorMessage(e, "admin_invite"));
         } finally {
             setBusy(false);
         }
@@ -67,7 +67,7 @@ export default function AdminTeamPage() {
             await adminApi.revoke(member.id);
             await load();
         } catch (e) {
-            setError((e as Error).message);
+            setError(adminErrorMessage(e, "admin_revoke"));
         }
     }
 
@@ -85,7 +85,7 @@ export default function AdminTeamPage() {
             </div>
 
             {error && (
-                <Banner tone="error" title="Error">
+                <Banner tone="error" title="No se pudo completar">
                     {error}
                 </Banner>
             )}

@@ -5,6 +5,7 @@ import {
     blockUntilPasswordChanged,
 } from '../middleware/authMiddleware.js';
 import { userRateLimit } from '../middleware/rateLimit.js';
+import { sendError } from '../utils/httpErrors.js';
 import { getTermChildren, getTerms } from '../repositories/geneProfileRepository.js';
 
 /**
@@ -35,7 +36,7 @@ router.get('/terms', ...guards, (req, res) => {
         .map((id) => id.trim())
         .filter((id) => HPO_RE.test(id));
     if (ids.length === 0 || ids.length > MAX_TERMS) {
-        res.status(400).json({ error: `ids must be 1 to ${MAX_TERMS} HPO ids` });
+        sendError(res, 400, 'invalid_request', `ids must be 1 to ${MAX_TERMS} HPO ids`);
         return;
     }
     res.json({ terminos: getTerms(ids) });
@@ -45,12 +46,12 @@ router.get('/terms', ...guards, (req, res) => {
 router.get('/terms/:id/children', ...guards, (req, res) => {
     const id = String(req.params.id ?? '');
     if (!HPO_RE.test(id)) {
-        res.status(400).json({ error: 'id must be an HPO id' });
+        sendError(res, 400, 'invalid_request', 'id must be an HPO id');
         return;
     }
     const result = getTermChildren(id);
     if (!result.termino) {
-        res.status(404).json({ error: 'unknown HPO term' });
+        sendError(res, 404, 'not_found', 'unknown HPO term');
         return;
     }
     res.json(result);

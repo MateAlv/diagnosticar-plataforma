@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { errorMessage, readApiError } from "@/lib/api-errors";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
@@ -13,6 +14,7 @@ function VerifyScreen() {
   const token = searchParams.get("token") ?? "";
   const [status, setStatus] = useState<Status>("loading");
   const [attempt, setAttempt] = useState(0);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     if (!token) {
@@ -21,17 +23,28 @@ function VerifyScreen() {
     }
 
     setStatus("loading");
+    const csrf = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/)?.[1];
     fetch(`${API_URL}/auth/verify`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {}),
+      },
       body: JSON.stringify({ token }),
     })
-      .then((r) => {
+      .then(async (r) => {
         if (r.ok) setStatus("success");
         else if (r.status === 400) setStatus("invalid");
-        else setStatus("error");
+        else {
+          setMessage(errorMessage(await readApiError(r), "verify"));
+          setStatus("error");
+        }
       })
-      .catch(() => setStatus("error"));
+      .catch((e) => {
+        setMessage(errorMessage(e, "verify"));
+        setStatus("error");
+      });
   }, [token, attempt]);
 
   return (
@@ -94,7 +107,9 @@ function VerifyScreen() {
               </svg>
             </div>
             <h1 className="text-2xl font-bold text-[var(--lu-text)]">Algo salió mal</h1>
-            <p className="text-sm text-[var(--lu-subtle)]">No pudimos verificar tu cuenta. Intentá de nuevo en unos segundos.</p>
+            <p className="text-sm text-[var(--lu-subtle)]">
+              {message || "No pudimos verificar tu cuenta. Probá de nuevo en unos segundos."}
+            </p>
             <button
               type="button"
               onClick={() => setAttempt((n) => n + 1)}

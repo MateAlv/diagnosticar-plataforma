@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { FRONTEND_URL, IS_PRODUCTION } from '../config.js';
+import { sendError } from '../utils/httpErrors.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 export const CSRF_COOKIE_NAME = 'csrf_token';
@@ -37,7 +38,7 @@ export function enforceOrigin(req: Request, res: Response, next: NextFunction) {
     }
 
     if (!allowedOrigins.has(candidate)) {
-        return res.status(403).json({ error: 'Invalid origin' });
+        return sendError(res, 403, 'invalid_origin', 'Invalid origin');
     }
 
     return next();
@@ -57,11 +58,19 @@ export function enforceCsrf(req: Request, res: Response, next: NextFunction) {
         return next();
     }
 
+    // Logging out must work even when the csrf cookie is gone while the
+    // session cookies remain, or the person can never sign out. Forcing
+    // someone's logout is the most a forged request can do here, and
+    // enforceOrigin still rejects a foreign Origin.
+    if (req.path === '/api/auth/logout') {
+        return next();
+    }
+
     const cookieToken = req.cookies?.[CSRF_COOKIE_NAME];
     const headerToken = req.get(CSRF_HEADER_NAME);
 
     if (!cookieToken || !headerToken || cookieToken !== headerToken) {
-        return res.status(403).json({ error: 'CSRF token mismatch' });
+        return sendError(res, 403, 'csrf_mismatch', 'CSRF token mismatch');
     }
 
     return next();

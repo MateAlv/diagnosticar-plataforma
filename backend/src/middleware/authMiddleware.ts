@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../services/authService.js';
 import { getUserById, type User } from '../repositories/userRepository.js';
+import { internalError, sendError } from '../utils/httpErrors.js';
 
 export interface AuthRequest extends Request {
     user?: any;
@@ -21,12 +22,12 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
     const finalToken = token || cookieToken;
 
     if (!finalToken) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        return sendError(res, 401, 'unauthenticated', 'Unauthorized');
     }
 
     const decoded = verifyAccessToken(finalToken);
     if (!decoded) {
-        return res.status(403).json({ error: 'Forbidden' });
+        return sendError(res, 403, 'session_expired', 'Forbidden');
     }
 
     req.user = decoded;
@@ -37,22 +38,22 @@ export async function requireFreshAccessToken(req: AuthRequest, res: Response, n
     try {
         const payload = req.user;
         if (!payload || typeof payload.sub !== 'string' || typeof payload.tokenVersion !== 'number') {
-            return res.status(401).json({ error: 'Unauthorized' });
+            return sendError(res, 401, 'unauthenticated', 'Unauthorized');
         }
 
         const user = await getUserById(payload.sub);
         if (!user) {
-            return res.status(401).json({ error: 'Unauthorized' });
+            return sendError(res, 401, 'unauthenticated', 'Unauthorized');
         }
 
         if (user.token_version !== payload.tokenVersion) {
-            return res.status(403).json({ error: 'Token revoked' });
+            return sendError(res, 403, 'session_revoked', 'Token revoked');
         }
 
         req.userRecord = user;
         return next();
     } catch {
-        return res.status(500).json({ error: 'Error' });
+        return internalError(res);
     }
 }
 

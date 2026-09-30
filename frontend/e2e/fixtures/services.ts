@@ -443,7 +443,6 @@ export async function mockAdminApi(
                 return json(route, 201, {
                     user: { id: "44444444-4444-4444-8444-444444444444", email: "nuevo@example.ar", fullName: null },
                     temporaryPassword: "AbCdEfGhJkLmNpQrStUv",
-                    notice: "Share this password out of band.",
                 });
             }
             return json(route, 200, { staff });

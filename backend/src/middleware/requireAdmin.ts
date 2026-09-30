@@ -1,5 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { type AuthRequest } from './authMiddleware.js';
+import { sendError } from '../utils/httpErrors.js';
 
 /**
  * Gate for the backoffice.
@@ -18,12 +19,12 @@ export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction
     const user = req.userRecord;
 
     if (!user) {
-        return res.status(404).json({ error: 'Not found' });
+        return sendError(res, 404, 'not_found', 'Not found');
     }
 
     if (user.status !== 'active' || user.role !== 'admin') {
         console.warn('[admin] denied', { userId: user.id, path: req.path });
-        return res.status(404).json({ error: 'Not found' });
+        return sendError(res, 404, 'not_found', 'Not found');
     }
 
     return next();

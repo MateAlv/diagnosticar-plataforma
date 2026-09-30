@@ -545,8 +545,8 @@ export default function HomePage() {
             </div>
           </div>
           <div className="flex gap-6 text-sm text-[var(--lu-subtle)]">
-            <Link href="#" className="hover:text-[var(--lu-accent)] transition-colors">Términos</Link>
-            <Link href="#" className="hover:text-[var(--lu-accent)] transition-colors">Privacidad</Link>
+            <Link href="/terminos" className="hover:text-[var(--lu-accent)] transition-colors">Términos</Link>
+            <Link href="/terminos#privacidad" className="hover:text-[var(--lu-accent)] transition-colors">Privacidad</Link>
             <a href="mailto:diagnosticar.ar@gmail.com" className="hover:text-[var(--lu-accent)] transition-colors">Contacto</a>
           </div>
         </div>

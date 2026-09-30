@@ -26,6 +26,7 @@ import { CSRF_COOKIE_NAME } from '../middleware/csrfMiddleware.js';
 import { rateLimit, userRateLimit } from '../middleware/rateLimit.js';
 import { hashToken } from '../utils/tokens.js';
 import { stripNullBytes } from '../utils/sanitize.js';
+import { internalError, sendError } from '../utils/httpErrors.js';
 import { GOOGLE_AUTH_ENABLED, GOOGLE_REDIRECT_URL, IS_PRODUCTION } from '../config.js';
 import passport from 'passport';
 import { GoogleProfile } from '../services/googleAuth.js';
@@ -100,6 +101,23 @@ const changePasswordSchema = z
     .refine((v) => v.currentPassword !== v.newPassword, {
         message: 'The new password must differ from the current one',
     });
+
+/** Which field failed, so the form can point at it. Only these two, never zod's text. */
+function invalidPayload(res: Response, issues: z.ZodIssue[]) {
+    const field = issues[0]?.path[0];
+    return sendError(
+        res,
+        400,
+        'invalid_payload',
+        'Invalid payload',
+        field === 'email' || field === 'password' ? { field } : undefined,
+    );
+}
+
+const SIGNUP_AMBIGUOUS = {
+    message: 'If an account exists, a verification email will be sent.',
+    code: 'signup_ambiguous',
+} as const;
 
 function setCsrfCookie(res: Response) {
     const token = crypto.randomBytes(32).toString('hex');
@@ -207,7 +225,7 @@ router.post('/signup', signupRateLimit, async (req, res) => {
     try {
         const parsed = signupSchema.safeParse(req.body);
         if (!parsed.success) {
-            return res.status(400).json({ error: 'Invalid payload' });
+            return invalidPayload(res, parsed.error.issues);
         }
         const { email, password, fullName, name, organization } = stripNullBytes(parsed.data);
         const safeFullName = fullName ?? name ?? undefined;
@@ -215,8 +233,15 @@ router.post('/signup', signupRateLimit, async (req, res) => {
 
         const existing = await getUserByEmail(email);
         if (existing) {
-            if (!existing.verified && existing.auth_provider === 'local') {
-                // Stuck unverified account — auto-verify and log in
+            // A stuck unverified account is finished and signed in, but only
+            // for whoever knows its password: otherwise anyone could sign up
+            // with that email and walk into the account.
+            if (
+                !existing.verified &&
+                existing.auth_provider === 'local' &&
+                existing.password_hash &&
+                (await verifyPassword(password, existing.password_hash))
+            ) {
                 await verifyUser(existing.id);
                 const accessToken = signAccessToken(existing);
                 const refreshToken = signRefreshToken(existing);
@@ -225,8 +250,9 @@ router.post('/signup', signupRateLimit, async (req, res) => {
                 setCsrfCookie(res);
                 return res.json({ user: { id: existing.id, email: existing.email, full_name: existing.full_name, role: existing.role } });
             }
-            // Existing verified account — silent response
-            return res.json({ message: 'If an account exists, a verification email will be sent.' });
+            // Same answer whether or not the email is taken, so signup cannot
+            // be used to find out who has an account.
+            return res.json(SIGNUP_AMBIGUOUS);
         }
 
         const passwordHash = await hashPassword(password);
@@ -245,7 +271,7 @@ router.post('/signup', signupRateLimit, async (req, res) => {
         res.json({ user: { id: newUser.id, email: newUser.email, full_name: newUser.full_name, role: newUser.role } });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ error: 'Internal server error' });
+        internalError(res);
     }
 });
 
@@ -253,13 +279,13 @@ router.post('/login', loginRateLimit, async (req, res) => {
     try {
         const parsed = loginSchema.safeParse(req.body);
         if (!parsed.success) {
-            return res.status(400).json({ error: 'Invalid payload' });
+            return invalidPayload(res, parsed.error.issues);
         }
         const { email, password } = parsed.data;
         const user = await getUserByEmail(email);
 
         if (!user || !(await verifyPassword(password, user.password_hash)) || !user.verified) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            return sendError(res, 401, 'invalid_credentials', 'Invalid credentials');
         }
 
         const accessToken = signAccessToken(user);
@@ -291,7 +317,7 @@ router.post('/login', loginRateLimit, async (req, res) => {
         });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ error: 'Internal server error' });
+        internalError(res);
     }
 });
 
@@ -313,19 +339,24 @@ router.post(
         try {
             const user = req.userRecord;
             if (!user) {
-                return res.status(401).json({ error: 'Unauthorized' });
+                return sendError(res, 401, 'unauthenticated', 'Unauthorized');
             }
 
             const parsed = changePasswordSchema.safeParse(req.body);
             if (!parsed.success) {
-                return res.status(400).json({
-                    error: 'The new password must be at least 12 characters and differ from the current one',
-                });
+                return sendError(
+                    res,
+                    400,
+                    'weak_password',
+                    'The new password must be at least 12 characters and differ from the current one',
+                );
             }
             const { currentPassword, newPassword } = parsed.data;
 
+            // 400, not 401: the session is fine, only the typed password is
+            // wrong, and a 401 would read as "signed out" to the client.
             if (!(await verifyPassword(currentPassword, user.password_hash))) {
-                return res.status(401).json({ error: 'Invalid credentials' });
+                return sendError(res, 400, 'invalid_current_password', 'Invalid current password');
             }
 
             await setPassword(user.id, await hashPassword(newPassword));
@@ -340,7 +371,7 @@ router.post(
             res.json({ ok: true, reauthenticate: true });
         } catch (error) {
             console.error('[auth] change-password failed', (error as Error)?.message);
-            res.status(500).json({ error: 'Internal server error' });
+            internalError(res);
         }
     },
 );
@@ -349,46 +380,46 @@ router.post('/verify', verifyRateLimit, async (req, res) => {
     try {
         const parsed = verifySchema.safeParse(req.body);
         if (!parsed.success) {
-            return res.status(400).json({ error: 'Invalid payload' });
+            return sendError(res, 400, 'invalid_token', 'Invalid token');
         }
         const { token } = parsed.data;
         const user = await getUserByVerificationToken(token);
 
         if (!user) {
-            return res.status(400).json({ error: 'Invalid token' });
+            return sendError(res, 400, 'invalid_token', 'Invalid token');
         }
 
         await verifyUser(user.id);
         res.json({ message: 'Verified' });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ error: 'Error' });
+        internalError(res);
     }
 });
 
 router.get('/me', sessionReadRateLimit, authenticate, requireFreshAccessToken, async (req: AuthRequest, res) => {
     try {
         const user = req.userRecord ?? (req.user?.sub ? await getUserById(req.user.sub) : null);
-        if (!user) return res.status(404).json({ error: 'User not found' });
+        if (!user) return sendError(res, 401, 'unauthenticated', 'Unauthorized');
         res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role } });
     } catch {
-        res.status(500).json({ error: 'Error' });
+        internalError(res);
     }
 });
 
 router.post('/refresh', refreshRateLimit, async (req, res) => {
     try {
         const refreshToken = req.cookies?.['refresh_token'];
-        if (!refreshToken) return res.status(401).json({ error: 'No refresh token' });
+        if (!refreshToken) return sendError(res, 401, 'no_refresh_token', 'No refresh token');
 
         const decoded = verifyRefreshToken(refreshToken) as any;
         if (!decoded || typeof decoded.sub !== 'string' || typeof decoded.tokenVersion !== 'number') {
-            return res.status(403).json({ error: 'Invalid refresh token' });
+            return sendError(res, 403, 'session_expired', 'Invalid refresh token');
         }
 
         const user = await getUserById(decoded.sub);
         if (!user || user.token_version !== decoded.tokenVersion) {
-            return res.status(403).json({ error: 'Token revoked' });
+            return sendError(res, 403, 'session_revoked', 'Token revoked');
         }
 
         const newAccessToken = signAccessToken(user);
@@ -405,7 +436,7 @@ router.post('/refresh', refreshRateLimit, async (req, res) => {
 
         res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role } });
     } catch {
-        res.status(500).json({ error: 'Error' });
+        internalError(res);
     }
 });
 
@@ -436,9 +467,7 @@ router.post('/logout', logoutRateLimit, async (req, res) => {
             await updateUserTokenVersion(userId);
         }
     } catch (error) {
-        if (!IS_PRODUCTION) {
-            console.error('[auth] logout token revocation failed', error);
-        }
+        console.error('[auth] logout token revocation failed', error);
     } finally {
         res.clearCookie('access_token', accessCookieOptions);
         res.clearCookie('refresh_token', refreshCookieOptions);

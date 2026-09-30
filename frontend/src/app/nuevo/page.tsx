@@ -82,13 +82,7 @@ type RegenerationDraft = {
 const stepsMeta: Array<{ id: Step; title: string }> = [
   { id: 1, title: "Datos básicos" },
   { id: 2, title: "Síntomas del paciente" },
-  { id: 3, title: "Orientación diagnóstica" },
-];
-
-const defaultSymptoms: Symptom[] = [
-  { description: "Fatiga persistente", code: "HP:0012378" },
-  { description: "Dolor abdominal", code: "HP:0002027" },
-  { description: "Cambios en peso", code: "HP:0004324" },
+  { id: 3, title: "Resultados orientativos" },
 ];
 
 import { GeneModal } from "./gene-modal";
@@ -108,7 +102,8 @@ import { useFlipReorder } from "./use-flip-reorder";
 import { useQuestionSession } from "./use-question-session";
 import { RESULTS_DISCLAIMER } from "@/lib/disclaimer";
 import { fetchGeneProfiles, formatScore, type GeneProfile } from "@/lib/genes-api";
-import { mensajeErrorExtraccion } from "@/lib/extract-errors";
+import { errorMessage, isSessionError, jsonOrThrow } from "@/lib/api-errors";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { fetchTerms, genesLabel, isGeneralTerm, type HpoTerm } from "@/lib/hpo-terms";
 import { RefineTermDialog, type RefineTarget } from "./refine-term-dialog";
 import { ADJUSTED_LIST_NOTE, originsIn } from "@/lib/question-insights";
@@ -364,6 +359,7 @@ function NuevoDiagnosticoScreen() {
   });
 
   const HC_DRAFT_KEY = "diagnosticar:hc-draft";
+  const LOCAL_RECORDS_KEY = "diagnosticar:records";
   const [historiaClinica, setHistoriaClinica] = useState(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem(HC_DRAFT_KEY) ?? "";
@@ -371,6 +367,7 @@ function NuevoDiagnosticoScreen() {
     return "";
   });
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
+  const [draftLost, setDraftLost] = useState(false);
   // How general each loaded symptom is, by upper-cased HPO id; fetched as
   // symptoms arrive. A term that reaches many genes barely orders the ranking,
   // so the list offers to refine it. Dismissing the offer lasts the session.
@@ -380,13 +377,19 @@ function NuevoDiagnosticoScreen() {
   const [lastAnalyzedHC, setLastAnalyzedHC] = useState("");
   const [newSymptom, setNewSymptom] = useState({ description: "", code: "" });
   const [extractError, setExtractError] = useState<string | null>(null);
+  const [extractFailure, setExtractFailure] = useState<unknown>(undefined);
   const [extractInfo, setExtractInfo] = useState<string | null>(null);
   const [genphenResults, setGenphenResults] = useState<GenPhenResult[]>([]);
   const [genphenSpecialties, setGenphenSpecialties] = useState<GenPhenSpecialties | null>(null);
   const [genphenConfidence, setGenphenConfidence] = useState<number | null>(null);
   const [genphenError, setGenphenError] = useState<string | null>(null);
+  const [genphenFailure, setGenphenFailure] = useState<unknown>(undefined);
   const [extractedPhenotypes, setExtractedPhenotypes] = useState<PhenotypeItem[]>([]);
-  const [saveWarning, setSaveWarning] = useState(false);
+  // A result that ranked but did not reach the account: why, and the request
+  // to send again from "Guardar de nuevo".
+  const [saveFailure, setSaveFailure] = useState<{ error: unknown; url: string; body: unknown; localId: string | null } | null>(null);
+  const [savingAgain, setSavingAgain] = useState(false);
+  const [hpoSearchError, setHpoSearchError] = useState<string | null>(null);
   // Where the question agent hangs its session. Null when the result was not
   // saved to the account, which is also when the refine loop is not offered.
   const [diagnosisId, setDiagnosisId] = useState<string | null>(null);
@@ -549,6 +552,7 @@ function NuevoDiagnosticoScreen() {
   }, [isLoading]);
 
   const [geneProfiles, setGeneProfiles] = useState<Map<string, GeneProfile>>(new Map());
+  const [profilesFailed, setProfilesFailed] = useState(false);
   const [professionalView, setProfessionalView] = useState(false);
   const questionMode: QuestionMode = professionalView ? "medico" : "paciente";
 
@@ -705,11 +709,17 @@ function NuevoDiagnosticoScreen() {
 
     // The cards keep what they show until the answer arrives: clearing them
     // first flashed "sin descripción" on every toggle.
+    let failed = false;
     fetchGeneProfiles(missing, reported, {
       professional: professionalView,
       signal: controller.signal,
+      onFailure: (error) => {
+        console.warn("[nuevo] gene profiles failed", error);
+        failed = true;
+      },
     }).then((fetched) => {
       if (controller.signal.aborted) return;
+      setProfilesFailed(failed);
       // An empty answer is as likely a failed request as a set of misses,
       // so only a real answer settles which genes have no profile.
       if (fetched.size > 0) {
@@ -783,11 +793,11 @@ function NuevoDiagnosticoScreen() {
                   .filter((item): item is Symptom => item !== null)
               : [];
 
-            if (parsedSymptoms.length > 0) {
-              setSymptoms(parsedSymptoms);
-            } else {
-              setSymptoms(defaultSymptoms.map((symptom) => ({ ...symptom })));
-            }
+            // A saved search with no usable symptoms starts empty: anything
+            // else would put symptoms the patient never reported into the
+            // search.
+            setSymptoms(parsedSymptoms);
+            setDraftLost(parsedSymptoms.length === 0);
 
             setDatosBasicos((prev) => ({
               ...prev,
@@ -807,12 +817,16 @@ function NuevoDiagnosticoScreen() {
             }
           } catch {
             setRegenerationPatientId(null);
-            setSymptoms(defaultSymptoms.map((symptom) => ({ ...symptom })));
+            setSymptoms([]);
+            setDraftLost(true);
           }
           window.sessionStorage.removeItem("diagnosticar:newDiagDraft");
         } else {
+          // Reached by reloading after "Regenerar": the draft is read once and
+          // removed, so there is nothing to restore.
           setRegenerationPatientId(null);
-          setSymptoms(defaultSymptoms.map((symptom) => ({ ...symptom })));
+          setSymptoms([]);
+          setDraftLost(true);
         }
       }
     }
@@ -842,16 +856,20 @@ function NuevoDiagnosticoScreen() {
           `${HPO_SEARCH_ENDPOINT}?q=${encodeURIComponent(query)}&limit=20`,
           { signal: controller.signal }
         );
-        const payload = await response.json().catch(() => ({}));
+        const payload = await jsonOrThrow<{ results?: unknown }>(response);
         const results = Array.isArray(payload?.results) ? payload.results : [];
         if (!controller.signal.aborted) {
+          setHpoSearchError(null);
           setHpoSuggestions(results);
           setHpoSuggestOpen(true);
         }
       } catch (error) {
         if (!controller.signal.aborted) {
+          console.error("[nuevo] hpo search failed", error);
+          // "Sin coincidencias" would claim the term does not exist.
+          setHpoSearchError(errorMessage(error, "hpo_search"));
           setHpoSuggestions([]);
-          setHpoSuggestOpen(false);
+          setHpoSuggestOpen(true);
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -871,6 +889,7 @@ function NuevoDiagnosticoScreen() {
     setIsLoading(true);
     setLoadingMessage("Buscando síntomas en el texto...");
     setExtractError(null);
+    setExtractFailure(undefined);
     setExtractInfo(null);
     try {
       const response = await fetch(HPO_EXTRACT_ENDPOINT, {
@@ -883,10 +902,7 @@ function NuevoDiagnosticoScreen() {
         credentials: "include",
         body: JSON.stringify({ text_es: texto, patient_locale: "es-AR" }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(mensajeErrorExtraccion(response.status, payload));
-      }
+      const payload = await jsonOrThrow<{ phenotypes?: unknown }>(response);
       const phenotypes = Array.isArray(payload?.phenotypes) ? payload.phenotypes : [];
       setExtractedPhenotypes((prev) => {
         const seen = new Set(prev.map((item) => item.hpo_id));
@@ -936,22 +952,97 @@ function NuevoDiagnosticoScreen() {
             : "No encontramos síntomas en el texto. Podés agregarlos buscándolos abajo."
       );
     } catch (error) {
-      const message =
-        error instanceof Error && error.message
-          ? error.message
-          : "No pudimos analizar el texto. Reintentá en unos segundos.";
-      setExtractError(message);
+      console.error("[nuevo] extraction failed", error);
+      setExtractFailure(error);
+      setExtractError(errorMessage(error, "extract"));
     } finally {
       setIsLoading(false);
       setLoadingMessage("");
     }
   };
 
+  // Sends the result to the account. An access token that lapsed while the
+  // tab was open is renewed once rather than reported as a failure.
+  const enviarGuardado = async (url: string, body: unknown): Promise<string | null> => {
+    const post = () => {
+      const csrfToken = getCookieValue("csrf_token");
+      return fetch(url, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+        },
+        body: JSON.stringify(body),
+      }).then((response) => jsonOrThrow<{ diagnosisId?: unknown }>(response));
+    };
+    let saved;
+    try {
+      saved = await post();
+    } catch (error) {
+      if (!isSessionError(error) || !(await refreshSession())) throw error;
+      saved = await post();
+    }
+    return typeof saved?.diagnosisId === "string" ? saved.diagnosisId : null;
+  };
+
+  /** A copy on this device, so a failed save loses nothing. Null when the device would not keep it. */
+  const guardarCopiaLocal = (
+    results: GenPhenResult[],
+    payload: { specialties?: GenPhenSpecialties; confidence?: unknown },
+  ): string | null => {
+    const id = Date.now().toString();
+    try {
+      const record = {
+        id,
+        nombre: datosBasicos.nombre.trim() || "Paciente",
+        savedAt: new Date().toISOString(),
+        symptoms: symptoms.map((s) => ({ description: s.description, code: s.code })),
+        topSpecialties: payload?.specialties?.top_specialties ?? [],
+        confidence: typeof payload?.confidence === "number" ? payload.confidence : null,
+        topGenes: results.slice(0, 5).map((g) => g.gene_symbol),
+      };
+      const existing = JSON.parse(localStorage.getItem(LOCAL_RECORDS_KEY) || "[]");
+      localStorage.setItem(LOCAL_RECORDS_KEY, JSON.stringify([record, ...(Array.isArray(existing) ? existing : [])]));
+      return id;
+    } catch {
+      return null;
+    }
+  };
+
+  const guardarDeNuevo = async () => {
+    if (!saveFailure) return;
+    setSavingAgain(true);
+    try {
+      setDiagnosisId(await enviarGuardado(saveFailure.url, saveFailure.body));
+      setRegenerationPatientId(null);
+      if (saveFailure.localId) {
+        try {
+          const existing = JSON.parse(localStorage.getItem(LOCAL_RECORDS_KEY) || "[]") as { id?: string }[];
+          localStorage.setItem(
+            LOCAL_RECORDS_KEY,
+            JSON.stringify(existing.filter((record) => record?.id !== saveFailure.localId)),
+          );
+        } catch {
+          // The account has it now; a stale local copy is harmless.
+        }
+      }
+      setSaveFailure(null);
+    } catch (error) {
+      console.error("[nuevo] save retry failed", error);
+      setSaveFailure({ ...saveFailure, error });
+    } finally {
+      setSavingAgain(false);
+    }
+  };
+
   const consultarGenPhen = async () => {
     setShowConfirmModal(false);
     setIsLoading(true);
-    setLoadingMessage("Consultando a GenPhenAI...");
+    setLoadingMessage("Buscando genes relacionados con los síntomas…");
     setGenphenError(null);
+    setGenphenFailure(undefined);
+    setSaveFailure(null);
     setGenphenResults([]);
     setGenphenSpecialties(null);
     setGenphenConfidence(null);
@@ -961,7 +1052,7 @@ function NuevoDiagnosticoScreen() {
         .map((symptom) => symptom.code.trim().toUpperCase())
         .filter((code) => /^HP:\d+$/.test(code));
       if (hpoIds.length === 0) {
-        setGenphenError("Agregá al menos un código HPO válido para consultar GenPhenIA.");
+        setGenphenError("Agregá al menos un síntoma de la lista para buscar genes.");
         return;
       }
       const response = await fetch(GENPHENAI_ENDPOINT, {
@@ -969,11 +1060,7 @@ function NuevoDiagnosticoScreen() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hpo_ids: hpoIds, top_k: isDemoMode ? 1 : 50 }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const detail = payload?.detail || payload?.error || "No pudimos consultar GenPhenIA.";
-        throw new Error(detail);
-      }
+      const payload = await jsonOrThrow<{ results?: unknown; specialties?: GenPhenSpecialties; confidence?: unknown }>(response);
       const results = Array.isArray(payload?.results) ? payload.results : [];
       setGenphenResults(results);
 
@@ -984,7 +1071,6 @@ function NuevoDiagnosticoScreen() {
       // Save to backend (authenticated) or localStorage (demo / fallback)
       if (!isDemoMode && user) {
         try {
-          const csrfToken = getCookieValue("csrf_token");
           const diagnosisPayload = {
             historiaClinica: historiaClinica.trim(),
             symptomsExtracted: symptoms.map((s) => ({ description: s.description, code: s.code })),
@@ -1007,44 +1093,24 @@ function NuevoDiagnosticoScreen() {
                 ...diagnosisPayload,
               };
 
-          const saveRes = await fetch(saveUrl, {
-            method: "POST",
-            credentials: "include",
-            headers: {
-              "Content-Type": "application/json",
-              ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
-            },
-            body: JSON.stringify(saveBody),
-          });
-          if (!saveRes.ok) throw new Error(`HTTP ${saveRes.status}`);
-          const saved = await saveRes.json().catch(() => null);
-          setDiagnosisId(typeof saved?.diagnosisId === "string" ? saved.diagnosisId : null);
-          setRegenerationPatientId(null);
-        } catch {
-          // Backend save failed — fall back to localStorage so data is never lost
-          const record = {
-            id: Date.now().toString(),
-            nombre: datosBasicos.nombre.trim() || "Paciente",
-            savedAt: new Date().toISOString(),
-            symptoms: symptoms.map((s) => ({ description: s.description, code: s.code })),
-            topSpecialties: payload?.specialties?.top_specialties ?? [],
-            confidence: typeof payload?.confidence === "number" ? payload.confidence : null,
-            topGenes: results.slice(0, 5).map((g: GenPhenResult) => g.gene_symbol),
-          };
-          const existing = JSON.parse(localStorage.getItem("diagnosticar:records") || "[]");
-          localStorage.setItem("diagnosticar:records", JSON.stringify([record, ...existing]));
-          setSaveWarning(true);
+          try {
+            setDiagnosisId(await enviarGuardado(saveUrl, saveBody));
+            setRegenerationPatientId(null);
+          } catch (error) {
+            console.error("[nuevo] save failed", error);
+            setSaveFailure({ error, url: saveUrl, body: saveBody, localId: guardarCopiaLocal(results, payload) });
+          }
+        } catch (error) {
+          console.error("[nuevo] save failed", error);
         }
       }
 
       localStorage.removeItem(HC_DRAFT_KEY);
       setStep(3);
     } catch (error) {
-      const message =
-        error instanceof Error && error.message
-          ? error.message
-          : "No pudimos consultar GenPhenIA. Reintentá en unos segundos.";
-      setGenphenError(message);
+      console.error("[nuevo] rank-genes failed", error);
+      setGenphenFailure(error);
+      setGenphenError(errorMessage(error, "rank_genes"));
     } finally {
       setIsLoading(false);
       setLoadingMessage("");
@@ -1149,8 +1215,7 @@ function NuevoDiagnosticoScreen() {
   );
 
   const handleLogout = async () => {
-    await logout();
-    router.replace("/login");
+    if (await logout()) router.replace("/login");
   };
 
   if (!isDemoMode && authLoading) {
@@ -1429,11 +1494,7 @@ function NuevoDiagnosticoScreen() {
                           {lastAnalyzedHC ? "Analizar de nuevo" : "Buscar síntomas en el texto"}
                         </button>
                       </div>
-                      {extractError && (
-                        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">
-                          {extractError}
-                        </div>
-                      )}
+                      <ErrorNotice className="mt-3" message={extractError} error={extractFailure} />
                       {extractInfo && !extractError && (
                         <div className="mt-3 rounded-xl border border-[var(--lu-border)] bg-[var(--lu-surface)] px-4 py-2.5 text-xs text-[var(--lu-subtle)]">
                           {extractInfo}
@@ -1486,6 +1547,10 @@ function NuevoDiagnosticoScreen() {
                           <div className="absolute z-20 mt-2 w-full max-h-[52vh] overflow-y-auto rounded-xl border border-[var(--lu-border)] bg-white shadow-lg">
                             {hpoSuggestLoading ? (
                               <div className="px-4 py-3 text-sm text-[var(--lu-subtle)]">Buscando...</div>
+                            ) : hpoSearchError ? (
+                              <div role="alert" className="px-4 py-3 text-sm text-red-800">
+                                {hpoSearchError}
+                              </div>
                             ) : hpoSuggestions.length === 0 ? (
                               <div className="px-4 py-3 text-sm text-[var(--lu-subtle)]">
                                 Sin coincidencias.
@@ -1527,6 +1592,20 @@ function NuevoDiagnosticoScreen() {
                       </div>
 
                       <div className="mt-4 border-t border-[var(--lu-border)] pt-4">
+                        {draftLost && symptoms.length === 0 && (
+                          <div role="status" className="mb-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3">
+                            <p className="text-sm font-semibold text-[var(--lu-text)]">
+                              No pudimos recuperar los síntomas de la búsqueda anterior
+                            </p>
+                            <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
+                              Cargalos de nuevo acá, o volvé a{" "}
+                              <Link href="/diagnosticar" className="font-semibold text-[var(--lu-accent-text)] underline underline-offset-2">
+                                tus búsquedas
+                              </Link>{" "}
+                              y abrila otra vez.
+                            </p>
+                          </div>
+                        )}
                         {symptoms.length === 0 ? (
                           <div className="rounded-xl border border-dashed border-[var(--lu-border)] px-4 py-8 text-center">
                             <p className="text-base font-semibold text-[var(--lu-text)]">
@@ -1669,11 +1748,7 @@ function NuevoDiagnosticoScreen() {
                         )}
                       </div>
 
-                      {genphenError && (
-                        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">
-                          {genphenError}
-                        </div>
-                      )}
+                      <ErrorNotice className="mt-3" message={genphenError} error={genphenFailure} />
                     </div>
                   </div>
                 </div>
@@ -1691,10 +1766,12 @@ function NuevoDiagnosticoScreen() {
                       </Link>
                     </div>
 
+                    {/* The demo is what an anonymous visitor sees: the legal notice
+                        has to be here as much as on a saved result. */}
+                    {disclaimer}
+
                     {genphenError ? (
-                      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                        {genphenError}
-                      </div>
+                      <ErrorNotice message={genphenError} error={genphenFailure} />
                     ) : (
                       <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-8 shadow-sm">
                         <p className="text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Detalle técnico</p>
@@ -1755,22 +1832,25 @@ function NuevoDiagnosticoScreen() {
                 ) : (
                   <div className={panelDocked ? "flex items-start gap-6" : undefined}>
                   <div className={panelDocked ? "min-w-0 flex-1 space-y-6" : "space-y-6"}>
-                    {saveWarning && (
-                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                        No se pudo guardar en tu cuenta. Los datos quedaron guardados localmente en este dispositivo.
-                      </div>
+                    {saveFailure && (
+                      <ErrorNotice
+                        error={saveFailure.error}
+                        message={`No pudimos guardar este resultado en tu cuenta. ${errorMessage(saveFailure.error, "save")} El resultado sigue en pantalla${
+                          saveFailure.localId ? " y quedó una copia en este dispositivo" : ""
+                        }.`}
+                        onRetry={savingAgain ? undefined : guardarDeNuevo}
+                        retryLabel="Guardar de nuevo"
+                      />
                     )}
                     {/* The two outcomes with no ranking to show. The specialities
                         follow the genes further down, since they are derived
                         from them. */}
                     {genphenError ? (
-                      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                        {genphenError}
-                      </div>
+                      <ErrorNotice message={genphenError} error={genphenFailure} />
                     ) : isLowConfidenceResult ? (
                       <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
                         <p className="leading-relaxed">
-                          Los síntomas provistos no son suficientes para realizar una guía diagnóstica precisa. Intentá cargando más síntomas.
+                          Con los síntomas cargados todavía no alcanza para ordenar los genes de forma útil. No quiere decir que no haya nada: falta información. Sumá más síntomas, sobre todo los más específicos, y volvé a buscar.
                         </p>
                         <button
                           type="button"
@@ -1899,6 +1979,13 @@ function NuevoDiagnosticoScreen() {
                             enfermedades ni diagnósticos. Miralos como un conjunto para investigar:
                             el orden es orientativo y el primero no es una respuesta.
                           </p>
+
+                          {profilesFailed && (
+                            <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+                              No pudimos cargar las descripciones de los genes. La lista no cambia; recargá la página
+                              para intentarlo de nuevo.
+                            </p>
+                          )}
 
                           {refineEntries && (
                             <RefineTeaser phase={questionSession.state.phase} control={questionPanel} />
@@ -2148,9 +2235,11 @@ function NuevoDiagnosticoScreen() {
       {showCancelModal && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm px-5 animate-in fade-in duration-200">
           <div className="max-w-md w-full rounded-[28px] border border-[var(--lu-border)] bg-white p-8 shadow-2xl">
-            <h2 className="text-xl font-bold text-[var(--lu-text)]">¿Seguro que querés cancelar?</h2>
+            <h2 className="text-xl font-bold text-[var(--lu-text)]">¿Salir de esta búsqueda?</h2>
             <p className="mt-3 text-sm text-[var(--lu-subtle)]">
-              Vas a borrar lo que ingresaste. Confirmá si deseás salir de este diagnóstico asistido.
+              {step === 3
+                ? "Los resultados ya quedaron guardados en tu cuenta."
+                : "Se va a perder lo que cargaste en esta búsqueda."}
             </p>
             <div className="mt-8 flex flex-wrap gap-3 justify-end">
               <button
@@ -2165,7 +2254,7 @@ function NuevoDiagnosticoScreen() {
                 className="inline-flex items-center justify-center h-10 px-5 rounded-xl bg-red-50 text-red-600 font-medium hover:bg-red-100 transition-colors"
                 onClick={handleCancelFlow}
               >
-                Sí, cancelar
+                Salir
               </button>
             </div>
           </div>

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 import { useAuth } from "../../lib/auth-context";
-import { adminApi, AdminAccessError, PasswordChangeRequiredError, Release } from "./admin-api";
+import { adminApi, AdminAccessError, isSessionError, PasswordChangeRequiredError, Release } from "./admin-api";
 
 const NAV = [
     { href: "/admin", label: "Resumen" },
@@ -36,6 +36,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     router.replace("/admin/cambiar-clave");
                 } else if (error instanceof AdminAccessError) {
                     setDenied(true);
+                } else if (isSessionError(error)) {
+                    router.replace("/login?motivo=sesion&next=/admin");
+                } else {
+                    console.error("[admin] release failed", error);
                 }
             });
         return () => {

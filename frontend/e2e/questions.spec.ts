@@ -1529,7 +1529,8 @@ test("the refine entry is hidden when the result could not be saved", async ({ p
     );
     await runToResults(page);
 
-    await expect(page.getByText(/No se pudo guardar en tu cuenta/)).toBeVisible();
+    await expect(page.getByText(/No pudimos guardar este resultado en tu cuenta/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Guardar de nuevo" })).toBeVisible();
     await expect(launcher(page)).toHaveCount(0);
     await expect(page.locator("[data-panel-opener]")).toHaveCount(0);
 });

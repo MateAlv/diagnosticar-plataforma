@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { traducirEspecialidad } from "@/lib/especialidades";
+import { ConsultaGenetica } from "@/components/ui/ConsultaGenetica";
+import { especialidadesParaConsultar, traducirEspecialidad } from "@/lib/especialidades";
 
 /**
  * Which specialities the ranked genes point to, below the genes themselves.
@@ -45,9 +46,14 @@ export function SpecialtyCard({
     onOpenGene: (symbol: string) => void;
 }) {
     const [showAll, setShowAll] = useState(false);
-    const top = (specialties?.top_specialties ?? []).slice(0, 3);
+    // Only specialties someone can be referred to, in Spanish; the model's
+    // "Unknown" or "Multispecialty" never reach the screen.
+    const top = especialidadesParaConsultar(specialties?.top_specialties ?? []).slice(0, 3);
     const topSet = new Set(top);
-    const rows = specialties?.specialty_ranking ?? [];
+    const rows = (specialties?.specialty_ranking ?? []).flatMap((row) => {
+        const nombre = traducirEspecialidad(row.specialty);
+        return nombre ? [{ ...row, nombre }] : [];
+    });
     const shown = showAll ? rows : rows.slice(0, VISIBLE_ROWS);
     const folded = rows.length - shown.length;
 
@@ -78,17 +84,18 @@ export function SpecialtyCard({
                                     key={name}
                                     className="rounded-full bg-[var(--lu-accent-text)] px-4 py-1.5 text-sm font-semibold text-white shadow-sm"
                                 >
-                                    {traducirEspecialidad(name)}
+                                    {name}
                                 </li>
                             ))}
                         </ul>
                     </div>
                 ) : (
                     <p className="text-sm leading-relaxed text-[var(--lu-subtle)]">
-                        No se pudo determinar una especialidad recomendada para los síntomas ingresados.
-                        Consultá con un genetista clínico.
+                        Con estos síntomas no pudimos sugerir otra especialidad en particular.
                     </p>
                 )}
+
+                <ConsultaGenetica />
 
                 {rows.length > 0 && (
                     <div>
@@ -104,12 +111,12 @@ export function SpecialtyCard({
                                     <span className="flex shrink-0 items-baseline gap-2 sm:w-64">
                                         <span
                                             className={`text-sm ${
-                                                topSet.has(row.specialty)
+                                                topSet.has(row.nombre)
                                                     ? "font-semibold text-[var(--lu-accent-text)]"
                                                     : "font-medium text-[var(--lu-text)]"
                                             }`}
                                         >
-                                            {traducirEspecialidad(row.specialty)}
+                                            {row.nombre}
                                         </span>
                                         <span className="font-mono text-[11px] text-[var(--lu-subtle)]">
                                             {row.matched_genes_count} de {geneCount} genes

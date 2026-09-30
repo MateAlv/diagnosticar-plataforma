@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { errorMessage } from "@/lib/api-errors";
 import { useAuth } from "../../lib/auth-context";
 
 export default function SignUpPage() {
@@ -27,7 +29,7 @@ export default function SignUpPage() {
     }
   }, [loading, user, router]);
 
-  const [success, setSuccess] = useState(false);
+  const [outcome, setOutcome] = useState<"created" | "ambiguous" | null>(null);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -59,14 +61,15 @@ export default function SignUpPage() {
       password,
       name: fullName,
     })
-      .then(() => setSuccess(true))
+      .then(setOutcome)
       .catch((err) => {
-        setError(err.message ?? "No se pudo crear la cuenta.");
+        console.error("[sign-up]", err);
+        setError(errorMessage(err, "signup"));
       })
       .finally(() => setSubmitting(false));
   };
 
-  if (success) {
+  if (outcome) {
     return (
       <main className="relative min-h-screen overflow-hidden bg-[var(--lu-surface)] text-[var(--lu-text)]">
         <div className="pointer-events-none absolute inset-0" aria-hidden>
@@ -76,17 +79,30 @@ export default function SignUpPage() {
         <div className="relative mx-auto flex min-h-screen max-w-2xl items-center px-6 py-16">
           <div className="w-full rounded-[32px] border border-[var(--lu-border)] bg-white/80 p-10 text-center shadow-[var(--lu-shadow)] backdrop-blur">
             <p className="text-xs uppercase tracking-[0.4em] text-[var(--lu-subtle)]">Diagnostic.ar</p>
-            <h2 className="mt-3 text-3xl font-semibold text-[var(--lu-text)] md:text-4xl">¡Cuenta creada!</h2>
-            <p className="mt-4 text-[color:var(--lu-text)]">
-              Tu cuenta fue creada correctamente. Serás redirigido automáticamente.
-            </p>
-            <p className="mt-6 text-sm text-[color:var(--lu-subtle)]">
-              Si no sos redirigido,{" "}
-              <Link href="/login" className="nav-link">
-                iniciá sesión aquí
-              </Link>
-              .
-            </p>
+            {outcome === "created" ? (
+              <>
+                <h2 className="mt-3 text-3xl font-semibold text-[var(--lu-text)] md:text-4xl">¡Cuenta creada!</h2>
+                <p className="mt-4 text-[color:var(--lu-text)]">Ya podés empezar. Te llevamos al inicio.</p>
+                <p className="mt-6 text-sm text-[color:var(--lu-subtle)]">
+                  Si no pasa nada,{" "}
+                  <Link href="/" className="nav-link">
+                    entrá desde acá
+                  </Link>
+                  .
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="mt-3 text-3xl font-semibold text-[var(--lu-text)] md:text-4xl">¿Ya tenías una cuenta?</h2>
+                <p className="mt-4 text-[color:var(--lu-text)]">
+                  No pudimos crear una cuenta nueva con ese email. Si ya te registraste antes, iniciá sesión con
+                  tu contraseña o con Google.
+                </p>
+                <Link href="/login" className="btn-success mt-6 justify-center">
+                  Ir a iniciar sesión
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </main>
@@ -291,11 +307,15 @@ export default function SignUpPage() {
                 required
               />
               <span>
-                Acepto los <strong className="text-[color:var(--lu-text)]">términos y condiciones</strong> (mock).
+                Leí y acepto los{" "}
+                <Link href="/terminos" target="_blank" className="font-semibold text-[var(--lu-accent-text)] underline underline-offset-2">
+                  términos de uso y la política de privacidad
+                </Link>
+                .
               </span>
             </label>
 
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            <ErrorNotice message={error} />
 
             <button type="submit" className="btn-success w-full justify-center" disabled={submitting}>
               {submitting ? "Creando…" : "Crear cuenta"}

@@ -41,8 +41,11 @@ export function rateLimit(options: RateLimitOptions) {
         if (bucket.count >= options.max) {
             const retryAfterSeconds = Math.ceil((bucket.resetAt - now) / 1000);
             res.setHeader('Retry-After', retryAfterSeconds.toString());
-            const error = options.message ?? 'Too many requests';
-            return res.status(429).json(options.code ? { error, code: options.code } : { error });
+            return res.status(429).json({
+                error: options.message ?? 'Too many requests',
+                code: options.code ?? 'rate_limited',
+                retryAfter: retryAfterSeconds,
+            });
         }
 
         bucket.count += 1;

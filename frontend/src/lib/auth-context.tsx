@@ -1,6 +1,8 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { ApiError, errorMessage, readApiError } from "./api-errors";
 
 type AuthUser = {
   id: string;
@@ -21,8 +23,13 @@ type AuthContextValue = {
   user: AuthUser | null;
   loading: boolean;
   login: (input: { email: string; password: string }) => Promise<void>;
-  register: (input: { email: string; password: string; name?: string | null }) => Promise<void>;
-  logout: () => Promise<void>;
+  /**
+   * "ambiguous" when the email already had an account: the server does not say
+   * so outright, and nobody was signed in.
+   */
+  register: (input: { email: string; password: string; name?: string | null }) => Promise<"created" | "ambiguous">;
+  /** Resolves to whether the server signed the person out; on false a notice explains why. */
+  logout: () => Promise<boolean>;
   /** Renews the access token from the refresh cookie; resolves to whether it worked. */
   refreshSession: () => Promise<boolean>;
 };
@@ -31,8 +38,6 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 type ApiResponse = {
   user?: AuthUser;
-  error?: string;
-  detail?: string;
 };
 
 async function parseResponse(res: Response): Promise<ApiResponse> {
@@ -84,18 +89,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const SESSION_CHECK_INTERVAL_MS = 60 * 1000;
 
+  // Only an answer that the session is gone signs the person out. A dropped
+  // connection, a rate limit or a deploy in progress keeps them signed in, so
+  // a half-filled search is not thrown away by a redirect to /login.
   const refreshSession = useCallback(async () => {
     try {
       const res = await fetch(`${API_URL}/auth/refresh`, buildInit({ method: "POST" }));
       const payload = await parseResponse(res);
-      if (!res.ok || !payload.user) {
-        setUser(null);
-        return false;
+      if (res.ok && payload.user) {
+        setUser(payload.user);
+        return true;
       }
-      setUser(payload.user);
-      return true;
+      if (res.status === 401 || res.status === 403) setUser(null);
+      return false;
     } catch (e) {
-      setUser(null);
+      console.error("[auth] refresh failed", e);
       return false;
     }
   }, []);
@@ -114,9 +122,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await refreshSession();
         return;
       }
-      setUser(null);
+      console.error("[auth] session check failed", res.status);
     } catch (e) {
-      setUser(null);
+      console.error("[auth] session check failed", e);
     }
   }, [refreshSession]);
 
@@ -138,44 +146,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const interval = setInterval(() => {
-      fetchSession().catch((error) => {
-        console.error("[auth] session refresh failed", error);
-        setUser(null);
-      });
+      fetchSession().catch((error) => console.error("[auth] session refresh failed", error));
     }, SESSION_CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [user, fetchSession]);
 
   const login = useCallback(async (input: { email: string; password: string }) => {
     const res = await fetch(`${API_URL}/auth/login`, buildInit({ method: "POST", body: JSON.stringify(input) }));
+    if (!res.ok) throw await readApiError(res);
     const payload = await parseResponse(res);
-    if (!res.ok || !payload.user) {
-      throw new Error(payload.error ?? payload.detail ?? "login-failed");
-    }
+    if (!payload.user) throw new ApiError("bad_response", { status: res.status });
     setUser(payload.user);
   }, []);
 
   const register = useCallback(
     async (input: { email: string; password: string; name?: string | null }) => {
       const res = await fetch(`${API_URL}/auth/signup`, buildInit({ method: "POST", body: JSON.stringify(input) }));
+      if (!res.ok) throw await readApiError(res);
       const payload = await parseResponse(res);
-      if (!res.ok) {
-        throw new Error(payload.error ?? payload.detail ?? "register-failed");
-      }
-      if (payload.user) {
-        setUser(payload.user);
-      }
+      if (!payload.user) return "ambiguous";
+      setUser(payload.user);
+      return "created";
     },
     []
   );
 
+  const [logoutFailure, setLogoutFailure] = useState<unknown>(null);
+
+  // The session cookies are httpOnly, so only the server can clear them.
+  // Showing the person as signed out before it has would sign them back in on
+  // the next page load, on what may be a shared computer.
   const logout = useCallback(async () => {
-    try {
-      await fetch(`${API_URL}/auth/logout`, buildInit({ method: "POST" }));
-    } catch (e) {
-      // Ignore logout errors
+    setLogoutFailure(null);
+    let failure: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 700 * attempt));
+      try {
+        const res = await fetch(`${API_URL}/auth/logout`, buildInit({ method: "POST" }));
+        if (res.ok) {
+          setUser(null);
+          return true;
+        }
+        failure = await readApiError(res);
+        if (res.status < 500) break;
+      } catch (error) {
+        failure = error;
+      }
     }
-    setUser(null);
+    console.error("[auth] logout failed", failure);
+    setLogoutFailure(failure);
+    return false;
   }, []);
 
   const value = useMemo(
@@ -183,7 +203,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [user, loading, login, register, logout, refreshSession]
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      {logoutFailure !== null && (
+        <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-lg shadow-lg">
+          <ErrorNotice
+            message={`No pudimos cerrar tu sesión: seguís conectado en este dispositivo. ${errorMessage(logoutFailure)}`}
+            onRetry={() => void logout()}
+            retryLabel="Cerrar sesión de nuevo"
+          />
+        </div>
+      )}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth(): AuthContextValue {

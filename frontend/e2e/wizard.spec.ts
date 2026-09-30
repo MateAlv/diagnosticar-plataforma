@@ -219,8 +219,9 @@ test("an HPO gateway outage shows a message instead of a blank screen", async ({
     await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
     await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
 
-    await expect(page.getByText(/extraction-failed|No pudimos analizar el texto/i)).toBeVisible();
-    await expect(page.locator("main")).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "No pudimos analizar el texto" })).toBeVisible();
+    await expect(page.getByText(/buscador/).first()).toBeVisible();
+    await expect(page.getByText("extraction-failed")).toHaveCount(0);
 });
 
 test("a GenPhenAI outage surfaces an error and keeps the entered symptoms", async ({ page }) => {
@@ -233,9 +234,27 @@ test("a GenPhenAI outage surfaces an error and keeps the entered symptoms", asyn
     await page.getByRole("button", { name: /Revisar y continuar/ }).click();
     await page.getByRole("button", { name: /Buscar genes candidatos/ }).click();
 
-    await expect(page.getByText(/genphenia-inference-unreachable|No pudimos consultar GenPhenIA/i)).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: /se está iniciando/ })).toBeVisible();
+    await expect(page.getByText("genphenia-inference-unreachable")).toHaveCount(0);
     // The user's work must survive the failure.
     await expect(page.getByText("Infecciones respiratorias recurrentes")).toBeVisible();
+});
+
+test("a structured model error is explained, never shown as [object Object]", async ({ page }) => {
+    await mockModelServices(page, {
+        rankStatus: 422,
+        rankBody: { detail: { error: "no-known-hpo-ids", unknown_hpo_ids: ["HP:0002205"] } },
+    });
+    await openDemoWizard(page);
+
+    await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
+    await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
+    await expect(page.getByText("Infecciones respiratorias recurrentes")).toBeVisible();
+    await page.getByRole("button", { name: /Revisar y continuar/ }).click();
+    await page.getByRole("button", { name: /Buscar genes candidatos/ }).click();
+
+    await expect(page.getByRole("alert").filter({ hasText: /Ninguno de los síntomas cargados/ })).toBeVisible();
+    await expect(page.getByText(/object Object|no-known-hpo-ids/)).toHaveCount(0);
 });
 
 test("the clinical history box enforces the gateway's 10k character limit", async ({ page }) => {

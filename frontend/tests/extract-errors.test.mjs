@@ -39,10 +39,19 @@ test('a 429 without a named limit keeps the short message', () => {
 test('session, busy and unknown failures', () => {
   assert.match(mensajeErrorExtraccion(401, {}), /sesión expiró/);
   assert.match(mensajeErrorExtraccion(503, {}), /ocupado/);
-  assert.equal(mensajeErrorExtraccion(500, { detail: 'extraction-failed' }), 'extraction-failed');
-  assert.equal(mensajeErrorExtraccion(500, null), 'No pudimos analizar el texto.');
-  // A structured detail must never reach the screen as "[object Object]".
-  assert.equal(mensajeErrorExtraccion(422, { detail: [{ loc: ['body'] }] }), 'No pudimos analizar el texto.');
+  assert.match(mensajeErrorExtraccion(403, {}), /sesión expiró/);
+  // The server's own wording never reaches the screen, nor "[object Object]".
+  for (const [status, payload] of [
+    [500, { detail: 'extraction-failed' }],
+    [500, { detail: 'Authentication is misconfigured' }],
+    [500, null],
+    [422, { detail: [{ loc: ['body'] }] }],
+  ]) {
+    const text = mensajeErrorExtraccion(status, payload);
+    assert.match(text, /^No pudimos analizar el texto\./);
+    assert.match(text, /buscador/);
+    assert.doesNotMatch(text, /extraction|Authentication|object/);
+  }
 });
 
 test('waits read as a person would say them', () => {

@@ -143,7 +143,7 @@ function readCookie(name: string): string | null {
 export async function fetchGeneProfiles(
     symbols: string[],
     reportedHpoIds: string[] = [],
-    options: { professional?: boolean; signal?: AbortSignal } = {},
+    options: { professional?: boolean; signal?: AbortSignal; onFailure?: (error: unknown) => void } = {},
 ): Promise<Map<string, GeneProfile>> {
     const profiles = new Map<string, GeneProfile>();
     if (symbols.length === 0) return profiles;
@@ -164,15 +164,19 @@ export async function fetchGeneProfiles(
                 view: options.professional ? "professional" : undefined,
             }),
         });
-        if (!res.ok) return profiles;
+        if (!res.ok) {
+            options.onFailure?.(res.status);
+            return profiles;
+        }
 
         const body = (await res.json()) as { profiles?: Record<string, GeneProfile> };
         for (const profile of Object.values(body.profiles ?? {})) {
             profiles.set(profile.simbolo.toUpperCase(), profile);
         }
-    } catch {
+    } catch (error) {
         // Descriptions enrich the ranking and never gate it, so a failure here
         // leaves every gene on screen without prose.
+        if ((error as Error)?.name !== "AbortError") options.onFailure?.(error);
     }
     return profiles;
 }

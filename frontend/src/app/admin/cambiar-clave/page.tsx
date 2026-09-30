@@ -3,13 +3,15 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { adminApi } from "../admin-api";
+import { useAuth } from "@/lib/auth-context";
+import { adminApi, adminErrorMessage } from "../admin-api";
 import { Banner, Button, Field } from "../ui";
 
 const MIN_LENGTH = 12;
 
 export default function ChangePasswordPage() {
     const router = useRouter();
+    const { logout } = useAuth();
     const [currentPassword, setCurrentPassword] = useState("");
     const [newPassword, setNewPassword] = useState("");
     const [confirmation, setConfirmation] = useState("");
@@ -35,9 +37,10 @@ export default function ChangePasswordPage() {
             setDone(true);
             // The change invalidated every session, including this one, so the
             // only sensible next step is signing in again.
-            setTimeout(() => router.replace("/login"), 2200);
+            // Clearing the stale user too, or /login would bounce straight back.
+            setTimeout(() => void logout().finally(() => router.replace("/login")), 2200);
         } catch (e) {
-            setError((e as Error).message);
+            setError(adminErrorMessage(e, "change_password"));
         } finally {
             setBusy(false);
         }

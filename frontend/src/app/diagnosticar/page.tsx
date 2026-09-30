@@ -5,7 +5,11 @@ import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
-import { traducirEspecialidad } from "../../lib/especialidades";
+import { ConsultaGenetica } from "../../components/ui/ConsultaGenetica";
+import { ErrorNotice } from "../../components/ui/ErrorNotice";
+import { errorMessage, isSessionError, jsonOrThrow } from "../../lib/api-errors";
+import { RESULTS_DISCLAIMER } from "../../lib/disclaimer";
+import { especialidadesParaConsultar } from "../../lib/especialidades";
 
 type TabId = "overview" | "integrantes";
 
@@ -121,13 +125,18 @@ function writtenHistory(raw: unknown): string {
   return text === LEGACY_EMPTY_HISTORY ? "" : text;
 }
 
+/** The specialties to consult, in Spanish, or what to say when there are none. */
+function orientacion(topSpecialties: string[]): string {
+  const especialidades = especialidadesParaConsultar(topSpecialties);
+  return especialidades.length > 0
+    ? `Te sugerimos consultar con: ${especialidades.join(", ")}.`
+    : "Con estos síntomas no pudimos sugerir una especialidad en particular.";
+}
+
 function apiPatientToMember(p: ApiPatient): Member {
   const diag = p.latest_diagnosis;
   const topSpecialties = diag?.genphen_specialties?.top_specialties ?? [];
-  const diagnostico =
-    topSpecialties.length > 0
-      ? `Te sugerimos consultar con: ${topSpecialties.map(traducirEspecialidad).join(", ")}.`
-      : "Sin orientación diagnóstica disponible.";
+  const diagnostico = orientacion(topSpecialties);
   const savedAt = diag?.created_at ?? p.created_at;
   const historiaClinica = writtenHistory(diag?.historia_clinica);
   return {
@@ -146,10 +155,7 @@ function apiPatientToMember(p: ApiPatient): Member {
 }
 
 function savedToMember(record: SavedDiagnostic): Member {
-  const diag =
-    record.topSpecialties.length > 0
-      ? `Te sugerimos consultar con: ${record.topSpecialties.map(traducirEspecialidad).join(", ")}.`
-      : "Sin orientación diagnóstica disponible.";
+  const diag = orientacion(record.topSpecialties);
 
   return {
     id: record.id,
@@ -178,7 +184,10 @@ function DiagnosticarContent() {
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const router = useRouter();
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, refreshSession } = useAuth();
+  const [listState, setListState] = useState<"loading" | "ready" | "failed">("loading");
+  const [listError, setListError] = useState<unknown>(null);
+  const [listAttempt, setListAttempt] = useState(0);
 
   // Load saved diagnostics — from backend when authenticated, localStorage as fallback
   useEffect(() => {
@@ -191,16 +200,30 @@ function DiagnosticarContent() {
       }
     };
 
-    fetch(`${BACKEND_API_URL}/patients`, { credentials: "include" })
-      .then((r) => {
-        if (!r.ok) throw new Error("fetch failed");
-        return r.json();
+    let cancelled = false;
+    const fetchPatients = () =>
+      fetch(`${BACKEND_API_URL}/patients`, { credentials: "include" }).then((r) => jsonOrThrow<ApiPatient[]>(r));
+
+    setListState("loading");
+    setListError(null);
+    fetchPatients()
+      // An access token that lapsed while the tab slept is renewed once, not
+      // reported as a failure.
+      .catch(async (error) => {
+        if (isSessionError(error) && (await refreshSession())) return fetchPatients();
+        throw error;
       })
-      .then((data: ApiPatient[]) => {
+      .then((data) => {
+        if (cancelled) return;
         applyMembers(data.map(apiPatientToMember));
+        setListState("ready");
       })
-      .catch(() => {
-        // Fallback: read from localStorage
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("[diagnosticar] patients failed", error);
+        setListError(error);
+        setListState("failed");
+        // Searches kept on this device when saving to the account failed.
         try {
           const raw = localStorage.getItem(LS_KEY);
           const records: SavedDiagnostic[] = raw ? JSON.parse(raw) : [];
@@ -209,7 +232,11 @@ function DiagnosticarContent() {
           // ignore corrupted data
         }
       });
-  }, [user]);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a renewed session must not refetch
+  }, [user?.id, listAttempt]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -237,8 +264,7 @@ function DiagnosticarContent() {
   const displayName = user.name?.trim() || user.email;
 
   const handleLogout = async () => {
-    await logout();
-    router.replace("/login");
+    if (await logout()) router.replace("/login");
   };
 
   const handleSelectMember = (member: Member) => {
@@ -333,7 +359,7 @@ function DiagnosticarContent() {
                 onClick={() => router.push("/nuevo")}
                 className="relative rounded-full px-6 py-2.5 text-sm font-semibold transition-all duration-200 text-white bg-[var(--lu-accent)] hover:bg-[color-mix(in_oklab,var(--lu-accent)_90%,#000)] shadow-md hover:shadow-lg"
               >
-                Nuevo Diagnóstico +
+                Nueva búsqueda +
               </button>
             </div>
 
@@ -347,7 +373,7 @@ function DiagnosticarContent() {
                       </h2>
                       <p className="text-[var(--lu-subtle)] text-base leading-relaxed">
                         Diagnostic.ar reúne historias clínicas, síntomas y modelos predictivos para que equipos de salud y
-                        personas que buscan respuestas interpreten su cuadro con la guía de GenPhenIA.
+                        personas que buscan respuestas interpreten su cuadro con la guía del modelo de Diagnostic.ar.
                       </p>
                     </div>
                   </div>
@@ -362,7 +388,7 @@ function DiagnosticarContent() {
                     <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
                       <h3 className="text-lg font-bold mb-2 text-[var(--lu-text)]">Conversación inteligente</h3>
                       <p className="text-[var(--lu-subtle)] text-sm leading-relaxed">
-                        GenPhenIA guía preguntas de seguimiento para capturar síntomas clave y dejar un registro claro para profesionales y pacientes.
+                        Diagnostic.ar guía preguntas de seguimiento para capturar síntomas clave y dejar un registro claro para profesionales y pacientes.
                       </p>
                     </div>
                     <div className="rounded-3xl border border-[var(--lu-border)] bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
@@ -377,7 +403,21 @@ function DiagnosticarContent() {
 
               {activeTab === "integrantes" && (
                 <>
-                  {!hasMembers ? (
+                  {listState === "failed" && (
+                    <ErrorNotice
+                      className="mb-6"
+                      error={listError}
+                      message={`No pudimos cargar tus búsquedas guardadas. ${errorMessage(listError, "patients_list")}${
+                        hasMembers ? " Mientras tanto, abajo ves las que quedaron guardadas en este dispositivo." : ""
+                      }`}
+                      onRetry={() => setListAttempt((n) => n + 1)}
+                    />
+                  )}
+                  {listState === "loading" && !hasMembers ? (
+                    <p role="status" className="py-20 text-center text-sm text-[var(--lu-subtle)]">
+                      Cargando tus búsquedas…
+                    </p>
+                  ) : listState === "failed" && !hasMembers ? null : !hasMembers ? (
                     /* ── Empty state ── */
                     <div className="flex flex-col items-center justify-center py-20 text-center">
                       <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-[var(--lu-surface)] border border-[var(--lu-border)]">
@@ -446,7 +486,7 @@ function DiagnosticarContent() {
                             <h2 className="mt-2 text-2xl font-bold text-[var(--lu-text)]">{activeMember.nombre}</h2>
                           </div>
                           <div className="rounded-full border border-[var(--lu-border)] bg-[var(--lu-surface)] px-4 py-2 text-xs font-medium text-[var(--lu-subtle)]">
-                            Diagnóstico automático
+                            Resultado orientativo
                           </div>
                         </div>
 
@@ -496,7 +536,7 @@ function DiagnosticarContent() {
                             <p className="mb-2 text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Síntomas reportados</p>
                             <ul className="flex min-w-0 flex-wrap gap-2">
                               {activeMember.sintomas.length === 0 ? (
-                                <li className="text-xs text-[var(--lu-subtle)]">No hay síntomas cargados para este diagnóstico.</li>
+                                <li className="text-xs text-[var(--lu-subtle)]">No hay síntomas cargados para esta búsqueda.</li>
                               ) : activeMember.sintomas.map((symptom) => (
                                 <li key={symptom.id} className="flex items-center gap-2 rounded-full border border-[var(--lu-border)] bg-[var(--lu-surface)] px-3 py-1 text-xs text-[var(--lu-text)]">
                                   <span className="font-semibold">{symptom.label}</span>
@@ -507,10 +547,12 @@ function DiagnosticarContent() {
                           </div>
 
                           <div>
-                            <p className="mb-2 text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Orientación diagnóstica</p>
+                            <p className="mb-2 text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Especialidades sugeridas</p>
                             <p className="rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-4 text-sm leading-relaxed text-[var(--lu-text)] break-words">
                               {activeMember.diagnostico}
                             </p>
+                            <ConsultaGenetica className="mt-3" />
+                            <p className="mt-3 text-xs leading-relaxed text-[var(--lu-subtle)]">{RESULTS_DISCLAIMER}</p>
                             <div className="mt-4 flex flex-wrap gap-3">
                               <button
                                 type="button"
@@ -518,7 +560,7 @@ function DiagnosticarContent() {
                                 onClick={jumpToSymptomStep}
                                 disabled={!activeMember.latestDiagnosisId}
                               >
-                                Regenerar diagnóstico
+                                Volver a buscar
                               </button>
                             </div>
                           </div>

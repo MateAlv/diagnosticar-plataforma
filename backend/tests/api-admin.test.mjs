@@ -208,7 +208,9 @@ test('an invited admin can do nothing but change their password', options, async
         currentPassword: 'not-the-temporary-one',
         newPassword: 'a-sufficiently-long-new-password',
     });
-    assert.equal(wrong.status, 401);
+    // 400, not 401: the session is valid, and a 401 would read as signed out.
+    assert.equal(wrong.status, 400);
+    assert.equal(wrong.json.code, 'invalid_current_password');
 
     // A short new password is refused: these accounts administer the platform.
     const tooShort = await invited.post('/api/auth/change-password', {

@@ -27,7 +27,7 @@ function detalle(payload: unknown): { error?: string; retry_after?: number } {
 }
 
 export function mensajeErrorExtraccion(status: number, payload: unknown): string {
-  if (status === 401) {
+  if (status === 401 || status === 403) {
     return "Tu sesión expiró. Volvé a iniciar sesión para analizar el texto.";
   }
   if (status === 429) {
@@ -45,8 +45,5 @@ export function mensajeErrorExtraccion(status: number, payload: unknown): string
   if (status === 503) {
     return "El servicio está ocupado en este momento. Probá de nuevo en unos segundos.";
   }
-  const cuerpo = (payload ?? {}) as { detail?: unknown; error?: unknown };
-  if (typeof cuerpo.detail === "string") return cuerpo.detail;
-  if (typeof cuerpo.error === "string") return cuerpo.error;
-  return "No pudimos analizar el texto.";
+  return `No pudimos analizar el texto. Probá de nuevo en unos minutos. ${BUSCADOR}`;
 }

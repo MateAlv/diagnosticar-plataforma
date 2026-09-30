@@ -12,6 +12,7 @@ import hpoRouter from './routes/hpo.js';
 import questionsRouter from './routes/questions.js';
 import { enforceCsrf, enforceOrigin } from './middleware/csrfMiddleware.js';
 import { globalRateLimit } from './middleware/rateLimit.js';
+import { internalError, sendError } from './utils/httpErrors.js';
 
 /**
  * Builds the Express app without binding a port or touching the network.
@@ -70,6 +71,12 @@ export function createApp() {
         }
     });
 
+    // Express's default 404 is an HTML page; the browser expects JSON from
+    // anything under /api.
+    app.use('/api', (req, res) => {
+        sendError(res, 404, 'not_found', 'Not found');
+    });
+
     // Terminal error handler. Without this Express prints the stack trace into
     // the response body in non-production, which would leak internals — and this
     // app holds clinical data, so bodies stay opaque in every environment.
@@ -78,16 +85,22 @@ export function createApp() {
             return next(err);
         }
         if (err?.message === 'Not allowed by CORS') {
-            return res.status(403).json({ error: 'Invalid origin' });
+            return sendError(res, 403, 'invalid_origin', 'Invalid origin');
         }
-        if ((err as { type?: string }).type === 'entity.too.large') {
-            return res.status(413).json({ error: 'Payload too large' });
+        const { type, status, expose } = err as { type?: string; status?: number; expose?: boolean };
+        if (type === 'entity.too.large') {
+            return sendError(res, 413, 'payload_too_large', 'Payload too large');
         }
         if (err instanceof SyntaxError && 'body' in err) {
-            return res.status(400).json({ error: 'Invalid JSON' });
+            return sendError(res, 400, 'invalid_json', 'Invalid JSON');
+        }
+        // body-parser's other client errors (unsupported charset, aborted
+        // request) carry their own 4xx; answering 500 would blame the server.
+        if (expose && typeof status === 'number' && status >= 400 && status < 500) {
+            return sendError(res, status, 'bad_request', 'Bad request');
         }
         console.error('[unhandled]', err?.message);
-        return res.status(500).json({ error: 'Internal server error' });
+        return internalError(res);
     });
 
     return app;

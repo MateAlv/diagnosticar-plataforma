@@ -8,7 +8,7 @@ import { mockBackend, collectPageErrors, waitForImagesDecoded } from "./fixtures
  * collapses on a phone.
  */
 
-const PUBLIC_PAGES = ["/home", "/login", "/sign-up"];
+const PUBLIC_PAGES = ["/home", "/login", "/sign-up", "/terminos"];
 
 test.beforeEach(async ({ page }) => {
     await mockBackend(page);
@@ -152,4 +152,75 @@ test("the demo route redirects into the wizard in demo mode", async ({ page }) =
     await page.goto("/demo");
     await page.waitForURL(/\/nuevo\?demo=1/);
     expect(page.url()).toContain("demo=1");
+});
+
+test("an unknown address gets our own 404 page, in Spanish", async ({ page }) => {
+    const response = await page.goto("/esta-pagina-no-existe");
+    expect(response?.status()).toBe(404);
+    await expect(page.getByRole("heading", { name: "No encontramos esta página" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Volver al inicio" })).toBeVisible();
+    await expect(page.getByText(/could not be found/i)).toHaveCount(0);
+});
+
+test("a failed Google sign-in is explained on the login page", async ({ page }) => {
+    await page.goto("/login?error=google_auth_failed", { waitUntil: "networkidle" });
+    await expect(page.getByRole("alert").filter({ hasText: "No pudimos completar el ingreso con Google" })).toBeVisible();
+});
+
+test("a wrong password says so, in Spanish", async ({ page }) => {
+    await page.route("**/api/auth/login", (route) =>
+        route.fulfill({
+            status: 401,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "Invalid credentials", code: "invalid_credentials" }),
+        }),
+    );
+    await page.goto("/login", { waitUntil: "networkidle" });
+    await page.locator('input[type="email"]').fill("familia@example.test");
+    await page.locator('input[type="password"]').first().fill("una-clave-cualquiera");
+    await page.getByRole("button", { name: "Ingresar" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "El email o la contraseña no son correctos." })).toBeVisible();
+    await expect(page.getByText("Invalid credentials")).toHaveCount(0);
+});
+
+test("a failed patient list is reported with a retry, not shown as empty", async ({ page }) => {
+    await mockBackend(page, { user: { id: "66666666-6666-4666-8666-666666666666", email: "familia@example.test" } });
+    let calls = 0;
+    await page.route("**/api/patients", (route) => {
+        calls += 1;
+        return calls === 1
+            ? route.fulfill({ status: 502, contentType: "text/html", body: "<html>Bad Gateway</html>" })
+            : route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+    await page.goto("/diagnosticar?tab=integrantes", { waitUntil: "networkidle" });
+
+    const alert = page.getByRole("alert").filter({ hasText: "No pudimos cargar tus búsquedas guardadas" });
+    await expect(alert).toBeVisible();
+    await expect(page.getByText(/Todavía no tenés/)).toHaveCount(0);
+    await expect(page.getByText(/Bad Gateway/)).toHaveCount(0);
+
+    await alert.getByRole("button", { name: "Probar de nuevo" }).click();
+    await expect(alert).toHaveCount(0);
+    await expect(page.getByText(/Todavía no tenés/)).toBeVisible();
+});
+
+test("a logout the server did not confirm keeps the session and says so", async ({ page }) => {
+    await mockBackend(page, { user: { id: "66666666-6666-4666-8666-666666666666", email: "familia@example.test" } });
+    await page.route("**/api/auth/logout", (route) => route.abort("failed"));
+    await page.goto("/diagnosticar", { waitUntil: "networkidle" });
+
+    await page.getByRole("button", { name: "Cerrar sesión" }).click();
+    const notice = page.getByRole("alert").filter({ hasText: "No pudimos cerrar tu sesión" });
+    await expect(notice).toBeVisible({ timeout: 10_000 });
+    expect(new URL(page.url()).pathname).toBe("/diagnosticar");
+
+    await page.unroute("**/api/auth/logout");
+    await page.route("**/api/auth/logout", (route) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: '{"message":"Logged out"}' }),
+    );
+    await page.route("**/api/auth/me", (route) =>
+        route.fulfill({ status: 401, contentType: "application/json", body: '{"code":"unauthenticated"}' }),
+    );
+    await notice.getByRole("button", { name: "Cerrar sesión de nuevo" }).click();
+    await page.waitForURL(/\/login/);
 });

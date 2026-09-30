@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { adminApi, Insights } from "../admin-api";
+import { adminApi, adminErrorMessage, Insights } from "../admin-api";
 import { Histogram, RankedBars } from "../charts";
 import { Banner, Card, CardHeader, Eyebrow, Skeleton } from "../ui";
 
@@ -14,7 +14,7 @@ export default function AdminUsagePage() {
         adminApi
             .insights()
             .then((d) => !cancelled && setData(d))
-            .catch((e) => !cancelled && setError((e as Error).message));
+            .catch((e) => !cancelled && setError(adminErrorMessage(e)));
         return () => {
             cancelled = true;
         };

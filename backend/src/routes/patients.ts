@@ -19,6 +19,7 @@ import {
     getDiagnosisById,
 } from '../repositories/diagnosisRepository.js';
 import { stripNullBytes } from '../utils/sanitize.js';
+import { internalError, sendError } from '../utils/httpErrors.js';
 
 const router = Router();
 
@@ -38,7 +39,7 @@ const uuidSchema = z.string().uuid();
  */
 function rejectNonUuid(req: Request, res: Response, next: NextFunction, value: string) {
     if (!uuidSchema.safeParse(value).success) {
-        return res.status(404).json({ error: 'Not found' });
+        return sendError(res, 404, 'not_found', 'Not found');
     }
     return next();
 }
@@ -93,7 +94,7 @@ router.post(
     async (req: AuthRequest, res: Response) => {
         const parsed = createPatientSchema.safeParse(req.body);
         if (!parsed.success) {
-            return res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+            return sendError(res, 400, 'invalid_request', 'Invalid request');
         }
 
         // The HPO/GenPhenAI arrays land in jsonb, which rejects NUL as hard as
@@ -119,7 +120,7 @@ router.post(
             return res.status(201).json(result);
         } catch (err) {
             console.error('POST /api/patients error:', err);
-            return res.status(500).json({ error: 'Failed to save patient' });
+            return internalError(res);
         }
     },
 );
@@ -134,7 +135,7 @@ router.post(
     async (req: AuthRequest, res: Response) => {
         const parsed = createDiagnosisSchema.safeParse(req.body);
         if (!parsed.success) {
-            return res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+            return sendError(res, 400, 'invalid_request', 'Invalid request');
         }
 
         const userId = req.userRecord!.id;
@@ -145,7 +146,7 @@ router.post(
         try {
             const patient = await getPatientById(req.params.id, userId);
             if (!patient) {
-                return res.status(404).json({ error: 'Not found' });
+                return sendError(res, 404, 'not_found', 'Not found');
             }
 
             const {
@@ -176,7 +177,7 @@ router.post(
             return res.status(201).json(result);
         } catch (err) {
             console.error('POST /api/patients/:id/diagnoses error:', err);
-            return res.status(500).json({ error: 'Failed to save diagnosis' });
+            return internalError(res);
         }
     },
 );
@@ -194,7 +195,7 @@ router.get(
             return res.json(patients);
         } catch (err) {
             console.error('GET /api/patients error:', err);
-            return res.status(500).json({ error: 'Failed to fetch patients' });
+            return internalError(res);
         }
     },
 );
@@ -209,11 +210,11 @@ router.get(
     async (req: AuthRequest, res: Response) => {
         try {
             const patient = await getPatientById(req.params.id, req.userRecord!.id);
-            if (!patient) return res.status(404).json({ error: 'Not found' });
+            if (!patient) return sendError(res, 404, 'not_found', 'Not found');
             return res.json(patient);
         } catch (err) {
             console.error('GET /api/patients/:id error:', err);
-            return res.status(500).json({ error: 'Failed to fetch patient' });
+            return internalError(res);
         }
     },
 );
@@ -228,11 +229,11 @@ router.delete(
     async (req: AuthRequest, res: Response) => {
         try {
             const deleted = await deletePatient(req.params.id, req.userRecord!.id);
-            if (!deleted) return res.status(404).json({ error: 'Not found' });
+            if (!deleted) return sendError(res, 404, 'not_found', 'Not found');
             return res.status(204).send();
         } catch (err) {
             console.error('DELETE /api/patients/:id error:', err);
-            return res.status(500).json({ error: 'Failed to delete patient' });
+            return internalError(res);
         }
     },
 );
@@ -251,16 +252,16 @@ router.get(
             patient = await getPatientById(req.params.id, req.userRecord!.id);
         } catch (err) {
             console.error('GET /api/patients/:id/diagnoses ownership check error:', err);
-            return res.status(500).json({ error: 'Failed to fetch diagnoses' });
+            return internalError(res);
         }
-        if (!patient) return res.status(404).json({ error: 'Not found' });
+        if (!patient) return sendError(res, 404, 'not_found', 'Not found');
 
         try {
             const diagnoses = await getDiagnosesByPatient(req.params.id, req.userRecord!.id);
             return res.json(diagnoses);
         } catch (err) {
             console.error('GET /api/patients/:id/diagnoses error:', err);
-            return res.status(500).json({ error: 'Failed to fetch diagnoses' });
+            return internalError(res);
         }
     },
 );
@@ -276,12 +277,12 @@ router.get(
         try {
             const diagnosis = await getDiagnosisById(req.params.diagId, req.userRecord!.id);
             if (!diagnosis || diagnosis.patient_id !== req.params.id) {
-                return res.status(404).json({ error: 'Not found' });
+                return sendError(res, 404, 'not_found', 'Not found');
             }
             return res.json(diagnosis);
         } catch (err) {
             console.error('GET /api/patients/:id/diagnoses/:diagId error:', err);
-            return res.status(500).json({ error: 'Failed to fetch diagnosis' });
+            return internalError(res);
         }
     },
 );
