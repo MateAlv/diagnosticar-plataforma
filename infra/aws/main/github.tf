@@ -30,8 +30,17 @@ locals {
   github_oidc_arn = var.create_github_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.github[0].arn
 
   # Only main of these repositories: a branch, a fork or a pull request gets
-  # nothing.
-  github_subjects = [for repo in var.github_repos : "repo:${var.github_owner}/${repo}:ref:refs/heads/main"]
+  # nothing. GitHub sends the subject in one of two forms, chosen per
+  # repository: by name (repo:MateAlv/diagnostic.ar:…), or with the numeric
+  # ids that survive a rename (repo:MateAlv@92270678/diagnostic.ar@1103969821:…).
+  # On 2026-10-02 diagnostic.ar and spanish-symptoms-recognizer sent the
+  # second and diagnostic.ar-api the first, so both are accepted. The ids pin
+  # the exact account and repositories, so a renamed or recreated repository
+  # with the same name does not inherit the role.
+  github_subjects = flatten([for repo in var.github_repos : [
+    "repo:${var.github_owner}/${repo}:ref:refs/heads/main",
+    "repo:${var.github_owner}@${var.github_owner_id}/${repo}@${var.github_repo_ids[repo]}:ref:refs/heads/main",
+  ]])
 
   # The tags a run moves; the instance reads them as BACKEND_TAG etc.
   image_tag_params = ["BACKEND_TAG", "FRONTEND_TAG", "RECOGNIZER_TAG", "MODEL_TAG"]

@@ -87,6 +87,22 @@ variable "github_repos" {
   default     = ["diagnostic.ar", "diagnostic.ar-api", "spanish-symptoms-recognizer"]
 }
 
+variable "github_owner_id" {
+  description = "Numeric id of github_owner (gh api users/<owner> -q .id), for GitHub's immutable OIDC subject."
+  type        = string
+  default     = "92270678"
+}
+
+variable "github_repo_ids" {
+  description = "Numeric id of each of github_repos (gh api repos/<owner>/<repo> -q .id), for GitHub's immutable OIDC subject."
+  type        = map(string)
+  default = {
+    "diagnostic.ar"               = "1103969821"
+    "diagnostic.ar-api"           = "1130640594"
+    "spanish-symptoms-recognizer" = "1386307968"
+  }
+}
+
 variable "create_github_oidc_provider" {
   description = "False when the account already has GitHub's OIDC provider (one per account)."
   type        = bool
