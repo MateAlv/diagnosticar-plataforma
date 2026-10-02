@@ -25,6 +25,46 @@ env:
 
 jobs:
   # --------------------------------------------------------------------------
+  # Whether the pull request touches anything the slow jobs test. A change
+  # only to documentation or to the AWS copy's Terraform (infra/aws/, which no
+  # job here exercises) skips the backend suite, E2E, the image builds and the
+  # stack smoke test: about 20 of a run's 22 billed minutes. The skipped jobs
+  # still report, as skipped, which satisfies the required checks.
+  # The weekly run looks for newly published vulnerabilities, which only the
+  # audit (Checks) and the image scans can find, so it skips the test suites.
+  # --------------------------------------------------------------------------
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+      tests: ${{ steps.diff.outputs.tests }}
+    steps:
+      - id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          code=true
+          if [ "$EVENT" = pull_request ]; then
+            files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" -q '.[].filename')
+            printf '%s\n' "$files"
+            # Anything outside these paths counts as code; workflow changes
+            # always do, since they change what CI itself runs.
+            if ! printf '%s\n' "$files" | grep -qvE '(\.md$|^docs/|^infra/aws/|^LICENSE$|^\.gitignore$)'; then
+              code=false
+            fi
+          fi
+          tests=$code
+          [ "$EVENT" = schedule ] && tests=false
+          echo "code=$code tests=$tests"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "tests=$tests" >> "$GITHUB_OUTPUT"
+
+  # --------------------------------------------------------------------------
   # Everything that takes seconds, in one job: lint and types, frontend unit
   # tests, dependency audit and secret scan. As six jobs each was billed a full
   # minute and repeated the checkout and install; together they take about as
@@ -117,6 +157,8 @@ jobs:
   # --------------------------------------------------------------------------
   backend-tests:
     name: Backend tests (Postgres)
+    needs: changes
+    if: needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -172,6 +214,8 @@ jobs:
   # --------------------------------------------------------------------------
   e2e:
     name: E2E (Playwright)
+    needs: changes
+    if: needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -212,8 +256,12 @@ jobs:
   # Container images: build both, then scan the filesystem of each for known
   # CVEs in OS packages and bundled node_modules.
   # --------------------------------------------------------------------------
+  # Gated per step rather than per job: a matrix job skipped as a whole
+  # reports a check without the matrix values in its name, which never matches
+  # the required "Build & scan images (frontend, …)" and blocks the merge.
   images:
     name: Build & scan images
+    needs: changes
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -224,11 +272,14 @@ jobs:
           - workspace: backend
             image: diagnosticar-backend
     steps:
-      - uses: actions/checkout@v4
+      - if: needs.changes.outputs.code == 'true'
+        uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
+      - if: needs.changes.outputs.code == 'true'
+        uses: docker/setup-buildx-action@v3
 
       - name: Build image
+        if: needs.changes.outputs.code == 'true'
         uses: docker/build-push-action@v6
         with:
           context: ./${{ matrix.workspace }}
@@ -244,6 +295,7 @@ jobs:
             NEXT_PUBLIC_GENPHENAI_URL=https://example.invalid/genphenai
 
       - name: Scan image for known vulnerabilities
+        if: needs.changes.outputs.code == 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ matrix.image }}:ci
@@ -254,6 +306,7 @@ jobs:
           vuln-type: os,library
 
       - name: Assert the image does not run as root
+        if: needs.changes.outputs.code == 'true'
         run: |
           user=$(docker image inspect ${{ matrix.image }}:ci --format '{{.Config.User}}')
           if [ -z "$user" ] || [ "$user" = "root" ] || [ "$user" = "0" ]; then
@@ -267,6 +320,8 @@ jobs:
   # --------------------------------------------------------------------------
   stack-smoke:
     name: Compose stack smoke test
+    needs: changes
+    if: needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

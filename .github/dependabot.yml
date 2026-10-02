@@ -11,8 +11,10 @@ version: 2
 # updates arrive once a month, one grouped PR per ecosystem, and are not
 # rebased on their own; "Update branch" does that once, right before merging.
 updates:
+  # Frontend and backend in one pull request: each pull request costs a full
+  # CI run (about 22 minutes), and on 2026-10-01 four npm PRs cost 100.
   - package-ecosystem: npm
-    directory: /frontend
+    directories: [/frontend, /backend]
     schedule:
       interval: monthly
       time: "06:00"
@@ -20,7 +22,7 @@ updates:
     open-pull-requests-limit: 2
     rebase-strategy: disabled
     groups:
-      frontend-minor-and-patch:
+      npm-minor-and-patch:
         update-types: [minor, patch]
     ignore:
       # Next major versions change build output and the standalone layout the
@@ -31,18 +33,9 @@ updates:
         update-types: [version-update:semver-major]
       - dependency-name: react-dom
         update-types: [version-update:semver-major]
-
-  - package-ecosystem: npm
-    directory: /backend
-    schedule:
-      interval: monthly
-      time: "06:00"
-      timezone: America/Argentina/Buenos_Aires
-    open-pull-requests-limit: 2
-    rebase-strategy: disabled
-    groups:
-      backend-minor-and-patch:
-        update-types: [minor, patch]
+      # The types follow the Node the images run (22), not the newest Node.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: docker
     directories: [/frontend, /backend]
