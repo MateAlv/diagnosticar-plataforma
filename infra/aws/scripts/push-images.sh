@@ -14,7 +14,8 @@
 #   hpo-recognizer      diagnostic.ar-api @ GATEWAY_COMMIT + spanish-symptoms-recognizer
 #                       @ RECOGNIZER_COMMIT, both from .github/recognizer.env
 #   model               diagnostic.ar-api @ GATEWAY_COMMIT, with the model release pinned
-#                       in its services/genphenai/model.lock (fetched with `gh`)
+#                       in its services/genphenai/model.lock (fetched with `gh`); the
+#                       extractor's HPO embeddings likewise, from embeddings.lock
 # The two sibling repositories are only fetched and read with `git archive`:
 # their working trees and branches are left as they are.
 #
@@ -140,6 +141,11 @@ fi
 if want hpo-recognizer; then
     log "hpo-recognizer (~30 min the first time)"
     extract "$RECOGNIZER_REPO" "$RECOGNIZER_COMMIT" "$WORK/recognizer"
+    # The HPO embeddings come ready made from diagnostic.ar-model, when the
+    # pinned API is one that reads them (services/api-gateway/embeddings.lock).
+    if [ -f "$WORK/api/services/api-gateway/embeddings.lock" ]; then
+        GITHUB_TOKEN=$(gh auth token) "$WORK/api/services/api-gateway/fetch_embeddings.sh"
+    fi
     docker build -t "$(image hpo-recognizer)" \
         -f "$WORK/api/services/api-gateway/Dockerfile.recognizer" \
         --build-context recognizer="$WORK/recognizer" \

@@ -131,6 +131,26 @@ Los workflows están **apagados** mientras no exista el secreto
 | Cambios en `infra/aws/stack/` (compose, Caddyfile) | Viajan por S3, no por imágenes | `terraform apply` + `scripts/remote.sh deploy` |
 | Secretos y la API key de Anthropic | Nunca pasan por GitHub | `infra/aws/scripts/make-secrets.sh` |
 | `genes.db` | No está en git | subir al bucket + `remote.sh deploy` |
+| Embeddings de HPO del extractor (cuando cambia ClinLinker, la lista HPO o el script generador) | Se generan una vez por versión, no en cada build | PR en `diagnostic.ar-model` que cambie `hpo-embeddings/embeddings.lock` y suba `VERSION`; al mergearlo se publica el release solo. En el mismo momento o después, PR en `diagnostic.ar-api` con el tag nuevo en `services/api-gateway/embeddings.lock` (el hash lo toma del release) |
+
+### Los embeddings de HPO
+
+El extractor compara lo que escribe la persona con un vector por cada uno de los
+19.932 términos HPO en castellano. Antes los recalculaba en cada build (11 de sus
+17 minutos en GitHub); ahora vienen hechos:
+
+- se generan **una vez por versión** en `diagnostic.ar-model`
+  (`hpo-embeddings/`), con el mismo entorno del extractor, y se publican como
+  release `hpo-embeddings-vX.Y.Z` (39 archivos de embeddings + la lista de términos
+  + un manifest con el origen y el hash de cada archivo, en un solo paquete);
+- **solo un merge que cambie `hpo-embeddings/embeddings.lock` los publica**, y una
+  versión ya publicada no se vuelve a generar;
+- todo build baja la versión fijada en `services/api-gateway/embeddings.lock`
+  (`services/api-gateway/fetch_embeddings.sh`), la verifica contra el hash que el
+  release publica junto al paquete, y **se niega a construir** si el paquete se
+  hizo con otro encoder, otra lista HPO u otro script generador que los que usa
+  ese build, o si algún archivo no coincide con su hash en el manifest: el modelo y
+  sus embeddings no pueden quedar desfasados.
 
 ## Decisiones y lo que cuestan
 
@@ -144,7 +164,7 @@ Los workflows están **apagados** mientras no exista el secreto
   minutos. Los hallazgos se ven en la consola de ECR.
 - **Minutos de GitHub Actions.** Se descuentan de la cuenta dueña de los
   repositorios. Aproximado por despliegue: `diagnostic.ar` 5–8 min; la API y el
-  reconocedor 15–30 min (el extractor es pesado; la caché de GitHub lo acorta).
+  reconocedor ~10–15 min (el extractor es pesado; ya no recalcula los embeddings de HPO).
   En septiembre de 2026 la cuenta agotó su cuota (ver `CI_CD.md`).
 - **Costo en AWS**: subir imágenes a ECR no cobra transferencia; se paga el
   almacenamiento (se guardan las últimas 3 versiones de cada imagen).
