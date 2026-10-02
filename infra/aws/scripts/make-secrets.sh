@@ -5,6 +5,8 @@
 #
 #   scripts/make-secrets.sh                 create whatever is missing
 #   scripts/make-secrets.sh --rotate NAME   replace one (see below)
+#   scripts/make-secrets.sh --set-claude-token    the subscription token, not echoed
+#                                                   (or: ... --set-claude-token < file)
 #   scripts/make-secrets.sh --set-anthropic-key   paste the key, not echoed
 #   scripts/make-secrets.sh --list          which exist (names only)
 #
@@ -61,7 +63,7 @@ generate() {  # generate NAME [--overwrite]
             put JWT_ACCESS_PRIVATE_KEY "$(printf '%s\n' "$private" | one_line)" ${2:+"$2"}
             put JWT_ACCESS_PUBLIC_KEY "$(printf '%s\n' "$private" | openssl rsa -pubout 2>/dev/null | one_line)" ${2:+"$2"}
             unset private ;;
-        ANTHROPIC_API_KEY)
+        ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN)
             # SSM cannot store an empty string; the instance turns this back
             # into empty, and the extractor reports itself not ready.
             put "$1" PLACEHOLDER ${2:+"$2"} ;;
@@ -71,7 +73,7 @@ generate() {  # generate NAME [--overwrite]
 
 create_missing() {
     local name
-    for name in POSTGRES_PASSWORD JWT_ACCESS_SECRET JWT_REFRESH_SECRET ANTHROPIC_API_KEY; do
+    for name in POSTGRES_PASSWORD JWT_ACCESS_SECRET JWT_REFRESH_SECRET ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN; do
         if exists "$name"; then echo "  exists $name"; else generate "$name"; fi
     done
     # The two halves are generated together or not at all: one without the
@@ -98,6 +100,19 @@ case "${1:-}" in
             *) die "usage: --rotate JWT_ACCESS_SECRET|JWT_REFRESH_SECRET|JWT_ACCESS_KEYPAIR" ;;
         esac
         echo "Every session will be signed out after scripts/remote.sh deploy." ;;
+    --set-claude-token)
+        # From `claude setup-token`, on the account whose subscription pays.
+        # Read from standard input without echo, so it can come from a file
+        # by redirection and never reach the screen, the history or `ps`.
+        if [ -t 0 ]; then
+            read -r -s -p "Claude subscription token (not shown): " token; echo
+        else
+            read -r token
+        fi
+        [[ "$token" == sk-ant-* ]] || die "that does not look like a Claude token (sk-ant-...)"
+        put CLAUDE_CODE_OAUTH_TOKEN "$token" --overwrite
+        unset token
+        echo "Now: scripts/remote.sh deploy" ;;
     --set-anthropic-key)
         read -r -s -p "Anthropic API key (not shown): " key; echo
         [[ "$key" == sk-ant-* ]] || die "that does not look like an Anthropic API key (sk-ant-...)"
@@ -108,5 +123,5 @@ case "${1:-}" in
         "${AWS[@]}" ssm get-parameters-by-path --path "$PREFIX" \
             --query 'Parameters[].[Name,LastModifiedDate]' --output table ;;
     *)
-        sed -n '2,23p' "$0"; exit 1 ;;
+        sed -n '2,25p' "$0"; exit 1 ;;
 esac

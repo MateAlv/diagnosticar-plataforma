@@ -7,5 +7,6 @@
 
 # instance_type               = "t3.small"
 # monthly_budget_usd          = 25
-# anthropic_weekly_budget_usd = 20
-# global_extractions_per_5h   = 5
+# recognizer_provider         = "claude-cli"   # or "anthropic" with an API key
+# global_extractions_per_5h   = 40             # unset: 40 (claude-cli) / 5 (anthropic)
+# anthropic_weekly_budget_usd = 20             # only with "anthropic"

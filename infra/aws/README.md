@@ -83,7 +83,7 @@ scripts/make-secrets.sh
 
 Genera nuevos `POSTGRES_PASSWORD`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` y un par RSA
 para firmar las sesiones (RS256, así el extractor las verifica solo con la pública).
-`ANTHROPIC_API_KEY` queda como `PLACEHOLDER` hasta tener la key de la organización.
+`CLAUDE_CODE_OAUTH_TOKEN` y `ANTHROPIC_API_KEY` quedan como `PLACEHOLDER` hasta la fase 7.
 Nunca pisa uno existente: `POSTGRES_PASSWORD` queda fijado en la base cuando se crea.
 
 ## Fase 4 — Infraestructura (acá empieza el costo)
@@ -132,10 +132,19 @@ El certificado HTTPS puede tardar un minuto la primera vez. Después:
 Así ninguna contraseña pasa por la terminal ni queda en el historial de AWS. Los
 demás admins se invitan desde `/admin/equipo`.
 
-## Fase 7 — Activar el extractor (cuando llegue la key)
+## Fase 7 — Activar el extractor
+
+Desde el 2026-10-02 la copia usa **la suscripción de Claude de Mate, como staging y
+con sus mismos límites** (20 por cuenta por hora, 60 por día, 40 por todo el sitio
+cada 5 horas). Por qué, y qué riesgos se aceptaron:
+[`docs/LLM_EN_LA_COPIA_AWS.md`](../../docs/LLM_EN_LA_COPIA_AWS.md).
+
+Lo hace Mate, que es el dueño del token, con el perfil `diagnosticar` de AWS. El
+token sale de `claude setup-token`; si ya está en un archivo, se pasa por
+redirección y nunca aparece en pantalla ni en el historial:
 
 ```bash
-scripts/make-secrets.sh --set-anthropic-key       # la pide sin mostrarla
+scripts/make-secrets.sh --set-claude-token < ~/ruta/al/token   # o sin "<": lo pide sin mostrarlo
 scripts/remote.sh deploy
 scripts/remote.sh status                          # /hpo-api/healthz → extract_hpo.ready: true
 ```
@@ -143,10 +152,11 @@ scripts/remote.sh status                          # /hpo-api/healthz → extract
 Hasta entonces la web funciona con el buscador de síntomas y el ranking; la
 extracción desde texto libre responde que no está disponible.
 
-**Gasto de Anthropic:** cada extracción cuesta ~US$0,94 (hasta ~US$1,90). El techo
-semanal es `anthropic_weekly_budget_usd` ÷ 1,90 extracciones (variable de Terraform,
-US$20 por defecto → 10 por semana). Para cambiarlo: editar `terraform.tfvars`,
-`terraform apply`, `scripts/remote.sh deploy`.
+**Con una API key en lugar de la suscripción:** `recognizer_provider = "anthropic"`
+en `terraform.tfvars`, `terraform apply`, `scripts/make-secrets.sh --set-anthropic-key`
+y `scripts/remote.sh deploy`. Ahí el techo semanal es `anthropic_weekly_budget_usd`
+÷ 1,90 extracciones (US$20 por defecto → 10 por semana), porque cada extracción
+cuesta ~US$0,94 (hasta ~US$1,90).
 
 ## Cómo saber que anda
 
@@ -205,7 +215,7 @@ verificado.
 | Disco 30 GB gp3 | ~US$2,4 |
 | IPv4 pública | ~US$3,6 |
 | ECR (~5 GB), S3, SSM | < US$1 |
-| **Anthropic** | ~US$0,94 por extracción, con el techo semanal de arriba |
+| **Claude** | Con la suscripción de Mate: nada aparte, pero comparte su cuota con staging y con su propio uso. Con una API key: ~US$0,94 por extracción, con el techo semanal |
 
 En el plan gratuito de AWS todo esto sale de los créditos. La IP y el disco cobran
 aunque la instancia esté apagada.

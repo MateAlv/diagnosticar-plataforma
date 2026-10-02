@@ -131,11 +131,14 @@ services:
     init: true
     environment:
       USE_RECOGNIZER: "true"
-      # An API key, not the subscription token staging uses.
-      RECOGNIZER_PROVIDER: anthropic
+      # claude-cli: Mate's Claude subscription token, as staging; anthropic: an
+      # API key (docs/LLM_EN_LA_COPIA_AWS.md). Set by Terraform.
+      RECOGNIZER_PROVIDER: ${RECOGNIZER_PROVIDER:-claude-cli}
       RECOGNIZER_MODEL: ${RECOGNIZER_MODEL:-claude-opus-5}
-      # Empty until the organisation's key is in SSM: /healthz then reports
-      # extract_hpo.ready false with the reason, and search keeps working.
+      # Only the one the provider uses is read. Empty until it is in SSM:
+      # /healthz then reports extract_hpo.ready false with the reason, and
+      # search keeps working.
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CORS_ORIGINS: https://${DOMAIN}
       # The incumbent extractor needs a GPU and Ollama; off.
@@ -151,8 +154,8 @@ services:
       MAX_CONCURRENT_EXTRACTIONS: "2"
       USER_EXTRACTIONS_PER_HOUR: ${USER_EXTRACTIONS_PER_HOUR:-20}
       USER_EXTRACTIONS_PER_DAY: ${USER_EXTRACTIONS_PER_DAY:-60}
-      # The ceiling on Anthropic spend; Terraform derives it from a weekly
-      # budget in dollars (main/ssm.tf).
+      # The ceiling on what the site may spend: of the subscription (staging's
+      # 40 per 5 hours) or of an API key's weekly budget (main/ssm.tf).
       GLOBAL_EXTRACTIONS_PER_WEEK: ${GLOBAL_EXTRACTIONS_PER_WEEK:?set GLOBAL_EXTRACTIONS_PER_WEEK}
       GLOBAL_EXTRACTIONS_PER_5H: ${GLOBAL_EXTRACTIONS_PER_5H:?set GLOBAL_EXTRACTIONS_PER_5H}
       # On a volume, so a redeploy does not hand out a fresh week.

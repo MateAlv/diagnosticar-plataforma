@@ -48,6 +48,22 @@ variable "recognizer_model" {
   default     = "claude-opus-5"
 }
 
+variable "recognizer_provider" {
+  description = <<-EOT
+    How the extractor reaches Claude. "claude-cli" (default since 2026-10-02):
+    the claude CLI with Mate's Claude subscription token, as staging does, and
+    with staging's limits. "anthropic": an organisation API key, billed per
+    call, capped by anthropic_weekly_budget_usd. docs/LLM_EN_LA_COPIA_AWS.md
+    has why.
+  EOT
+  type        = string
+  default     = "claude-cli"
+  validation {
+    condition     = contains(["claude-cli", "anthropic"], var.recognizer_provider)
+    error_message = "recognizer_provider must be \"claude-cli\" or \"anthropic\"."
+  }
+}
+
 variable "anthropic_weekly_budget_usd" {
   description = <<-EOT
     The ceiling on what extraction may spend per week. An extraction costs
@@ -60,9 +76,22 @@ variable "anthropic_weekly_budget_usd" {
 }
 
 variable "global_extractions_per_5h" {
-  description = "How fast a week's budget may go. Must be positive."
+  description = <<-EOT
+    The whole site's extractions per 5 hours. Unset: 40 with claude-cli
+    (staging's limit, Mate 2026-09-28), 5 with an API key.
+  EOT
   type        = number
-  default     = 5
+  default     = null
+}
+
+variable "global_extractions_per_week" {
+  description = <<-EOT
+    The whole site's extractions per week with claude-cli. Unset: the 5-hour
+    rate over a week (40 x 168 / 5 = 1,344), as staging, so it adds no limit
+    of its own. With an API key the week comes from anthropic_weekly_budget_usd.
+  EOT
+  type        = number
+  default     = null
 }
 
 variable "user_extractions_per_hour" {

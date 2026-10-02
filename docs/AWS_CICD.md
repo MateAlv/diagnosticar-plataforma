@@ -129,7 +129,7 @@ Los workflows están **apagados** mientras no exista el secreto
 |---|---|---|
 | Cambios de infraestructura | Raros, y conviene revisar el plan antes | `terraform plan` / `apply` en `infra/aws/main` |
 | Cambios en `infra/aws/stack/` (compose, Caddyfile) | Viajan por S3, no por imágenes | `terraform apply` + `scripts/remote.sh deploy` |
-| Secretos y la API key de Anthropic | Nunca pasan por GitHub | `infra/aws/scripts/make-secrets.sh` |
+| Secretos y el token de Claude (o la API key) | Nunca pasan por GitHub | `infra/aws/scripts/make-secrets.sh` ([por qué el token](LLM_EN_LA_COPIA_AWS.md)) |
 | `genes.db` | No está en git | subir al bucket + `remote.sh deploy` |
 | Embeddings de HPO del extractor (cuando cambia ClinLinker, la lista HPO o el script generador) | Se generan una vez por versión, no en cada build | PR en `diagnostic.ar-model` que cambie `hpo-embeddings/embeddings.lock` y suba `VERSION`; al mergearlo se publica el release solo. En el mismo momento o después, PR en `diagnostic.ar-api` con el tag nuevo en `services/api-gateway/embeddings.lock` (el hash lo toma del release) |
 

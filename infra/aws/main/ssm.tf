@@ -9,13 +9,22 @@
 locals {
   domain = "${replace(aws_eip.web.public_ip, ".", "-")}.sslip.io"
 
+  subscription  = var.recognizer_provider == "claude-cli"
+  extraction_5h = coalesce(var.global_extractions_per_5h, local.subscription ? 40 : 5)
+  # With the subscription the cap is the rate, as on staging; with an API key,
+  # what the weekly budget buys at the dearest extraction (~US$1.90).
+  extraction_week = (local.subscription
+    ? coalesce(var.global_extractions_per_week, floor(local.extraction_5h * 168 / 5))
+  : max(1, floor(var.anthropic_weekly_budget_usd / 1.90)))
+
   config = {
     DOMAIN       = local.domain
     ECR_REGISTRY = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.region}.amazonaws.com"
 
+    RECOGNIZER_PROVIDER         = var.recognizer_provider
     RECOGNIZER_MODEL            = var.recognizer_model
-    GLOBAL_EXTRACTIONS_PER_WEEK = tostring(max(1, floor(var.anthropic_weekly_budget_usd / 1.90)))
-    GLOBAL_EXTRACTIONS_PER_5H   = tostring(var.global_extractions_per_5h)
+    GLOBAL_EXTRACTIONS_PER_WEEK = tostring(local.extraction_week)
+    GLOBAL_EXTRACTIONS_PER_5H   = tostring(local.extraction_5h)
     USER_EXTRACTIONS_PER_HOUR   = tostring(var.user_extractions_per_hour)
     USER_EXTRACTIONS_PER_DAY    = tostring(var.user_extractions_per_day)
   }

@@ -119,6 +119,12 @@ El script asume docker compose (`COMPOSE_PROJECT`); si no lo usás, leelo y
 hacé lo mismo contra tu Postgres.
 
 **Extractor.** En staging usa una suscripción personal; en la nube usa una
+> **Actualizado el 2026-10-02:** la copia en AWS usa la suscripción de Claude
+> de Mate, como staging y con sus mismos límites, no una API key. La tabla de
+> abajo describe la opción con API key, que sigue disponible
+> (`recognizer_provider = "anthropic"`). Por qué se decidió así:
+> [`LLM_EN_LA_COPIA_AWS.md`](LLM_EN_LA_COPIA_AWS.md).
+
 **API key de Anthropic de la organización** (pedísela a Mate; no uses una
 personal):
 
