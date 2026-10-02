@@ -1,0 +1,33 @@
+# One origin, routed by path, as docs/CLOUD_DEPLOY.md asks. The session cookie
+# is sameSite=lax, and the extractor validates it, so everything must stay on
+# this one host.
+#
+# Caddy gets and renews the certificate itself (Let's Encrypt, HTTP-01 on
+# port 80) and redirects http to https.
+
+{$DOMAIN} {
+	# A copy for testing, with synthetic data only: keep it out of search
+	# results, where a family could mistake it for the real service.
+	header X-Robots-Tag "noindex, nofollow"
+
+	# handle_path strips the prefix: the services answer at their root.
+	handle_path /hpo-api/* {
+		reverse_proxy hpo-recognizer:8000
+	}
+
+	handle_path /genphenai/* {
+		reverse_proxy model:18020
+	}
+
+	# The backend's routes include the prefix, so it stays.
+	handle /api/* {
+		reverse_proxy backend:4000
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	# No access log, deliberately: it would keep every visitor's address next
+	# to the paths they opened (CLAUDE.md, known issue 4).
+}

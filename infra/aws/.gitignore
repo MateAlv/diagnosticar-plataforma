@@ -1,0 +1,11 @@
+# Terraform: state and plans hold every managed attribute in plain text.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+# Written from the bootstrap outputs; names the state bucket and profile.
+backend.hcl
+# Per-person settings (email). The example is versioned.
+terraform.tfvars
+*.auto.tfvars

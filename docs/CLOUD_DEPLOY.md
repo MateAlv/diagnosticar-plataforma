@@ -6,6 +6,11 @@ que dice "medido" se midió ahí.
 
 Antes de empezar, leé **Datos** al final. No es un trámite.
 
+Una implementación de esta guía para AWS (Terraform, una EC2 con docker compose,
+Caddy, ECR y SSM) está en [`infra/aws/`](../infra/aws/README.md), con el paso a paso.
+Su despliegue automático desde GitHub (cada merge a `main` actualiza AWS) está
+en [`AWS_CICD.md`](AWS_CICD.md).
+
 ## Qué es cada pieza
 
 ```
