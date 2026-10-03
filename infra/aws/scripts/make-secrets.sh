@@ -104,10 +104,13 @@ case "${1:-}" in
         # From `claude setup-token`, on the account whose subscription pays.
         # Read from standard input without echo, so it can come from a file
         # by redirection and never reach the screen, the history or `ps`.
+        # `|| [ -n ... ]`: a token file without a final newline makes read
+        # return non-zero after reading it, which set -e would turn into a
+        # silent exit.
         if [ -t 0 ]; then
-            read -r -s -p "Claude subscription token (not shown): " token; echo
+            read -r -s -p "Claude subscription token (not shown): " token || [ -n "${token:-}" ]; echo
         else
-            read -r token
+            IFS= read -r token || [ -n "${token:-}" ]
         fi
         [[ "$token" == sk-ant-* ]] || die "that does not look like a Claude token (sk-ant-...)"
         put CLAUDE_CODE_OAUTH_TOKEN "$token" --overwrite
