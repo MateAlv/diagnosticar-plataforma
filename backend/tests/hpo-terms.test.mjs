@@ -52,7 +52,18 @@ test('a term reports how many genes it reaches and whether it can be refined', (
     const [seizure] = getTerms(['HP:0001250']);
     assert.deepEqual(seizure, {
         hpo_id: 'HP:0001250', nombre: 'Convulsiones', genes: 1560, tiene_hijos: true,
+        hijos: 2, debajo: 3,
     });
+});
+
+test('only terms that reach a gene count as children or beneath', () => {
+    // Convulsión refleja reaches no gene; Crisis focales conscientes is two levels down.
+    const [focal] = getTerms(['HP:0007359']);
+    assert.equal(focal.hijos, 1);
+    assert.equal(focal.debajo, 1);
+    const [leaf] = getTerms(['HP:0032677']);
+    assert.equal(leaf.hijos, 0);
+    assert.equal(leaf.debajo, 0);
 });
 
 test('terms come back in the order asked, unknown ones left out', () => {

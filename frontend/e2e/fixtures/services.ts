@@ -318,7 +318,7 @@ export async function mockGeneProfiles(page: Page, { available = true } = {}) {
 }
 
 type HpoTreeFixture = {
-    terms: Record<string, { nombre: string; genes: number; tiene_hijos: boolean }>;
+    terms: Record<string, { nombre: string; genes: number; tiene_hijos: boolean; hijos: number; debajo: number }>;
     children: Record<string, string[]>;
 };
 export const HPO_TREE_FIXTURE = (fixtures as unknown as { hpoTree: HpoTreeFixture }).hpoTree;
@@ -335,6 +335,8 @@ export async function mockHpoTree(page: Page, { failChildren = false } = {}) {
         nombre: tree.terms[id].nombre,
         genes: tree.terms[id].genes,
         tiene_hijos: Boolean(tree.children[id]?.length),
+        hijos: tree.terms[id].hijos,
+        debajo: tree.terms[id].debajo,
     });
     await page.route("**/api/hpo/terms?**", (route) => {
         const ids = (new URL(route.request().url()).searchParams.get("ids") ?? "")

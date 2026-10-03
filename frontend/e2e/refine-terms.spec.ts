@@ -3,12 +3,12 @@ import AxeBuilder from "@axe-core/playwright";
 import { mockBackend, mockHpoTree, mockModelServices, collectPageErrors } from "./fixtures/services";
 
 /**
- * A symptom so general it barely orders the ranking is flagged, and a dialog
+ * A symptom high in the HPO tree is offered for refining, and a dialog
  * lets the person browse down the HPO tree to a more specific form. Choosing
  * one replaces the symptom and closes the dialog; nothing is ever required.
  *
  * The extraction fixture yields two general terms — "Infecciones respiratorias
- * recurrentes" (437 genes) and "Talla baja" (952) — and a negated
+ * recurrentes" (16 forms beneath) and "Talla baja" (20) — and a negated
  * "Convulsiones", which is not a present symptom and must not be flagged.
  */
 
@@ -45,13 +45,13 @@ test.beforeEach(async ({ page }) => {
     await mockModelServices(page);
 });
 
-test("general symptoms are flagged with how many genes they reach, a negated one is not", async ({ page }) => {
+test("broad symptoms are pointed out with how many forms they have, a negated one is not", async ({ page }) => {
     await mockHpoTree(page);
     await toSymptoms(page);
 
-    await expect(notice(page)).toContainText("Hay 2 síntomas muy generales");
-    await expect(notice(page)).toContainText("Infecciones respiratorias recurrentes · aparece en 437 genes");
-    await expect(notice(page)).toContainText("Talla baja · aparece en 952 genes");
+    await expect(notice(page)).toContainText("Hay 2 síntomas muy amplios");
+    await expect(notice(page)).toContainText("Infecciones respiratorias recurrentes · 16 tipos más específicos");
+    await expect(notice(page)).toContainText("Talla baja · 20 tipos más específicos");
     await expect(notice(page)).not.toContainText("Convulsiones");
 });
 
@@ -108,16 +108,16 @@ test("leaving it as it is changes nothing, and «Dejarlo así» stops asking", a
     await expect(chips(page).filter({ hasText: "Infecciones respiratorias recurrentes" })).toHaveCount(1);
 
     await notice(page).getByRole("button", { name: "Dejar Talla baja así" }).click();
-    await expect(notice(page)).toContainText("Hay un síntoma muy general");
+    await expect(notice(page)).toContainText("Hay un síntoma muy amplio");
     await expect(notice(page)).not.toContainText("Talla baja");
     await expect(chips(page).filter({ hasText: "Talla baja" })).toHaveCount(1);
 });
 
-test("the chip itself offers to refine a general symptom", async ({ page }) => {
+test("the chip itself offers to refine a broad symptom", async ({ page }) => {
     await mockHpoTree(page);
     await toSymptoms(page);
 
-    await page.getByRole("button", { name: "Precisar Talla baja: es un síntoma muy general" }).click();
+    await page.getByRole("button", { name: "Precisar Talla baja: tiene tipos más específicos" }).click();
     await expect(dialog(page).getByRole("heading")).toHaveText("¿Qué tipo de «Talla baja»?");
 });
 

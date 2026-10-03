@@ -2,7 +2,7 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useMemo, useState } from "react";
-import { fetchChildren, genesLabel, type HpoTerm, type HpoTermChildren } from "@/lib/hpo-terms";
+import { fetchChildren, genesLabel, typesLabel, type HpoTerm, type HpoTermChildren } from "@/lib/hpo-terms";
 
 /**
  * Browse from a general symptom down to a more specific one.
@@ -92,9 +92,10 @@ export function RefineTermDialog({ target, onClose, onChoose }: Props) {
                             <Dialog.Description className="mt-2 text-sm leading-relaxed text-[var(--lu-subtle)]">
                                 {root ? (
                                     <>
-                                        «{rootName}» aparece en {genesLabel(root.genes)}, así que casi no ayuda a
-                                        ordenar los resultados. Si sabés de qué tipo es, elegilo: cuanto más
-                                        específico, más útil. Si no estás seguro, dejalo como está.
+                                        «{rootName}» es un término amplio
+                                        {root.debajo ? <>: abarca {typesLabel(root.debajo)}</> : null}. Si sabés de
+                                        qué tipo es, elegilo: cuanto más específico, mejor se ordenan los genes. Si
+                                        tenés dudas, dejalo como está.
                                     </>
                                 ) : (
                                     <>Cuanto más específico sea el síntoma, mejor se ordenan los genes.</>
@@ -178,11 +179,12 @@ export function RefineTermDialog({ target, onClose, onChoose }: Props) {
                         {!loading && !failed && current && (
                             <>
                                 <p className="text-sm font-semibold text-[var(--lu-text)]">
-                                    {levels.length === 1 ? "Tipos más comunes primero" : `Tipos de «${current.termino.nombre}»`}
+                                    {levels.length === 1 ? "Elegí el que mejor lo describa" : `Tipos de «${current.termino.nombre}»`}
                                 </p>
                                 <p className="mb-3 mt-0.5 text-xs leading-relaxed text-[var(--lu-subtle)]">
                                     Tocá un tipo para elegirlo. Si tiene variantes más específicas, el botón{" "}
-                                    <span className="whitespace-nowrap">«Ver tipos»</span> las muestra.
+                                    <span className="whitespace-nowrap">«Ver tipos»</span> las muestra. Primero
+                                    los que abarcan más genes.
                                 </p>
                                 {shown.length === 0 ? (
                                     <p className="rounded-2xl border border-dashed border-[var(--lu-border)] px-4 py-6 text-center text-sm text-[var(--lu-subtle)]">

@@ -104,7 +104,7 @@ import { RESULTS_DISCLAIMER } from "@/lib/disclaimer";
 import { fetchGeneProfiles, formatScore, type GeneProfile } from "@/lib/genes-api";
 import { errorMessage, isSessionError, jsonOrThrow } from "@/lib/api-errors";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { fetchTerms, genesLabel, isGeneralTerm, type HpoTerm } from "@/lib/hpo-terms";
+import { BROAD_NOTICE_MAX_SYMPTOMS, canRefine as canRefineTerm, fetchTerms, isBroadTerm, typesLabel, type HpoTerm } from "@/lib/hpo-terms";
 import { RefineTermDialog, type RefineTarget } from "./refine-term-dialog";
 import { ADJUSTED_LIST_NOTE, originsIn } from "@/lib/question-insights";
 import {
@@ -113,6 +113,8 @@ import {
   toGeneRows,
   type QuestionMode,
 } from "@/lib/questions-api";
+
+const TEXTO_OCULTO_KEY = "diagnosticar:texto-oculto";
 
 const PROFESSIONAL_VIEW_KEY = "diagnosticar:vista-profesional";
 
@@ -375,6 +377,27 @@ function NuevoDiagnosticoScreen() {
   const [keptGeneral, setKeptGeneral] = useState<Set<string>>(new Set());
   const [refineTarget, setRefineTarget] = useState<RefineTarget | null>(null);
   const [lastAnalyzedHC, setLastAnalyzedHC] = useState("");
+  // The text tool starts open; hiding it lasts the browser tab, so someone
+  // who only uses the search does not have to close it on every visit.
+  const [textoAbierto, setTextoAbierto] = useState(true);
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(TEXTO_OCULTO_KEY) === "1") setTextoAbierto(false);
+    } catch {
+      // Storage blocked: it simply starts open.
+    }
+  }, []);
+  const alternarTexto = () => {
+    setTextoAbierto((abierto) => {
+      try {
+        if (abierto) sessionStorage.setItem(TEXTO_OCULTO_KEY, "1");
+        else sessionStorage.removeItem(TEXTO_OCULTO_KEY);
+      } catch {
+        // Not remembered; harmless.
+      }
+      return !abierto;
+    });
+  };
   const [newSymptom, setNewSymptom] = useState({ description: "", code: "" });
   const [extractError, setExtractError] = useState<string | null>(null);
   const [extractFailure, setExtractFailure] = useState<unknown>(undefined);
@@ -519,9 +542,20 @@ function NuevoDiagnosticoScreen() {
     () =>
       symptoms.filter((symptom) => {
         const code = symptom.code.trim().toUpperCase();
-        return isGeneralTerm(termInfo.get(code)) && !keptGeneral.has(code);
+        return canRefineTerm(termInfo.get(code)) && !keptGeneral.has(code);
       }),
     [symptoms, termInfo, keptGeneral],
+  );
+
+  // Pointed out only when high in the tree and while the list is short: with
+  // many symptoms, refining one barely moved the right gene
+  // (docs/PRECISAR_SINTOMAS.md). The chip stays on every refinable term.
+  const broadSymptoms = useMemo(
+    () =>
+      symptoms.length < BROAD_NOTICE_MAX_SYMPTOMS
+        ? generalSymptoms.filter((symptom) => isBroadTerm(termInfo.get(symptom.code.trim().toUpperCase())))
+        : [],
+    [symptoms, generalSymptoms, termInfo],
   );
 
   const negatedFindings = useMemo(() => {
@@ -1450,73 +1484,26 @@ function NuevoDiagnosticoScreen() {
               )}
 
               {step === 2 && (
-                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
-                  {/* Columna izquierda: texto libre */}
+                <div className="space-y-6">
+                  {/* The list is what the model searches with, so it leads. */}
                   <div className="space-y-4">
                     <div className="rounded-2xl border border-[var(--lu-border)] bg-white p-5 shadow-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <h2 className="text-lg font-bold text-[var(--lu-text)]">
-                          Pegá o escribí el relato clínico
-                        </h2>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-[var(--lu-subtle)]">Opcional</span>
-                          <AyudaPopover etiqueta="¿Qué escribo acá?" align="right">
-                            <GuiaCarga variant="historia" />
-                          </AyudaPopover>
+                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                        <div className="flex items-center gap-2.5">
+                          <h2 className="text-lg font-bold text-[var(--lu-text)]">Lista de síntomas</h2>
+                          <span
+                            className="rounded-full bg-[var(--lu-accent-light)] px-2.5 py-0.5 text-sm font-bold text-[var(--lu-accent-text)]"
+                            aria-label={symptoms.length === 1 ? "1 síntoma cargado" : `${symptoms.length} síntomas cargados`}
+                          >
+                            {symptoms.length}
+                          </span>
                         </div>
-                      </div>
-                      <p className="mt-2 text-base leading-relaxed text-[var(--lu-subtle)]">
-                        Buscamos los síntomas en el texto y los sumamos a la lista. Podés analizar
-                        varias veces: siempre agregamos, nunca borramos lo que ya cargaste.
-                      </p>
-                      <textarea
-                        value={historiaClinica}
-                        onChange={(event) => setHistoriaClinica(event.target.value)}
-                        rows={11}
-                        maxLength={10000}
-                        placeholder="Ej. Nena de 7 años. Desde los 2 años tiene tos productiva casi todos los días, con sibilancias y cuadros respiratorios a repetición. Se cansa más que otros chicos al correr. En el último control pesaba menos de lo esperado para su edad."
-                        className="mt-4 w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3.5 text-base leading-relaxed text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
-                      />
-                      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                        <span className="text-xs text-[var(--lu-subtle)]">
-                          {historiaClinica.length.toLocaleString()} / 10.000
-                        </span>
-                        <button
-                          type="button"
-                          onClick={extraerSintomasDelTexto}
-                          disabled={!puedeAnalizarTexto || isLoading}
-                          className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[var(--lu-accent)] text-white text-sm font-semibold hover:bg-[color-mix(in_oklab,var(--lu-accent)_88%,#000)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                            <circle cx="11" cy="11" r="7" />
-                            <path d="M21 21l-4.3-4.3" />
-                          </svg>
-                          {lastAnalyzedHC ? "Analizar de nuevo" : "Buscar síntomas en el texto"}
-                        </button>
-                      </div>
-                      <ErrorNotice className="mt-3" message={extractError} error={extractFailure} />
-                      {extractInfo && !extractError && (
-                        <div className="mt-3 rounded-xl border border-[var(--lu-border)] bg-[var(--lu-surface)] px-4 py-2.5 text-xs text-[var(--lu-subtle)]">
-                          {extractInfo}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Columna derecha: lista viva de síntomas */}
-                  <div className="space-y-4">
-                    <div className="rounded-2xl border border-[var(--lu-border)] bg-white p-5 shadow-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <h2 className="text-lg font-bold text-[var(--lu-text)]">
-                          Síntomas del paciente
-                        </h2>
-                        <div className="flex items-center gap-2">
+                        {/* ml-auto keeps it at the right edge when it wraps, where its
+                            right-aligned popover has room. */}
+                        <div className="ml-auto shrink-0">
                           <AyudaPopover etiqueta="¿Qué es un término HPO?" align="right">
                             <GuiaCarga variant="sintomas" />
                           </AyudaPopover>
-                          <span className="rounded-full bg-[var(--lu-accent-light)] px-3 py-1 text-sm font-bold text-[var(--lu-accent)]">
-                            {symptoms.length}
-                          </span>
                         </div>
                       </div>
                       <p className="mt-2 text-base leading-relaxed text-[var(--lu-subtle)]">
@@ -1612,8 +1599,8 @@ function NuevoDiagnosticoScreen() {
                               Todavía no hay síntomas cargados
                             </p>
                             <p className="mt-2 text-sm leading-relaxed text-[var(--lu-subtle)]">
-                              Buscalos arriba, o pegá el relato clínico a la izquierda para que los
-                              detectemos por vos.
+                              Buscalos arriba, o pegá un relato en «Extraer síntomas de un texto», acá
+                              abajo, para que los detectemos por vos.
                             </p>
                           </div>
                         ) : (
@@ -1621,26 +1608,28 @@ function NuevoDiagnosticoScreen() {
                             {symptoms.map((symptom) => (
                               <li
                                 key={symptom.code}
-                                className="group inline-flex items-center gap-2 rounded-full border border-[var(--lu-border)] bg-white py-2 pl-4 pr-2 text-base text-[var(--lu-text)] shadow-sm"
+                                className="group inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-2xl border border-[var(--lu-border)] bg-white py-2 pl-4 pr-2 text-base text-[var(--lu-text)] shadow-sm sm:rounded-full"
                               >
-                                <span
-                                  className={[
-                                    "h-2 w-2 shrink-0 rounded-full",
-                                    symptom.source === "texto" ? "bg-[var(--lu-accent)]" : "bg-[var(--lu-border)]",
-                                  ].join(" ")}
-                                  title={symptom.source === "texto" ? "Detectado en el texto" : "Agregado a mano"}
-                                  aria-hidden
-                                />
-                                <span className="font-semibold">{symptom.description}</span>
+                                <span className="break-words font-semibold">
+                                  <span
+                                    className={[
+                                      "mr-2 inline-block h-2 w-2 rounded-full align-middle",
+                                      symptom.source === "texto" ? "bg-[var(--lu-accent)]" : "bg-[var(--lu-border)]",
+                                    ].join(" ")}
+                                    title={symptom.source === "texto" ? "Detectado en el texto" : "Agregado a mano"}
+                                    aria-hidden
+                                  />
+                                  {symptom.description}
+                                </span>
                                 {symptom.code && (
-                                  <span className="text-sm text-[var(--lu-subtle)]">{symptom.code}</span>
+                                  <span className="shrink-0 text-sm text-[var(--lu-subtle)]">{symptom.code}</span>
                                 )}
                                 {generalSymptoms.includes(symptom) && (
                                   <button
                                     type="button"
                                     onClick={() => setRefineTarget({ code: symptom.code, description: symptom.description })}
                                     className="inline-flex min-h-[32px] items-center gap-1 rounded-full bg-amber-50 px-2.5 text-xs font-semibold text-amber-800 ring-1 ring-inset ring-amber-200 transition-colors hover:bg-amber-100"
-                                    aria-label={`Precisar ${symptom.description}: es un síntoma muy general`}
+                                    aria-label={`Precisar ${symptom.description}: tiene tipos más específicos`}
                                   >
                                     Precisar
                                   </button>
@@ -1658,22 +1647,22 @@ function NuevoDiagnosticoScreen() {
                           </ul>
                         )}
 
-                        {generalSymptoms.length > 0 && (
+                        {broadSymptoms.length > 0 && (
                           <div
                             className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-4"
                             data-testid="general-terms-notice"
                           >
                             <p className="text-sm font-semibold text-[var(--lu-text)]">
-                              {generalSymptoms.length === 1
-                                ? "Hay un síntoma muy general"
-                                : `Hay ${generalSymptoms.length} síntomas muy generales`}
+                              {broadSymptoms.length === 1
+                                ? "Hay un síntoma muy amplio"
+                                : `Hay ${broadSymptoms.length} síntomas muy amplios`}
                             </p>
                             <p className="mt-1 text-xs leading-relaxed text-[var(--lu-subtle)]">
-                              Aparecen en tantos genes que casi no ayudan a ordenar los resultados. Si sabés
-                              de qué tipo son, precisarlos mejora la búsqueda. Es opcional.
+                              Cada uno abarca muchos tipos distintos. Si sabés cuál es, elegirlo ayuda a ordenar
+                              los genes, sobre todo cuando hay pocos síntomas cargados. Es opcional.
                             </p>
                             <ul className="mt-3 space-y-2">
-                              {generalSymptoms.map((symptom) => {
+                              {broadSymptoms.map((symptom) => {
                                 const code = symptom.code.trim().toUpperCase();
                                 const info = termInfo.get(code);
                                 return (
@@ -1683,9 +1672,9 @@ function NuevoDiagnosticoScreen() {
                                   >
                                     <span className="min-w-0 flex-1 text-sm text-[var(--lu-text)]">
                                       <span className="font-semibold">{symptom.description}</span>
-                                      {info && (
-                                        <span className="text-[var(--lu-subtle)]"> · aparece en {genesLabel(info.genes)}</span>
-                                      )}
+                                      {info?.debajo ? (
+                                        <span className="text-[var(--lu-subtle)]"> · {typesLabel(info.debajo)}</span>
+                                      ) : null}
                                     </span>
                                     <span className="flex gap-1.5">
                                       <button
@@ -1751,6 +1740,108 @@ function NuevoDiagnosticoScreen() {
                       <ErrorNotice className="mt-3" message={genphenError} error={genphenFailure} />
                     </div>
                   </div>
+
+                  {/* A tool that fills the list above, open by default. */}
+                  <section
+                    aria-labelledby="extraer-texto-titulo"
+                    className="rounded-2xl border border-[var(--lu-border)] bg-white shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 p-5">
+                      <h2 id="extraer-texto-titulo" className="text-lg font-bold text-[var(--lu-text)]">
+                        <button
+                          type="button"
+                          onClick={alternarTexto}
+                          aria-expanded={textoAbierto}
+                          aria-controls="extraer-texto-panel"
+                          className="group inline-flex items-center gap-2.5 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--lu-accent)]"
+                        >
+                          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--lu-accent-light)] text-[var(--lu-accent-text)]">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+                              <path d="M14 3v5h5M9 13h6M9 17h4" />
+                            </svg>
+                          </span>
+                          <span>Extraer síntomas de un texto</span>
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.25"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden
+                            className={`shrink-0 text-[var(--lu-subtle)] transition-transform ${textoAbierto ? "rotate-180" : ""}`}
+                          >
+                            <path d="m6 9 6 6 6-6" />
+                          </svg>
+                        </button>
+                      </h2>
+                      <div className="ml-auto flex shrink-0 items-center gap-2">
+                        <span className="text-sm text-[var(--lu-subtle)]">Opcional</span>
+                        <AyudaPopover etiqueta="¿Qué escribo acá?" align="right">
+                          <GuiaCarga variant="historia" />
+                        </AyudaPopover>
+                      </div>
+                    </div>
+
+                    {!textoAbierto && (lastAnalyzedHC || extractInfo) && (
+                      <p className="-mt-2 px-5 pb-4 text-sm text-[var(--lu-subtle)]">
+                        {extractInfo ?? "Ya analizaste un texto."}{" "}
+                        <button
+                          type="button"
+                          onClick={alternarTexto}
+                          className="font-semibold text-[var(--lu-accent-text)] underline underline-offset-2"
+                        >
+                          Ver el texto
+                        </button>
+                      </p>
+                    )}
+
+                    <div id="extraer-texto-panel" hidden={!textoAbierto} className="border-t border-[var(--lu-border)] p-5">
+                      <p className="text-base leading-relaxed text-[var(--lu-subtle)]">
+                        ¿Tenés un resumen médico o un relato escrito? Pegalo y buscamos los síntomas
+                        para sumarlos a la lista. Podés analizar varias veces: nunca borramos lo que ya
+                        cargaste.
+                      </p>
+                      <textarea
+                        value={historiaClinica}
+                        onChange={(event) => setHistoriaClinica(event.target.value)}
+                        rows={6}
+                        maxLength={10000}
+                        aria-label="Relato clínico"
+                        placeholder="Ej. Nena de 7 años. Desde los 2 años tiene tos productiva casi todos los días, con sibilancias y cuadros respiratorios a repetición. Se cansa más que otros chicos al correr. En el último control pesaba menos de lo esperado para su edad."
+                        className="mt-4 w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3.5 text-base leading-relaxed text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
+                      />
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                        <span className="text-xs text-[var(--lu-subtle)]">
+                          {historiaClinica.length.toLocaleString()} / 10.000
+                        </span>
+                        <button
+                          type="button"
+                          onClick={extraerSintomasDelTexto}
+                          disabled={!puedeAnalizarTexto || isLoading}
+                          className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[var(--lu-accent)] text-white text-sm font-semibold hover:bg-[color-mix(in_oklab,var(--lu-accent)_88%,#000)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <circle cx="11" cy="11" r="7" />
+                            <path d="M21 21l-4.3-4.3" />
+                          </svg>
+                          {lastAnalyzedHC ? "Analizar de nuevo" : "Buscar síntomas en el texto"}
+                        </button>
+                      </div>
+                      <ErrorNotice className="mt-3" message={extractError} error={extractFailure} />
+                      {extractInfo && !extractError && (
+                        <div role="status" className="mt-3 flex items-start gap-2 rounded-xl border border-[var(--lu-accent-light)] bg-[color-mix(in_oklab,var(--lu-accent-light)_45%,white)] px-4 py-2.5 text-sm text-[var(--lu-text)]">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="mt-0.5 shrink-0 text-[var(--lu-accent-text)]">
+                            <path d="M20 6 9 17l-5-5" />
+                          </svg>
+                          <span>{extractInfo}</span>
+                        </div>
+                      )}
+                    </div>
+                  </section>
                 </div>
               )}
 

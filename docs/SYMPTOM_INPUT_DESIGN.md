@@ -35,8 +35,11 @@ Entonces:
 > fila con tres hijos, un diálogo que recorre el árbol completo (`Precisar` →
 > `refine-term-dialog.tsx`), porque Mate pidió poder bajar varios niveles.
 > Elegir un término en cualquier nivel reemplaza al síntoma y cierra el
-> diálogo; «Ver tipos» baja un nivel. Umbral: 100 genes y al menos un hijo con
-> datos (`frontend/src/lib/hpo-terms.ts`). La cobertura cuenta todos los
+> diálogo; «Ver tipos» baja un nivel. ~~Umbral: 100 genes y al menos un hijo
+> con datos~~ — **reemplazado el 2026-10-02** por una regla según la posición
+> en el árbol (2 hijos, 3 términos debajo, 50 genes; aviso con 10 debajo y
+> menos de 8 síntomas), medida con pacientes reales en
+> [`PRECISAR_SINTOMAS.md`](PRECISAR_SINTOMAS.md) (`frontend/src/lib/hpo-terms.ts`). La cobertura cuenta todos los
 > descendientes, no tres niveles, así que "Convulsiones" da 1.560 y no 1.269.
 > Datos: `hpo_terminos`, `hpo_hijos` y `termino_cobertura` en la base de genes
 > (`scripts/add_term_tree.py` en diagnostic.ar-gene-profiles), servidos por

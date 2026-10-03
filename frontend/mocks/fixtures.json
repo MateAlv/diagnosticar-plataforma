@@ -516,642 +516,896 @@
     }
   },
   "hpoTree": {
-    "_comment": "A slice of the real HPO tree and gene coverage (genes.db, add_term_tree.py) under the terms these fixtures use, three levels deep. Served by /api/hpo/*.",
+    "_comment": "A slice of the real HPO tree and gene coverage (genes.db, add_term_tree.py) under the terms these fixtures use, three levels deep. hijos and debajo are the real counts from the whole tree, not from this slice. Served by /api/hpo/*.",
     "terms": {
       "HP:0002205": {
         "nombre": "Infecciones respiratorias recurrentes",
         "genes": 437,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 7,
+        "debajo": 16
       },
       "HP:0002094": {
         "nombre": "Disnea",
         "genes": 199,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 3,
+        "debajo": 5
       },
       "HP:0012378": {
         "nombre": "Fatiga",
         "genes": 100,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 1
       },
       "HP:0002027": {
         "nombre": "Dolor abdominal",
         "genes": 83,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 3,
+        "debajo": 3
       },
       "HP:0001508": {
         "nombre": "Retraso en el medro",
         "genes": 703,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 3,
+        "debajo": 3
       },
       "HP:0001250": {
         "nombre": "Convulsiones",
         "genes": 1560,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 12,
+        "debajo": 104
       },
       "HP:0002110": {
         "nombre": "Bronquiectasias",
         "genes": 130,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0012236": {
         "nombre": "Cloruro en sudor elevado",
         "genes": 12,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0004322": {
         "nombre": "Talla baja",
         "genes": 952,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 4,
+        "debajo": 20
       },
       "HP:0000246": {
         "nombre": "Sinusitis",
         "genes": 121,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 2
       },
       "HP:0000403": {
         "nombre": "Otitis media recurrente",
         "genes": 185,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0001696": {
         "nombre": "Situs inversus totalis",
         "genes": 64,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0001738": {
         "nombre": "Insuficiencia pancreática exocrina",
         "genes": 30,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0002150": {
         "nombre": "Hipercalciuria",
         "genes": 30,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0002153": {
         "nombre": "Hiperpotasemia",
         "genes": 24,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0002783": {
         "nombre": "Infecciones recurrentes del tracto respiratorio inferior",
         "genes": 214,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 3,
+        "debajo": 5
       },
       "HP:0002788": {
         "nombre": "Infecciones recurrentes de las vías respiratorias superiores",
         "genes": 146,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 4,
+        "debajo": 4
       },
       "HP:0005425": {
         "nombre": "Infecciones sinopulmonares recurrentes",
         "genes": 13,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0011948": {
         "nombre": "Infección respiratoria aguda",
         "genes": 13,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 1
       },
       "HP:0006538": {
         "nombre": "Infecciones broncopulmonares recurrentes",
         "genes": 7,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0004891": {
         "nombre": "Infecciones recurrentes por aspiración",
         "genes": 2,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0005366": {
         "nombre": "Infecciones recurrentes por streptococcus pneumoniae",
         "genes": 1,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0002098": {
         "nombre": "Distrés respiratorio",
         "genes": 119,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 2
       },
       "HP:0002875": {
         "nombre": "Disnea de esfuerzo",
         "genes": 36,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0012764": {
         "nombre": "Ortopnea",
         "genes": 2,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0012432": {
         "nombre": "Fatiga crónica",
         "genes": 9,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0002574": {
         "nombre": "Dolor abdominal episódico",
         "genes": 5,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0032155": {
         "nombre": "Calambres abdominales",
         "genes": 2,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0011848": {
         "nombre": "Cólico abdominal",
         "genes": 2,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0001531": {
         "nombre": "Retraso en el medro en la primera infancia",
         "genes": 47,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0001525": {
         "nombre": "Fallo de crecimiento grave",
         "genes": 8,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0008866": {
         "nombre": "Retraso en el desarrollo secundario a infecciones recurrentes",
         "genes": 3,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0020219": {
         "nombre": "Convulsión motora",
         "genes": 351,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 7,
+        "debajo": 30
       },
       "HP:0002069": {
         "nombre": "Convulsiones tónico-clónicas generalizadas",
         "genes": 309,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 4,
+        "debajo": 6
       },
       "HP:0002197": {
         "nombre": "Convulsiones generalizadas",
         "genes": 252,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 14
       },
       "HP:0007359": {
         "nombre": "Convulsiones focales",
         "genes": 238,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 7,
+        "debajo": 51
       },
       "HP:0011146": {
         "nombre": "Crisis convulsivas dialépticas",
         "genes": 183,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 14
       },
       "HP:0033259": {
         "nombre": "Convulsión no motora",
         "genes": 129,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 37
       },
       "HP:0002133": {
         "nombre": "Estatus epiléptico",
         "genes": 129,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 4,
+        "debajo": 13
       },
       "HP:0032892": {
         "nombre": "Convulsión relacionada con una infección",
         "genes": 96,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 6
       },
       "HP:0011145": {
         "nombre": "Convulsiones sintomáticas",
         "genes": 17,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 2
       },
       "HP:0031951": {
         "nombre": "Convulsiones nocturnas",
         "genes": 8,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0020207": {
         "nombre": "Convulsión refleja",
         "genes": 4,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 2
       },
       "HP:0032807": {
         "nombre": "Convulsión neonatal",
         "genes": 2,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0003498": {
         "nombre": "Talla baja desproporcionada",
         "genes": 109,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 13
       },
       "HP:0003508": {
         "nombre": "Talla baja proporcional",
         "genes": 97,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 3,
+        "debajo": 3
       },
       "HP:0003561": {
         "nombre": "Talla al nacer menor del percentil 3",
         "genes": 16,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0000839": {
         "nombre": "Enanismo hipofisario",
         "genes": 4,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0011108": {
         "nombre": "Sinusitis recurrente",
         "genes": 78,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0011109": {
         "nombre": "Sinusitis crónica",
         "genes": 34,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0006532": {
         "nombre": "Neumonía recurrente",
         "genes": 131,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 1
       },
       "HP:0002837": {
         "nombre": "Bronquitis recurrente",
         "genes": 35,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 1
       },
       "HP:0200117": {
         "nombre": "Infecciones recurrentes del tracto respiratorio superior e inferior",
         "genes": 3,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0033166": {
         "nombre": "Infecciones virales recurrentes del tracto respiratorio superior",
         "genes": 4,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0100776": {
         "nombre": "Faringitis recurrente",
         "genes": 3,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0011950": {
         "nombre": "Bronquiolitis",
         "genes": 12,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0030863": {
         "nombre": "Aleteo nasal",
         "genes": 1,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0030864": {
         "nombre": "Retracciones intercostales",
         "genes": 1,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0032794": {
         "nombre": "Convulsión mioclónica",
         "genes": 184,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 5
       },
       "HP:0011097": {
         "nombre": "Espasmos epilépticos",
         "genes": 133,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 1
       },
       "HP:0032677": {
         "nombre": "Convulsión motora de inicio generalizado",
         "genes": 123,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 5,
+        "debajo": 9
       },
       "HP:0032792": {
         "nombre": "Convulsión tónica",
         "genes": 115,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 3
       },
       "HP:0020221": {
         "nombre": "Convulsión clónica",
         "genes": 61,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 6
       },
       "HP:0011153": {
         "nombre": "Convulsiones motoras focales",
         "genes": 58,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 6,
+        "debajo": 13
       },
       "HP:0010819": {
         "nombre": "Convulsiones atónicas",
         "genes": 52,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0007334": {
         "nombre": "Crisis convulsivas bilaterales",
         "genes": 39,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0025190": {
         "nombre": "Convulsiones tónico-clónicas generalizadas sin inicio focal",
         "genes": 30,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 2
       },
       "HP:0032660": {
         "nombre": "Status epiléptico convulsivo",
         "genes": 9,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 1
       },
       "HP:0007193": {
         "nombre": "Convulsiones tónico-clónicas generalizadas al despertar",
         "genes": 3,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0002121": {
         "nombre": "Crisis de ausencia",
         "genes": 117,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 4,
+        "debajo": 4
       },
       "HP:0002384": {
         "nombre": "Convulsiones focales con deterioro de la conciencia o el estado de alerta",
         "genes": 95,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 8
       },
       "HP:0031165": {
         "nombre": "Ataques multifocales",
         "genes": 20,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0032679": {
         "nombre": "Convulsión focal no motora",
         "genes": 15,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 6,
+        "debajo": 31
       },
       "HP:0002349": {
         "nombre": "Convulsiones focales sin deterioro de la conciencia o el estado de alerta",
         "genes": 10,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 8
       },
       "HP:0032786": {
         "nombre": "Convulsión focal migratoria",
         "genes": 1,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0032658": {
         "nombre": "Status epiléptico con síntomas motores prominentes",
         "genes": 24,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 4,
+        "debajo": 6
       },
       "HP:0031475": {
         "nombre": "Estado epiléptico no convulsivo",
         "genes": 8,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 3
       },
       "HP:0032867": {
         "nombre": "Status epiléptico refractario",
         "genes": 2,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0032656": {
         "nombre": "Status epiléptico febril",
         "genes": 1,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0032894": {
         "nombre": "Convulsión precipitada por infección febril",
         "genes": 96,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 5
       },
       "HP:0002173": {
         "nombre": "Convulsiones hipoglicémicas",
         "genes": 10,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0002199": {
         "nombre": "Convulsiones por hipocalcemia",
         "genes": 7,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0020216": {
         "nombre": "Convulsión inducida visualmente",
         "genes": 4,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 1
       },
       "HP:0008873": {
         "nombre": "Talla baja desproporcionada con miembros cortos",
         "genes": 90,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 6,
+        "debajo": 9
       },
       "HP:0003521": {
         "nombre": "Talla baja con tronco corto desproporcionado",
         "genes": 19,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 2
       },
       "HP:0003510": {
         "nombre": "Talla baja severa",
         "genes": 61,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0003502": {
         "nombre": "Talla baja  leve",
         "genes": 20,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0008848": {
         "nombre": "Talla baja  moderada",
         "genes": 4,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0033214": {
         "nombre": "Neumonía viral recurrente",
         "genes": 1,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0100501": {
         "nombre": "Bronquiolitis recurrente",
         "genes": 3,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0002123": {
         "nombre": "Convulsiones mioclónicas generalizadas",
         "genes": 65,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 2
       },
       "HP:0011166": {
         "nombre": "Convulsiones mioclónicas focales",
         "genes": 5,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 1
       },
       "HP:0012469": {
         "nombre": "Espasmos infantiles",
         "genes": 94,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0010818": {
         "nombre": "Convulsiones tónicas generalizadas",
         "genes": 25,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0011169": {
         "nombre": "Convulsiones clónicas generalizadas",
         "genes": 8,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0011170": {
         "nombre": "Convulsiones atónicas mioclónicas",
         "genes": 7,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0011167": {
         "nombre": "Convulsiones tónicas focales",
         "genes": 12,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 1
       },
       "HP:0002266": {
         "nombre": "Clónicas clónicas focales",
         "genes": 35,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 3,
+        "debajo": 4
       },
       "HP:0032712": {
         "nombre": "Convulsión focal con pérdida de conciencia y deterioro motor",
         "genes": 4,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 3,
+        "debajo": 4
       },
       "HP:0032898": {
         "nombre": "Convulsión focal de automatismo",
         "genes": 4,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 1
       },
       "HP:0020217": {
         "nombre": "Convulsión focal motora sin pérdida de conciencia",
         "genes": 1,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0007207": {
         "nombre": "Crisis convulsivas tónico-clónicas fotosensibles",
         "genes": 1,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0032661": {
         "nombre": "Status epiléptico convulsivo generalizado",
         "genes": 1,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0007270": {
         "nombre": "Crisis de ausencia atípicas",
         "genes": 20,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0011147": {
         "nombre": "Crisis de ausencia típicas",
         "genes": 17,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0011150": {
         "nombre": "Crisis de ausencia mioclónicas",
         "genes": 7,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0011149": {
         "nombre": "Crisis de ausencia con mioclonías del párpado",
         "genes": 2,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0032716": {
         "nombre": "Convulsión focal con pérdida de conciencia no motora",
         "genes": 1,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 2
       },
       "HP:0033348": {
         "nombre": "Aura epiléptica",
         "genes": 8,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 15
       },
       "HP:0025613": {
         "nombre": "Ataque emocional focal",
         "genes": 6,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 4,
+        "debajo": 5
       },
       "HP:0011154": {
         "nombre": "Convulsiones autonómicas focales",
         "genes": 5,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 3,
+        "debajo": 4
       },
       "HP:0032680": {
         "nombre": "Convulsión focal cognitiva",
         "genes": 4,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 3,
+        "debajo": 5
       },
       "HP:0032682": {
         "nombre": "Convulsión focal no motora sin pérdida de conciencia",
         "genes": 4,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 3,
+        "debajo": 6
       },
       "HP:0032663": {
         "nombre": "Status epiléptico motor focal",
         "genes": 10,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 1
       },
       "HP:0032667": {
         "nombre": "Status epiléptico mioclónico",
         "genes": 5,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0032670": {
         "nombre": "Status epiléptico tónico",
         "genes": 1,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0032671": {
         "nombre": "Status epiléptico no convulsivo sin coma",
         "genes": 2,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 1,
+        "debajo": 2
       },
       "HP:0002373": {
         "nombre": "Convulsiones febriles",
         "genes": 96,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 2,
+        "debajo": 3
       },
       "HP:0032895": {
         "nombre": "Convulsión febril antes de los 3 meses o después de los 6 años",
         "genes": 1,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0008905": {
         "nombre": "Rizomelia",
         "genes": 60,
-        "tiene_hijos": true
+        "tiene_hijos": true,
+        "hijos": 3,
+        "debajo": 3
       },
       "HP:0008921": {
         "nombre": "Talla baja neonatal con miembros cortos",
         "genes": 9,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0008890": {
         "nombre": "Enanismo con miembros cortos grave",
         "genes": 2,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0008845": {
         "nombre": "Talla baja mesomélica",
         "genes": 2,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0008909": {
         "nombre": "Talla baja  letal con extremidades cortas",
         "genes": 1,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0011405": {
         "nombre": "Talla baja con miembros cortos",
         "genes": 1,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0008922": {
         "nombre": "Talla baja con tronco corto de inicio infantil",
         "genes": 1,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       },
       "HP:0008857": {
         "nombre": "Talla baja neonatal con tronco corto",
         "genes": 1,
-        "tiene_hijos": false
+        "tiene_hijos": false,
+        "hijos": 0,
+        "debajo": 0
       }
     },
     "children": {

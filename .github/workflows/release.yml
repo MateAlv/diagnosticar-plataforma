@@ -263,6 +263,15 @@ jobs:
           ssh-key: ${{ secrets.RECOGNIZER_DEPLOY_KEY }}
           path: recognizer
 
+      # The extractor's HPO embeddings come ready made: a diagnostic.ar-model
+      # release pinned in the API's services/api-gateway/embeddings.lock, which
+      # the Dockerfile reads from embeddings-dist/. A deploy key cannot download
+      # release assets, so this uses the same read-only token as the model.
+      - name: Fetch the pinned HPO embeddings
+        env:
+          GITHUB_TOKEN: ${{ secrets.MODEL_RELEASE_TOKEN }}
+        run: api/services/api-gateway/fetch_embeddings.sh
+
       # CPU torch, a 485 MB encoder and the HPO embeddings make a ~3 GB image;
       # building, loading it for the scan and caching it overruns the runner's
       # default free space.

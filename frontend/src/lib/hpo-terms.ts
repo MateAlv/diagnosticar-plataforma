@@ -3,27 +3,41 @@
 /**
  * The HPO tree, for turning a general symptom into a more specific one.
  *
- * A term is "general" when it reaches many genes: "Convulsiones" reaches over
- * 1,500, so on its own it barely orders the ranking, while "Espasmos
- * infantiles" reaches a fraction of that. The wizard flags those terms and lets
- * the person browse down the tree to the form that fits. Nothing here blocks:
- * every failure resolves to "nothing to refine".
+ * A term is general when it sits high in the tree: many more specific forms
+ * hang beneath it. "Convulsiones" has 104 such forms; "Pectus excavatum" has
+ * one, which is a particular case rather than a type to choose. The wizard
+ * offers to refine the first and not the second. Nothing here blocks: every
+ * failure resolves to "nothing to refine".
+ *
+ * The limits below come from docs/PRECISAR_SINTOMAS.md, which measured them
+ * on 10,374 published patients and the production model.
  */
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
+/** A choice needs at least two forms directly beneath. */
+export const REFINE_MIN_CHILDREN = 2;
+/** And some depth beneath, not just two leaves (Ectopia del cristalino has two). */
+export const REFINE_MIN_BENEATH = 3;
+/** Below this many genes a term already narrows the ranking; refining it did not help. */
+export const REFINE_MIN_GENES = 50;
+/** From this many forms beneath, the term is broad enough to point out. */
+export const BROAD_MIN_BENEATH = 10;
 /**
- * From how many genes a term counts as general. 1,000 of the ~10,800 terms
- * with any gene reach this many; the design (docs/SYMPTOM_INPUT_DESIGN.md §2)
- * set the line here so the warning is rare enough to be read.
+ * With this many symptoms or more, refining one barely moved the right gene,
+ * so the wizard stops pointing broad terms out (the chip stays).
  */
-export const GENERAL_TERM_MIN_GENES = 100;
+export const BROAD_NOTICE_MAX_SYMPTOMS = 8;
 
 export type HpoTerm = {
     hpo_id: string;
     nombre: string;
     genes: number;
     tiene_hijos: boolean;
+    /** Terms directly beneath that reach a gene. */
+    hijos?: number;
+    /** Terms anywhere beneath that reach a gene. */
+    debajo?: number;
 };
 
 export type HpoTermChildren = {
@@ -31,9 +45,24 @@ export type HpoTermChildren = {
     hijos: HpoTerm[];
 };
 
-/** Worth offering to refine: reaches many genes and has something beneath. */
-export function isGeneralTerm(term: HpoTerm | undefined | null): boolean {
-    return Boolean(term && term.tiene_hijos && term.genes >= GENERAL_TERM_MIN_GENES);
+/** Worth offering "Precisar": there is a real choice beneath, and a gain from it. */
+export function canRefine(term: HpoTerm | undefined | null): boolean {
+    return Boolean(
+        term &&
+            (term.hijos ?? 0) >= REFINE_MIN_CHILDREN &&
+            (term.debajo ?? 0) >= REFINE_MIN_BENEATH &&
+            term.genes >= REFINE_MIN_GENES,
+    );
+}
+
+/** High enough in the tree to point out, not just offer. */
+export function isBroadTerm(term: HpoTerm | undefined | null): boolean {
+    return canRefine(term) && (term?.debajo ?? 0) >= BROAD_MIN_BENEATH;
+}
+
+/** "14 tipos más específicos", "1 tipo más específico". */
+export function typesLabel(count: number): string {
+    return `${count.toLocaleString("es-AR")} ${count === 1 ? "tipo más específico" : "tipos más específicos"}`;
 }
 
 /** "1.560 genes", "1 gen". */

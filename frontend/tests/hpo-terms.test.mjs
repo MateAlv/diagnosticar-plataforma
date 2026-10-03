@@ -4,36 +4,67 @@ import { readFileSync } from 'node:fs';
 import { importTs } from './helpers/ts-module.mjs';
 
 /**
- * When the wizard offers to refine a symptom. The rule under test: only terms
- * that reach many genes AND have something beneath them are flagged, and a
+ * When the wizard offers to refine a symptom. The rule under test: a term is
+ * offered when it sits high in the HPO tree (at least two forms directly
+ * beneath and three anywhere beneath) and still reaches enough genes for the
+ * choice to matter; it is pointed out only when it is much higher. The cases
+ * are real terms with the counts measured in docs/PRECISAR_SINTOMAS.md. And a
  * failed lookup never turns into an error on screen.
  */
 
-const { isGeneralTerm, genesLabel, fetchTerms, fetchChildren, GENERAL_TERM_MIN_GENES } =
+const { canRefine, isBroadTerm, genesLabel, typesLabel, fetchTerms, fetchChildren } =
   await importTs('lib/hpo-terms.ts');
 
-const tree = JSON.parse(readFileSync(new URL('../mocks/fixtures.json', import.meta.url), 'utf8')).hpoTree;
-const term = (id) => ({ hpo_id: id, ...tree.terms[id] });
+const t = (nombre, genes, hijos, debajo) => ({ hpo_id: 'HP:0000000', nombre, genes, tiene_hijos: hijos > 0, hijos, debajo });
 
-test('a term reaching many genes with forms beneath it is general', () => {
-  assert.equal(isGeneralTerm(term('HP:0001250')), true); // Convulsiones, 1.560 genes
+const SEIZURE = t('Convulsiones', 1560, 12, 104);
+const LAXITY = t('Hiperlaxitud articular', 349, 4, 14);
+const MICROCEPHALY = t('Microcefalia', 1052, 2, 4);
+const PECTUS = t('Pectus excavatum', 234, 1, 1);
+const ECTOPIA = t('Ectopia del cristalino', 36, 2, 2);
+const NEUROFIBROMAS = t('Neurofibromas', 10, 2, 4);
+const ARACHNODACTYLY = t('Aracnodactilia', 73, 0, 0);
+
+test('a term high in the tree is offered and pointed out', () => {
+  for (const term of [SEIZURE, LAXITY]) {
+    assert.equal(canRefine(term), true, term.nombre);
+    assert.equal(isBroadTerm(term), true, term.nombre);
+  }
 });
 
-test('a narrow term is not flagged', () => {
-  assert.equal(isGeneralTerm(term('HP:0002027')), false); // Dolor abdominal, 83 genes
+test('a term with a few forms beneath is offered but not pointed out', () => {
+  assert.equal(canRefine(MICROCEPHALY), true);
+  assert.equal(isBroadTerm(MICROCEPHALY), false);
 });
 
-test('a broad term with nothing to refine it into is not flagged', () => {
-  // Bronquiectasias reaches 130 genes but has no child with data: flagging it
-  // would offer a dialog with nothing in it.
-  const bronchiectasis = term('HP:0002110');
-  assert.ok(bronchiectasis.genes >= GENERAL_TERM_MIN_GENES);
-  assert.equal(isGeneralTerm(bronchiectasis), false);
+test('a single form beneath is a particular case, not a choice', () => {
+  // Pectus excavatum reaches 234 genes, but its only child is the lower-sternum form.
+  assert.equal(canRefine(PECTUS), false);
 });
 
-test('an unknown term is not flagged', () => {
-  assert.equal(isGeneralTerm(undefined), false);
-  assert.equal(isGeneralTerm({ hpo_id: 'HP:1', nombre: '', genes: 0, tiene_hijos: false }), false);
+test('two leaves beneath are not enough depth', () => {
+  assert.equal(canRefine(ECTOPIA), false);
+});
+
+test('a term that already reaches few genes is not offered', () => {
+  assert.equal(canRefine(NEUROFIBROMAS), false);
+});
+
+test('a leaf, an unknown term, or one from an older server is not offered', () => {
+  assert.equal(canRefine(ARACHNODACTYLY), false);
+  assert.equal(canRefine(undefined), false);
+  assert.equal(canRefine({ hpo_id: 'HP:1', nombre: '', genes: 1560, tiene_hijos: true }), false);
+});
+
+test('the fixture tree carries the real counts', () => {
+  const tree = JSON.parse(readFileSync(new URL('../mocks/fixtures.json', import.meta.url), 'utf8')).hpoTree;
+  const seizure = tree.terms['HP:0001250'];
+  assert.deepEqual([seizure.hijos, seizure.debajo], [12, 104]);
+});
+
+test('counts read in Spanish', () => {
+  assert.equal(typesLabel(14), '14 tipos más específicos');
+  assert.equal(typesLabel(1), '1 tipo más específico');
 });
 
 test('gene counts read in Spanish', () => {

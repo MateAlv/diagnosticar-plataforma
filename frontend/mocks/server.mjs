@@ -320,7 +320,7 @@ const server = http.createServer(async (req, res) => {
     const tree = fixtures.hpoTree ?? { terms: {}, children: {} };
     const terminos = [...new Set(ids)].flatMap((id) => {
       const t = tree.terms[id];
-      return t ? [{ hpo_id: id, nombre: t.nombre, genes: t.genes, tiene_hijos: Boolean(tree.children[id]?.length) }] : [];
+      return t ? [{ hpo_id: id, nombre: t.nombre, genes: t.genes, tiene_hijos: Boolean(tree.children[id]?.length), hijos: t.hijos, debajo: t.debajo }] : [];
     });
     return send(res, 200, { terminos });
   }
@@ -334,7 +334,7 @@ const server = http.createServer(async (req, res) => {
       const tree = fixtures.hpoTree ?? { terms: {}, children: {} };
       const t = tree.terms[id];
       if (!t) return send(res, 404, { error: "unknown HPO term", code: "not_found" });
-      const summary = (hid) => ({ hpo_id: hid, nombre: tree.terms[hid].nombre, genes: tree.terms[hid].genes, tiene_hijos: Boolean(tree.children[hid]?.length) });
+      const summary = (hid) => ({ hpo_id: hid, nombre: tree.terms[hid].nombre, genes: tree.terms[hid].genes, tiene_hijos: Boolean(tree.children[hid]?.length), hijos: tree.terms[hid].hijos, debajo: tree.terms[hid].debajo });
       return send(res, 200, { termino: summary(id), hijos: (tree.children[id] ?? []).map(summary) });
     }
   }

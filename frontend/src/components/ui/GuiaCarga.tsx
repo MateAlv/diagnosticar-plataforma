@@ -120,9 +120,9 @@ function GuiaSintomas() {
           </p>
           <p className="mt-1 text-sm leading-relaxed text-[var(--lu-subtle)]">
             Si el término que buscás no aparece, o preferís partir de una historia clínica ya
-            escrita, usá <strong className="font-semibold text-[var(--lu-text)]">Contanos el caso</strong>:
-            pegás el texto y detectamos los síntomas automáticamente. Después vas a poder revisarlos
-            y corregirlos acá mismo.
+            escrita, usá <strong className="font-semibold text-[var(--lu-text)]">Extraer síntomas de un texto</strong>,
+            debajo de la lista: pegás el texto y detectamos los síntomas automáticamente. Después
+            podés revisarlos y corregirlos en la lista.
           </p>
         </div>
       </div>
@@ -152,8 +152,8 @@ function GuiaHistoria() {
       <div className="px-0 py-0">
         <Encabezado titulo="Qué va en este campo">
           Escribí o pegá el relato clínico del paciente: qué le pasa, desde cuándo y qué estudios
-          se hicieron. No hace falta lenguaje técnico. Vamos a leer el texto y proponerte los
-          síntomas que encontremos, para que los revises en el paso siguiente.
+          se hicieron. No hace falta lenguaje técnico. Vamos a leer el texto y sumar a la lista
+          de arriba los síntomas que encontremos, para que los revises antes de seguir.
         </Encabezado>
 
         <ul className="mt-4 grid gap-x-5 gap-y-3 sm:grid-cols-2">

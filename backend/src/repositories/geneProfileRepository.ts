@@ -472,13 +472,18 @@ export function getGeneProfile(
  * with it or with anything beneath it. The fewer, the more the term narrows the
  * ranking, which is what makes a child worth offering over its parent.
  * `tiene_hijos` says whether anything beneath it reaches a gene, so the dialog
- * only offers to go deeper where there is something to find.
+ * only offers to go deeper where there is something to find. `hijos` and
+ * `debajo` count the terms directly and anywhere beneath it that reach a gene:
+ * how far up the tree it sits, which is what decides whether the wizard offers
+ * to refine it (docs/PRECISAR_SINTOMAS.md).
  */
 export interface TermSummary {
     hpo_id: string;
     nombre: string;
     genes: number;
     tiene_hijos: boolean;
+    hijos: number;
+    debajo: number;
 }
 
 export interface TermChildren {
@@ -525,8 +530,56 @@ interface TermRow {
     tiene_hijos: number;
 }
 
-function toTerm(row: TermRow): TermSummary {
-    return { hpo_id: row.hpo_id, nombre: row.nombre, genes: row.genes, tiene_hijos: Boolean(row.tiene_hijos) };
+let subtrees: Map<string, { hijos: number; debajo: number }> | null = null;
+
+/**
+ * For every term, how many terms that reach a gene sit directly and anywhere
+ * beneath it. Computed once from the ~24,000 edges; a term reached by two
+ * paths counts once.
+ */
+function subtreeSizes(conn: DatabaseSync): Map<string, { hijos: number; debajo: number }> {
+    if (subtrees) return subtrees;
+    const edges = conn
+        .prepare(
+            `SELECT h.padre AS padre, h.hijo AS hijo FROM hpo_hijos h
+             JOIN termino_cobertura c ON c.hpo_id = h.hijo AND c.genes > 0`,
+        )
+        .all() as unknown as { padre: string; hijo: string }[];
+    const children = new Map<string, string[]>();
+    for (const { padre, hijo } of edges) {
+        const list = children.get(padre);
+        if (list) list.push(hijo);
+        else children.set(padre, [hijo]);
+    }
+    const below = new Map<string, Set<string>>();
+    const collect = (id: string): Set<string> => {
+        const known = below.get(id);
+        if (known) return known;
+        const found = new Set<string>();
+        below.set(id, found);
+        for (const child of children.get(id) ?? []) {
+            found.add(child);
+            for (const deeper of collect(child)) found.add(deeper);
+        }
+        return found;
+    };
+    subtrees = new Map();
+    for (const id of children.keys()) {
+        subtrees.set(id, { hijos: new Set(children.get(id)).size, debajo: collect(id).size });
+    }
+    return subtrees;
+}
+
+function toTerm(row: TermRow, sizes: Map<string, { hijos: number; debajo: number }>): TermSummary {
+    const size = sizes.get(row.hpo_id);
+    return {
+        hpo_id: row.hpo_id,
+        nombre: row.nombre,
+        genes: row.genes,
+        tiene_hijos: Boolean(row.tiene_hijos),
+        hijos: size?.hijos ?? 0,
+        debajo: size?.debajo ?? 0,
+    };
 }
 
 /** The given terms, in the order asked; unknown ids are left out. */
@@ -541,7 +594,8 @@ export function getTerms(hpoIds: string[]): TermSummary[] {
              WHERE t.hpo_id IN (${ids.map(() => '?').join(',')})`,
         )
         .all(...ids) as unknown as TermRow[];
-    const byId = new Map(rows.map((row) => [row.hpo_id, toTerm(row)]));
+    const sizes = subtreeSizes(conn);
+    const byId = new Map(rows.map((row) => [row.hpo_id, toTerm(row, sizes)]));
     return ids.flatMap((id) => byId.get(id) ?? []);
 }
 
@@ -567,5 +621,6 @@ export function getTermChildren(hpoId: string): TermChildren {
              ORDER BY c.genes DESC, t.nombre`,
         )
         .all(id) as unknown as TermRow[];
-    return { termino, hijos: hijos.map(toTerm) };
+    const sizes = subtreeSizes(conn);
+    return { termino, hijos: hijos.map((row) => toTerm(row, sizes)) };
 }
