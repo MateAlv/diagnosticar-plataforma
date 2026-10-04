@@ -1,0 +1,16 @@
+{
+  "version": "placeholder",
+  "threshold_bits": 0,
+  "terms": [
+    { "hpo_id": "HP:0001250", "label_en": "Seizure", "score_bits": 0, "n_genes": 0, "r1_train_count": 0 },
+    { "hpo_id": "HP:0001263", "label_en": "Global developmental delay", "score_bits": 0, "n_genes": 0, "r1_train_count": 0 },
+    { "hpo_id": "HP:0001251", "label_en": "Ataxia", "score_bits": 0, "n_genes": 0, "r1_train_count": 0 },
+    { "hpo_id": "HP:0000365", "label_en": "Hearing impairment", "score_bits": 0, "n_genes": 0, "r1_train_count": 0 },
+    { "hpo_id": "HP:0000505", "label_en": "Visual impairment", "score_bits": 0, "n_genes": 0, "r1_train_count": 0 },
+    { "hpo_id": "HP:0001324", "label_en": "Muscle weakness", "score_bits": 0, "n_genes": 0, "r1_train_count": 0 },
+    { "hpo_id": "HP:0002376", "label_en": "Developmental regression", "score_bits": 0, "n_genes": 0, "r1_train_count": 0 },
+    { "hpo_id": "HP:0001249", "label_en": "Intellectual disability", "score_bits": 0, "n_genes": 0, "r1_train_count": 0 },
+    { "hpo_id": "HP:0002072", "label_en": "Chorea", "score_bits": 0, "n_genes": 0, "r1_train_count": 0 },
+    { "hpo_id": "HP:0001332", "label_en": "Dystonia", "score_bits": 0, "n_genes": 0, "r1_train_count": 0 }
+  ]
+}
