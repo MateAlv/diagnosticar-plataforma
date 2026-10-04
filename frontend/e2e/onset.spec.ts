@@ -108,15 +108,23 @@ test("the chips work from the keyboard", async ({ page }) => {
     await expect(dialog(page).getByRole("radio", { name: "En el primer mes" })).toBeChecked();
 });
 
-test("a refinable symptom gets the onset question too, folded until used", async ({ page }) => {
+test("a refinable symptom gets the onset question too, folded, with its value on the summary line", async ({ page }) => {
     await mockHpoTree(page);
     await toSymptoms(page);
     await page.getByRole("button", { name: "Precisar Talla baja: tiene tipos más específicos" }).click();
     await expect(dialog(page).getByRole("heading")).toHaveText("¿Qué tipo de «Talla baja»?");
-    await expect(dialog(page).getByText(/¿A qué edad empezó este síntoma\?/).first()).toBeVisible();
-    await dialog(page).getByText(/¿A qué edad empezó este síntoma\?/).first().click();
-    await dialog(page).getByRole("radio", { name: "Entre 1 y 5 años" }).check();
+    const radio = dialog(page).getByRole("radio", { name: "Entre 1 y 5 años" });
+    await expect(radio).toBeHidden();
+    await dialog(page).getByText("Agregar edad de inicio").click();
+    await expect(dialog(page).getByRole("radiogroup", { name: "Edad de inicio" })).toBeVisible();
+    await radio.check();
+    await expect(dialog(page).getByText("Edad de inicio: Entre 1 y 5 años")).toBeVisible();
     await expect(dialog(page).getByRole("button", { name: "Listo" })).toBeVisible();
+    await dialog(page).getByRole("button", { name: "Listo" }).click();
+
+    await page.getByRole("button", { name: "Precisar Talla baja: tiene tipos más específicos" }).click();
+    await expect(dialog(page).getByText("Edad de inicio: Entre 1 y 5 años")).toBeVisible();
+    await expect(radio).toBeHidden();
 });
 
 test("without onset the request is as before; with it, the optional fields are added", async ({ page }) => {

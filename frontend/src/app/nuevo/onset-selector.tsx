@@ -35,11 +35,13 @@ type Props = {
     now?: Date;
     /** The symptom's name, for the group's accessible description. */
     symptomName?: string;
+    /** The question is already on screen as a heading; keep it only as the group's name. */
+    hideLegend?: boolean;
 };
 
 const UNKNOWN = "unknown";
 
-export function OnsetSelector({ value, onChange, birthDate, now, symptomName }: Props) {
+export function OnsetSelector({ value, onChange, birthDate, now, symptomName, hideLegend }: Props) {
     const uid = useId();
     const patientYears = patientAgeYears(birthDate, now);
 
@@ -108,7 +110,7 @@ export function OnsetSelector({ value, onChange, birthDate, now, symptomName }: 
     return (
         <div data-testid="onset-selector">
             <fieldset aria-describedby={hintId} className="min-w-0">
-                <legend className="text-sm font-semibold text-[var(--lu-text)]">
+                <legend className={hideLegend ? "sr-only" : "text-sm font-semibold text-[var(--lu-text)]"}>
                     ¿A qué edad empezó este síntoma?{" "}
                     <span className="font-normal text-[var(--lu-subtle)]">(opcional)</span>
                 </legend>

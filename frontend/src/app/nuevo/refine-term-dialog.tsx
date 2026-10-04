@@ -18,7 +18,7 @@ import { OnsetSelector } from "./onset-selector";
  *
  * Every symptom that opens it can also say when it began. A symptom that
  * cannot be refined (offered only because its onset is informative) gets that
- * question alone; on one that can, it sits above the list, folded until used.
+ * question alone; on one that can, it sits above the list, folded until opened (its summary line shows the value).
  */
 
 export type RefineTarget = { code: string; description: string; refinable: boolean };
@@ -88,7 +88,7 @@ export function RefineTermDialog({ target, onClose, onChoose, onset, onOnsetChan
     const onsetLabel = onsetClass(onset?.hpo_id)?.label;
     const [onsetOpen, setOnsetOpen] = useState(true);
     useEffect(() => {
-        setOnsetOpen(!refinable || onset !== null);
+        setOnsetOpen(!refinable);
         // Decided when a symptom opens; changing the value in it does not refold.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [target?.code]);
@@ -165,11 +165,18 @@ export function RefineTermDialog({ target, onClose, onChoose, onset, onOnsetChan
                             <section className="mb-4 rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)]/60 p-4">
                                 {refinable ? (
                                     <details open={onsetOpen} onToggle={(event) => setOnsetOpen(event.currentTarget.open)}>
-                                        <summary className="min-h-[44px] cursor-pointer list-none text-sm font-semibold text-[var(--lu-text)] marker:hidden">
-                                            ¿A qué edad empezó este síntoma?{" "}
-                                            <span className="font-normal text-[var(--lu-subtle)]">
-                                                (opcional){onsetLabel ? ` · ${onsetLabel}` : ""}
-                                            </span>
+                                        <summary className="flex min-h-[44px] cursor-pointer list-none items-center text-sm font-semibold text-[var(--lu-text)] marker:hidden">
+                                            {onsetLabel ? (
+                                                <>
+                                                    Edad de inicio: {onsetLabel}
+                                                    <span className="ml-1 font-medium text-[var(--lu-accent-text)] underline underline-offset-2">· Cambiar</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    Agregar edad de inicio{" "}
+                                                    <span className="ml-1 font-normal text-[var(--lu-subtle)]">(opcional)</span>
+                                                </>
+                                            )}
                                         </summary>
                                         <div className="pt-2">
                                             <OnsetSelector
@@ -177,6 +184,7 @@ export function RefineTermDialog({ target, onClose, onChoose, onset, onOnsetChan
                                                 onChange={onOnsetChange}
                                                 birthDate={birthDate}
                                                 symptomName={target.description}
+                                                hideLegend
                                             />
                                         </div>
                                     </details>
