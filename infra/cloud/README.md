@@ -29,6 +29,13 @@ infra/cloud/
     └── <proveedor>/               VM + IP + firewall, y le pasa el cloud-init común
 ```
 
+Adaptadores disponibles:
+
+| Adaptador | Estado |
+|---|---|
+| [`providers/aws`](providers/aws/README.md) | En uso: la copia de https://44-197-71-62.sslip.io |
+| [`providers/manual`](providers/manual/main.tf) | Cualquier VM Ubuntu 24.04, creada a mano en cualquier proveedor |
+
 | Parte | ¿Cambia con el proveedor? |
 |---|---|
 | Imágenes (GHCR), compose, Caddyfile, cloud-init, herramienta de la máquina, `remote.sh`, CI/CD | No |
