@@ -167,6 +167,14 @@ services:
       TRUSTED_PROXIES: ${STAGING_TRUSTED_PROXIES:-}
       RATE_LIMIT_PER_MINUTE: ${RECOGNIZER_RATE_LIMIT_PER_MINUTE:-10}
       MAX_CONCURRENT_EXTRACTIONS: ${RECOGNIZER_MAX_CONCURRENT:-2}
+      # LLM calls one extraction may have in flight: its mentions are mapped
+      # at once instead of five at a time, the same calls with the same
+      # prompts. Each is a claude process of ~260 MB, so 2 extractions x 16
+      # is ~8 GB at peak, which nodo0 has to spare. The burst lets the
+      # recognizer's rate limiter start them together; its per-minute
+      # budget is unchanged.
+      RECOGNIZER_LLM_THREADS: ${RECOGNIZER_LLM_THREADS:-16}
+      LLM_REQUESTS_BURST: ${RECOGNIZER_LLM_BURST:-20}
       USER_EXTRACTIONS_PER_HOUR: ${RECOGNIZER_USER_PER_HOUR:-20}
       USER_EXTRACTIONS_PER_DAY: ${RECOGNIZER_USER_PER_DAY:-60}
       # The ceiling on what staging may spend of the Claude subscription behind

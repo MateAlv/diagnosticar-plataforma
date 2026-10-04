@@ -151,7 +151,12 @@ services:
       JWT_PUBLIC_KEY: ${JWT_ACCESS_PUBLIC_KEY}
       TRUSTED_PROXIES: 172.30.0.10
       RATE_LIMIT_PER_MINUTE: "10"
-      MAX_CONCURRENT_EXTRACTIONS: "2"
+      # Each in-flight call of the claude CLI is a process of ~260 MB, and
+      # the extractor already holds ~500 MB: on a 2 GB instance that leaves
+      # room for one extraction with two calls at a time. A bigger instance
+      # (c7i-flex.large, 4 GB) can raise both; see README, "Memoria".
+      MAX_CONCURRENT_EXTRACTIONS: "1"
+      RECOGNIZER_LLM_THREADS: "2"
       USER_EXTRACTIONS_PER_HOUR: ${USER_EXTRACTIONS_PER_HOUR:-20}
       USER_EXTRACTIONS_PER_DAY: ${USER_EXTRACTIONS_PER_DAY:-60}
       # The ceiling on what the site may spend: of the subscription (staging's
@@ -164,7 +169,7 @@ services:
       - recognizer_state:/var/lib/recognizer
     networks: [edge]
     # ~465 MiB at rest (the ClinLinker encoder); the rest is for peaks.
-    mem_limit: 1g
+    mem_limit: 1300m
     oom_score_adj: 500
 
   model:

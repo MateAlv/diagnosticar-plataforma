@@ -177,6 +177,12 @@ convulsiones") y confirmar que no aparece como síntoma presente.
 scripts/remote.sh stats
 ```
 
+Desde que el extractor usa la suscripción de Claude, cada llamada al modelo es un
+proceso `claude` de ~260 MB. Por eso la copia corre una extracción a la vez, con
+dos llamadas en paralelo (`MAX_CONCURRENT_EXTRACTIONS=1`, `RECOGNIZER_LLM_THREADS=2`,
+techo de 1300 MB en `stack/docker-compose.cloud.yml`). En staging son 16 en paralelo
+y una historia larga tarda la mitad. Con una instancia de 4 GB se pueden subir.
+
 Con dos extracciones de historias largas a la vez: si quedan menos de ~300 MB libres o
 el swap se usa todo el tiempo, pasar a `instance_type = "c7i-flex.large"` (4 GB) en
 `terraform.tfvars` y `terraform apply`. La instancia se detiene y vuelve a arrancar
