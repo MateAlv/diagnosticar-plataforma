@@ -1,0 +1,10 @@
+# The gene profiles database the backend reads (GENE_PROFILES_DB_PATH): an
+# official release of MateAlv/diagnostic.ar-gene-profiles. It is not in git and
+# not in any image; `remote.sh install-genes` downloads this release, checks it
+# against the release's own SHA256SUMS, and hands genes.db to the instance,
+# which refuses any file whose hash is not GENES_DB_SHA256.
+GENES_REPO=MateAlv/diagnostic.ar-gene-profiles
+GENES_TAG=db-v1.0.0
+GENES_ASSET=genes-db.tar.gz
+GENES_ASSET_SHA256=f28bbe9a2d2e2f4bc19a89ca6856058b4df88ba6f09547317048311d362b0071
+GENES_DB_SHA256=d447a97fa7b06af9093b78ddec02f251fac597a43cd94563f6a6e7ebae1eed50
