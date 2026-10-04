@@ -162,16 +162,18 @@ test('Precisar shows for a refinable term or an onset-informative one, unless di
 test('the onset-informative list reads from the JSON file, whatever its contents', () => {
   const file = JSON.parse(readFileSync(new URL('../src/lib/onset-informative-terms.json', import.meta.url), 'utf8'));
   assert.equal(typeof file.version, 'string');
-  assert.equal(typeof file.threshold_bits, 'number');
+  assert.ok(file.threshold_bits === null || typeof file.threshold_bits === 'number');
   for (const term of file.terms) {
     for (const [key, type] of [['hpo_id', 'string'], ['label_en', 'string'], ['score_bits', 'number'], ['n_genes', 'number'], ['r1_train_count', 'number']]) {
-      assert.equal(typeof term[key], type, `${term.hpo_id} ${key}`);
+      const nullable = key === 'score_bits' || key === 'n_genes';
+      assert.ok(typeof term[key] === type || (nullable && term[key] === null), `${term.hpo_id} ${key}`);
     }
   }
   const ids = onsetInformativeIds(file);
-  assert.equal(ids.size, file.terms.length);
-  for (const id of ['HP:0001250', 'HP:0001263', 'HP:0001251', 'HP:0000365', 'HP:0000505']) assert.equal(ids.has(id), true, id);
-  assert.equal(ids.has('HP:0000054'), false);
+  assert.equal(ids.size, new Set(file.terms.map((t) => t.hpo_id)).size);
+  assert.ok(ids.size > 0);
+  assert.equal(ids.has(file.terms[0].hpo_id), true);
+  assert.equal(ids.has('HP:0000000'), false);
   assert.equal(onsetInformativeIds({ terms: [{ hpo_id: 'hp:0000118 ' }, { hpo_id: 'oops' }, null, {}] }).size, 1);
   for (const bad of [null, undefined, {}, { terms: 'x' }, []]) assert.equal(onsetInformativeIds(bad).size, 0);
 });

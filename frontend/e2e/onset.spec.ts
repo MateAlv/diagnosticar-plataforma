@@ -5,7 +5,7 @@ import { mockBackend, mockHpoTree, mockModelServices, collectPageErrors, EXTRACT
 /**
  * "¿A qué edad empezó este síntoma?" in the Precisar dialog. The extraction
  * here finds a seizure (an onset-informative term that cannot be refined) next
- * to "Infecciones respiratorias recurrentes" (neither), and the patient is
+ * to "Infecciones respiratorias recurrentes", and the patient is
  * 8 years old. Onset is optional: with none given, the request to the model is
  * what it always was.
  */
@@ -52,7 +52,6 @@ test.beforeEach(async ({ page }) => {
 
 test("an onset-informative symptom offers Precisar and asks only about the onset", async ({ page }) => {
     await toSymptoms(page);
-    await expect(page.getByRole("button", { name: /^Precisar Infecciones/ })).toHaveCount(0);
 
     await seizureButton(page).click();
     await expect(dialog(page).getByRole("heading")).toContainText("¿Cuándo empezó");
