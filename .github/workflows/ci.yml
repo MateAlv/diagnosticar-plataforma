@@ -26,9 +26,10 @@ env:
 jobs:
   # --------------------------------------------------------------------------
   # Whether the pull request touches anything the slow jobs test. A change
-  # only to documentation or to the AWS copy's Terraform (infra/aws/, which no
-  # job here exercises) skips the backend suite, E2E, the image builds and the
-  # stack smoke test: about 20 of a run's 22 billed minutes. The skipped jobs
+  # only to documentation or to the cloud copy's infrastructure (infra/aws/,
+  # infra/cloud/, which only the `infra` job exercises) skips the backend
+  # suite, E2E, the image builds and the stack smoke test: about 20 of a run's
+  # 22 billed minutes. The skipped jobs
   # still report, as skipped, which satisfies the required checks.
   # The weekly run looks for newly published vulnerabilities, which only the
   # audit (Checks) and the image scans can find, so it skips the test suites.
@@ -41,6 +42,7 @@ jobs:
     outputs:
       code: ${{ steps.diff.outputs.code }}
       tests: ${{ steps.diff.outputs.tests }}
+      infra: ${{ steps.diff.outputs.infra }}
     steps:
       - id: diff
         env:
@@ -49,20 +51,24 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           code=true
+          infra=true
           if [ "$EVENT" = pull_request ]; then
             files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" -q '.[].filename')
             printf '%s\n' "$files"
             # Anything outside these paths counts as code; workflow changes
             # always do, since they change what CI itself runs.
-            if ! printf '%s\n' "$files" | grep -qvE '(\.md$|^docs/|^infra/aws/|^LICENSE$|^\.gitignore$)'; then
+            if ! printf '%s\n' "$files" | grep -qvE '(\.md$|^docs/|^infra/aws/|^infra/cloud/|^LICENSE$|^\.gitignore$)'; then
               code=false
             fi
+            # The cloud stack embeds ops/seed-admin.sh.
+            printf '%s\n' "$files" | grep -qE '^(infra/cloud/|ops/seed-admin\.sh$|\.github/workflows/ci\.yml$)' || infra=false
           fi
           tests=$code
           [ "$EVENT" = schedule ] && tests=false
-          echo "code=$code tests=$tests"
+          echo "code=$code tests=$tests infra=$infra"
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "tests=$tests" >> "$GITHUB_OUTPUT"
+          echo "infra=$infra" >> "$GITHUB_OUTPUT"
 
   # --------------------------------------------------------------------------
   # Everything that takes seconds, in one job: lint and types, frontend unit
@@ -149,6 +155,72 @@ jobs:
             exit 1
           fi
           echo "ok — no .env files tracked"
+
+  # --------------------------------------------------------------------------
+  # The provider-neutral cloud deployment (infra/cloud/): about a minute, and
+  # only when it changed. It cannot boot a machine here, so it checks what can
+  # be checked without one: Terraform formatting and validity of the shared
+  # module and of every adapter, the scripts, the compose file, and the
+  # rendered cloud-init against cloud-init's own schema.
+  # --------------------------------------------------------------------------
+  infra:
+    name: Cloud infrastructure
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform format
+        run: terraform fmt -check -recursive -diff infra/cloud
+
+      # Every adapter validates without credentials or a backend.
+      - name: Terraform validate (every adapter)
+        run: |
+          set -euo pipefail
+          for dir in infra/cloud/providers/*/; do
+            echo "::group::$dir"
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate
+            echo "::endgroup::"
+          done
+
+      - name: Shell scripts
+        run: shellcheck -x infra/cloud/stack/diagnosticar.sh infra/cloud/scripts/remote.sh
+
+      - name: Compose file
+        run: |
+          cat > "$RUNNER_TEMP/ci.env" <<'ENV'
+          DOMAIN='ci.example'
+          POSTGRES_PASSWORD='ci'
+          JWT_ACCESS_SECRET='ci'
+          JWT_REFRESH_SECRET='ci'
+          JWT_ACCESS_PRIVATE_KEY='ci'
+          JWT_ACCESS_PUBLIC_KEY='ci'
+          GLOBAL_EXTRACTIONS_PER_WEEK='1'
+          GLOBAL_EXTRACTIONS_PER_5H='1'
+          BACKEND_IMAGE='ci/backend'
+          FRONTEND_IMAGE='ci/frontend'
+          RECOGNIZER_IMAGE='ci/recognizer'
+          MODEL_IMAGE='ci/model'
+          ENV
+          docker compose -f infra/cloud/stack/docker-compose.yml --env-file "$RUNNER_TEMP/ci.env" config -q
+
+      # The same document every provider receives, rendered with a throwaway
+      # key, then checked by cloud-init itself and against the size limits.
+      - name: Rendered cloud-init
+        run: |
+          set -euo pipefail
+          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/ci_key"
+          terraform -chdir=infra/cloud/providers/manual apply -auto-approve -input=false \
+            -var "ssh_public_key_path=$RUNNER_TEMP/ci_key.pub"
+          sudo apt-get install -y -q --no-install-recommends cloud-init >/dev/null
+          cloud-init schema --config-file infra/cloud/providers/manual/cloud-init.yaml
+          echo "plain: $(wc -c < infra/cloud/providers/manual/cloud-init.yaml) bytes (limit 32768)"
+          echo "gzip:  $(gzip -9c infra/cloud/providers/manual/cloud-init.yaml | wc -c) bytes (limit 16384)"
 
   # --------------------------------------------------------------------------
   # Backend suite against a real Postgres. The ownership tests here are the ones

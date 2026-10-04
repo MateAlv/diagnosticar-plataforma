@@ -1,0 +1,169 @@
+#cloud-config
+# First boot of a diagnostic.ar machine, the same on every provider: any VM
+# running Ubuntu 24.04 that reads cloud-init (AWS, Google Cloud, Azure,
+# DigitalOcean, Hetzner, Oracle, Linode, Vultr, a local multipass VM…).
+# Rendered by infra/cloud/modules/stack; on the machine, its output is in
+# /var/log/cloud-init-output.log. It runs once.
+#
+# It carries only the machine's tool, /usr/local/bin/diagnosticar. The stack
+# (compose, Caddyfile, genes.lock) arrives with `remote.sh setup`, in the same
+# session that sets the registry token and installs genes.db, and every later
+# change to it with `remote.sh install-stack`: one way in, on every provider,
+# and small enough for any provider's limit on user data.
+
+users:
+  - name: diagnosticar
+    gecos: diagnostic.ar administration
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+%{ for key in ssh_public_keys ~}
+      - ${jsonencode(key)}
+%{ endfor ~}
+
+ssh_pwauth: false
+disable_root: true
+
+package_update: true
+package_upgrade: true
+packages:
+  - ca-certificates
+  - curl
+  - python3
+  - rclone
+
+write_files:
+  # Not secret: every value comes from Terraform variables. The secrets are
+  # generated on the machine by `diagnosticar init-secrets`.
+  - path: /etc/diagnosticar/config.env
+    permissions: "0644"
+    content: |
+%{ for key, value in config ~}
+      ${key}='${value}'
+%{ endfor ~}
+
+  - path: /usr/local/bin/diagnosticar
+    permissions: "0755"
+    encoding: gz+b64
+    content: ${files.script}
+
+  # SSH only with a key, only as `diagnosticar`. The firewall keeps port 22
+  # closed unless someone opens it for their address (remote.sh open).
+  - path: /etc/ssh/sshd_config.d/90-diagnosticar.conf
+    permissions: "0644"
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin no
+      AllowUsers diagnosticar
+      MaxAuthTries 3
+
+  # Container logs rotate instead of filling the disk.
+  - path: /etc/docker/daemon.json
+    permissions: "0644"
+    content: |
+      { "log-driver": "json-file", "log-opts": { "max-size": "10m", "max-file": "3" } }
+
+  # Prefer RAM; swap only under real pressure.
+  - path: /etc/sysctl.d/90-diagnosticar.conf
+    permissions: "0644"
+    content: |
+      vm.swappiness=10
+
+  # Pull-based deploy, as nodo0 does (ops/systemd/): the machine asks the
+  # registry whether the channel moved. Nothing has to reach into it.
+  - path: /etc/systemd/system/diagnosticar-deploy.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Deploy diagnostic.ar if its image channel moved
+      After=network-online.target docker.service
+      Wants=network-online.target
+      Requires=docker.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/diagnosticar deploy
+      TimeoutStartSec=2400
+      SyslogIdentifier=diagnosticar-deploy
+  - path: /etc/systemd/system/diagnosticar-deploy.timer
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Check for new diagnostic.ar images every 5 minutes
+
+      [Timer]
+      OnBootSec=2min
+      OnUnitActiveSec=5min
+      RandomizedDelaySec=30
+
+      [Install]
+      WantedBy=timers.target
+  - path: /etc/systemd/system/diagnosticar-backup.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Dump the diagnostic.ar database
+      After=docker.service
+      Requires=docker.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/diagnosticar backup
+      SyslogIdentifier=diagnosticar-backup
+  - path: /etc/systemd/system/diagnosticar-backup.timer
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Nightly diagnostic.ar database dump
+
+      [Timer]
+      OnCalendar=*-*-* 06:00:00 UTC
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+
+  - path: /usr/local/lib/diagnosticar/first-boot.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euxo pipefail
+
+      # Swap: a cushion for the extractor's peaks on a 2 GB machine.
+      if [ "${swap_mb}" -gt 0 ] && [ ! -f /swapfile ]; then
+          fallocate -l "${swap_mb}M" /swapfile || dd if=/dev/zero of=/swapfile bs=1M count="${swap_mb}" status=none
+          chmod 600 /swapfile
+          mkswap /swapfile
+          echo '/swapfile none swap defaults 0 0' >> /etc/fstab
+      fi
+      swapon -a
+      sysctl --system >/dev/null
+
+      # Docker and the compose plugin, from Docker's own repository.
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+      chmod a+r /etc/apt/keyrings/docker.asc
+      . /etc/os-release
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $VERSION_CODENAME stable" \
+          > /etc/apt/sources.list.d/docker.list
+      apt-get update -q
+      DEBIAN_FRONTEND=noninteractive apt-get install -y -q docker-ce docker-ce-cli containerd.io docker-compose-plugin
+      systemctl enable --now docker
+      docker compose version
+
+      systemctl try-restart ssh.service || true
+
+      mkdir -p /var/lib/diagnosticar /opt/diagnosticar/data /opt/diagnosticar/status
+      /usr/local/bin/diagnosticar init-secrets
+
+      systemctl daemon-reload
+      systemctl enable --now diagnosticar-deploy.timer diagnosticar-backup.timer
+
+      # Nothing runs until `remote.sh setup` brings the stack, genes.db and the
+      # registry token; the timer then deploys within 5 minutes.
+      echo "first boot done; next: infra/cloud/scripts/remote.sh setup"
+
+runcmd:
+  - [/usr/local/lib/diagnosticar/first-boot.sh]

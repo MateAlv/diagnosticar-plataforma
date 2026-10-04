@@ -1,0 +1,183 @@
+# The whole platform on one machine, the same on every provider
+# (infra/cloud/README.md). Lives on the instance as /opt/diagnosticar/docker-compose.yml,
+# next to a .env that diagnosticar.sh writes on every deploy from three files:
+#
+#   /etc/diagnosticar/config.env    not secret, written by cloud-init (Terraform variables)
+#   /etc/diagnosticar/secrets.env   generated on the machine, never leaves it
+#   /var/lib/diagnosticar/images.env  the image digests running now
+#
+#   caddy ─┬─ /api/*               backend ─▶ db, genes.db (read-only)
+#          ├─ /hpo-api/*           hpo-recognizer   (prefix stripped)
+#          ├─ /genphenai/*         model            (prefix stripped)
+#          ├─ /deploy-status.json  what the last deploy did
+#          └─ everything           frontend
+#
+# Images come from GHCR (ghcr.io/matealv/diagnosticar-cloud-*), pinned by
+# digest: `diagnosticar deploy` resolves the channel tag (CHANNEL, "cloud") to
+# digests, and goes back to the previous ones if the new set fails its checks.
+#
+# Only caddy publishes ports. The question agent is left out: its repository is
+# not reachable from here, and the backend switches the feature off when
+# QUESTION_AGENT_URL is empty.
+#
+# Memory: sized for 2 GB (the stack measured ~1.05 GB at rest). Each service
+# has a ceiling, and if the host still runs short the kernel picks the
+# extractor first and Postgres last (oom_score_adj).
+
+name: diagnosticar
+
+networks:
+  edge:
+    ipam:
+      config:
+        # Dynamic addresses come from the upper half, so the fixed one below
+        # can never be handed to another container.
+        - subnet: 172.30.0.0/24
+          ip_range: 172.30.0.128/25
+
+volumes:
+  postgres_data:
+  recognizer_state:
+  caddy_data:
+  caddy_config:
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./status:/srv/status:ro
+      # The certificates. Losing them means asking Let's Encrypt again, and
+      # it rate-limits repeated issuance for the same name.
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      edge:
+        # The extractor believes X-Forwarded-For only from this address
+        # (TRUSTED_PROXIES). Fixed, so it cannot go stale on a restart.
+        ipv4_address: 172.30.0.10
+    mem_limit: 96m
+    depends_on:
+      - frontend
+      - backend
+
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: diagnosticar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: diagnosticar
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U diagnosticar -d diagnosticar"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [edge]
+    mem_limit: 256m
+    oom_score_adj: -500
+
+  backend:
+    image: ${BACKEND_IMAGE:?run diagnosticar deploy}
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      # The password is hex (diagnosticar init-secrets), so it needs no URL escaping.
+      DATABASE_URL: postgres://diagnosticar:${POSTGRES_PASSWORD}@db:5432/diagnosticar
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET}
+      # RS256, so the extractor can verify a session with the public half.
+      JWT_ACCESS_PRIVATE_KEY: ${JWT_ACCESS_PRIVATE_KEY:?set JWT_ACCESS_PRIVATE_KEY}
+      JWT_ACCESS_PUBLIC_KEY: ${JWT_ACCESS_PUBLIC_KEY:?set JWT_ACCESS_PUBLIC_KEY}
+      JWT_ACCEPT_LEGACY_HS256: "false"
+      FRONTEND_URL: https://${DOMAIN}
+      BACKEND_URL: https://${DOMAIN}
+      GENE_PROFILES_DB_PATH: /app/data/genes.db
+      # No SMTP and no Google sign-in: no test run can email anyone.
+      QUESTION_AGENT_URL: ""
+    volumes:
+      - ./data/genes.db:/app/data/genes.db:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [edge]
+    mem_limit: 256m
+
+  frontend:
+    # Built once for every deployment: its NEXT_PUBLIC_* are the relative
+    # paths /api, /hpo-api and /genphenai, which Caddy serves on whatever
+    # domain this machine has.
+    image: ${FRONTEND_IMAGE:?run diagnosticar deploy}
+    restart: unless-stopped
+    init: true
+    environment:
+      BACKEND_API_URL: http://backend:4000/api
+    depends_on:
+      - backend
+    networks: [edge]
+    mem_limit: 256m
+
+  hpo-recognizer:
+    image: ${RECOGNIZER_IMAGE:?run diagnosticar deploy}
+    restart: unless-stopped
+    init: true
+    environment:
+      USE_RECOGNIZER: "true"
+      # claude-cli: a Claude subscription token, as staging; anthropic: an
+      # API key (docs/LLM_EN_LA_COPIA_AWS.md).
+      RECOGNIZER_PROVIDER: ${RECOGNIZER_PROVIDER:-claude-cli}
+      RECOGNIZER_MODEL: ${RECOGNIZER_MODEL:-claude-opus-5}
+      # Only the one the provider uses is read. Empty until it is set with
+      # `remote.sh set-secret`: /healthz then reports extract_hpo.ready false
+      # with the reason, and search keeps working.
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CORS_ORIGINS: https://${DOMAIN}
+      # The incumbent extractor needs a GPU and Ollama; off.
+      ENABLE_SYMPTOM_EXTRACTION: "false"
+      # Never keep clinical text.
+      STORE_REQUESTS: "false"
+      CACHE_ENABLED: "false"
+      # Every extraction costs money: no session, 401.
+      REQUIRE_AUTH: "true"
+      JWT_PUBLIC_KEY: ${JWT_ACCESS_PUBLIC_KEY}
+      TRUSTED_PROXIES: 172.30.0.10
+      RATE_LIMIT_PER_MINUTE: "10"
+      # Each in-flight call of the claude CLI is a process of ~260 MB, and the
+      # extractor already holds ~500 MB: on 2 GB that leaves room for one
+      # extraction with two calls at a time. Raise both on a bigger machine.
+      MAX_CONCURRENT_EXTRACTIONS: ${MAX_CONCURRENT_EXTRACTIONS:-1}
+      RECOGNIZER_LLM_THREADS: ${RECOGNIZER_LLM_THREADS:-2}
+      USER_EXTRACTIONS_PER_HOUR: ${USER_EXTRACTIONS_PER_HOUR:-20}
+      USER_EXTRACTIONS_PER_DAY: ${USER_EXTRACTIONS_PER_DAY:-60}
+      # The ceiling on what the site may spend: of the subscription (staging's
+      # 40 per 5 hours) or of an API key's weekly budget.
+      GLOBAL_EXTRACTIONS_PER_WEEK: ${GLOBAL_EXTRACTIONS_PER_WEEK:?set GLOBAL_EXTRACTIONS_PER_WEEK}
+      GLOBAL_EXTRACTIONS_PER_5H: ${GLOBAL_EXTRACTIONS_PER_5H:?set GLOBAL_EXTRACTIONS_PER_5H}
+      # On a volume, so a redeploy does not hand out a fresh week.
+      EXTRACTION_BUDGET_STATE: /var/lib/recognizer/budget.json
+    volumes:
+      - recognizer_state:/var/lib/recognizer
+    networks: [edge]
+    # ~465 MiB at rest (the ClinLinker encoder); the rest is for peaks.
+    mem_limit: ${RECOGNIZER_MEM_LIMIT:-1300m}
+    oom_score_adj: 500
+
+  model:
+    image: ${MODEL_IMAGE:?run diagnosticar deploy}
+    restart: unless-stopped
+    init: true
+    environment:
+      CORS_ORIGINS: https://${DOMAIN}
+    networks: [edge]
+    mem_limit: 384m
