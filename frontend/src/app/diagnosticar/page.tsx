@@ -10,6 +10,7 @@ import { ErrorNotice } from "../../components/ui/ErrorNotice";
 import { errorMessage, isSessionError, jsonOrThrow } from "../../lib/api-errors";
 import { RESULTS_DISCLAIMER } from "../../lib/disclaimer";
 import { especialidadesParaConsultar } from "../../lib/especialidades";
+import { parseOnset, type SymptomOnset } from "../../lib/onset";
 
 type TabId = "overview" | "integrantes";
 
@@ -17,6 +18,7 @@ type Symptom = {
   id: string;
   label: string;
   codigo?: string;
+  onset?: SymptomOnset;
 };
 
 type Member = {
@@ -91,7 +93,7 @@ function mapSymptoms(rawSymptoms: unknown, memberId: string): Symptom[] {
     if (!item || typeof item !== "object") {
       return;
     }
-    const maybe = item as { description?: unknown; code?: unknown };
+    const maybe = item as { description?: unknown; code?: unknown; onset?: unknown };
     const codigoRaw =
       typeof maybe.code === "string" && maybe.code.trim()
         ? maybe.code.trim().toUpperCase()
@@ -103,10 +105,12 @@ function mapSymptoms(rawSymptoms: unknown, memberId: string): Symptom[] {
     if (!label) {
       return;
     }
+    const onset = parseOnset(maybe.onset);
     symptoms.push({
       id: `${memberId}-${codigoRaw || `sym-${index}`}-${index}`,
       label,
       codigo: codigoRaw || undefined,
+      ...(onset ? { onset } : {}),
     });
   });
   return symptoms;
@@ -294,6 +298,7 @@ function DiagnosticarContent() {
         sintomas: activeMember.sintomas.map((s) => ({
           description: s.label,
           code: s.codigo ?? "",
+          ...(s.onset ? { onset: s.onset } : {}),
         })),
       };
       window.sessionStorage.setItem("diagnosticar:newDiagDraft", JSON.stringify(payload));

@@ -3,6 +3,8 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useMemo, useState } from "react";
 import { fetchChildren, genesLabel, typesLabel, type HpoTerm, type HpoTermChildren } from "@/lib/hpo-terms";
+import { onsetClass, type SymptomOnset } from "@/lib/onset";
+import { OnsetSelector } from "./onset-selector";
 
 /**
  * Browse from a general symptom down to a more specific one.
@@ -13,19 +15,27 @@ import { fetchChildren, genesLabel, typesLabel, type HpoTerm, type HpoTermChildr
  * most common first, each with a bar for how much of its parent's search it
  * keeps: shorter narrows more. Nothing here is required — "Dejarlo como está"
  * leaves the symptom as it was.
+ *
+ * Every symptom that opens it can also say when it began. A symptom that
+ * cannot be refined (offered only because its onset is informative) gets that
+ * question alone; on one that can, it sits above the list, folded until used.
  */
 
-export type RefineTarget = { code: string; description: string };
+export type RefineTarget = { code: string; description: string; refinable: boolean };
 
 type Props = {
     target: RefineTarget | null;
     onClose: () => void;
     onChoose: (term: HpoTerm) => void;
+    onset: SymptomOnset | null;
+    onOnsetChange: (onset: SymptomOnset | null) => void;
+    /** `YYYY-MM-DD`; bounds the onset when known. */
+    birthDate?: string | null;
 };
 
 const FILTER_FROM = 8;
 
-export function RefineTermDialog({ target, onClose, onChoose }: Props) {
+export function RefineTermDialog({ target, onClose, onChoose, onset, onOnsetChange, birthDate }: Props) {
     const [levels, setLevels] = useState<HpoTermChildren[]>([]);
     const [loading, setLoading] = useState(false);
     const [failed, setFailed] = useState(false);
@@ -49,7 +59,9 @@ export function RefineTermDialog({ target, onClose, onChoose }: Props) {
     useEffect(() => {
         if (target) {
             setLevels([]);
-            void load(target.code, true);
+            setFailed(false);
+            setLoading(false);
+            if (target.refinable) void load(target.code, true);
         }
         // Reloads only when a different symptom is opened.
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -72,6 +84,14 @@ export function RefineTermDialog({ target, onClose, onChoose }: Props) {
     };
 
     const rootName = target?.description ?? root?.nombre ?? "";
+    const refinable = target?.refinable ?? false;
+    const onsetLabel = onsetClass(onset?.hpo_id)?.label;
+    const [onsetOpen, setOnsetOpen] = useState(true);
+    useEffect(() => {
+        setOnsetOpen(!refinable || onset !== null);
+        // Decided when a symptom opens; changing the value in it does not refold.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [target?.code]);
 
     return (
         <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
@@ -87,10 +107,12 @@ export function RefineTermDialog({ target, onClose, onChoose }: Props) {
                                 Precisar un síntoma
                             </p>
                             <Dialog.Title className="mt-1 text-xl font-bold leading-snug text-[var(--lu-text)] sm:text-2xl">
-                                ¿Qué tipo de «{rootName}»?
+                                {refinable ? <>¿Qué tipo de «{rootName}»?</> : <>¿Cuándo empezó «{rootName}»?</>}
                             </Dialog.Title>
                             <Dialog.Description className="mt-2 text-sm leading-relaxed text-[var(--lu-subtle)]">
-                                {root ? (
+                                {!refinable ? (
+                                    <>Si lo sabés, contanos a qué edad empezó este síntoma. Es opcional.</>
+                                ) : root ? (
                                     <>
                                         «{rootName}» es un término amplio
                                         {root.debajo ? <>: abarca {typesLabel(root.debajo)}</> : null}. Si sabés de
@@ -139,6 +161,36 @@ export function RefineTermDialog({ target, onClose, onChoose }: Props) {
                     )}
 
                     <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-7">
+                        {target && (
+                            <section className="mb-4 rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)]/60 p-4">
+                                {refinable ? (
+                                    <details open={onsetOpen} onToggle={(event) => setOnsetOpen(event.currentTarget.open)}>
+                                        <summary className="min-h-[44px] cursor-pointer list-none text-sm font-semibold text-[var(--lu-text)] marker:hidden">
+                                            ¿A qué edad empezó este síntoma?{" "}
+                                            <span className="font-normal text-[var(--lu-subtle)]">
+                                                (opcional){onsetLabel ? ` · ${onsetLabel}` : ""}
+                                            </span>
+                                        </summary>
+                                        <div className="pt-2">
+                                            <OnsetSelector
+                                                value={onset}
+                                                onChange={onOnsetChange}
+                                                birthDate={birthDate}
+                                                symptomName={target.description}
+                                            />
+                                        </div>
+                                    </details>
+                                ) : (
+                                    <OnsetSelector
+                                        value={onset}
+                                        onChange={onOnsetChange}
+                                        birthDate={birthDate}
+                                        symptomName={target.description}
+                                    />
+                                )}
+                            </section>
+                        )}
+
                         {current && current.hijos.length >= FILTER_FROM && (
                             <label className="mb-3 block">
                                 <span className="sr-only">Buscar entre los tipos</span>
@@ -238,7 +290,7 @@ export function RefineTermDialog({ target, onClose, onChoose }: Props) {
 
                     <div className="flex flex-col-reverse gap-2 border-t border-[var(--lu-border)] px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-7">
                         <Dialog.Close className="min-h-[44px] rounded-xl border border-[var(--lu-border-strong)] bg-white px-4 text-sm font-semibold text-[var(--lu-text)] hover:bg-[var(--lu-surface)]">
-                            Dejarlo como está
+                            {refinable && onset === null ? "Dejarlo como está" : "Listo"}
                         </Dialog.Close>
                         {levels.length > 1 && current && (
                             <button

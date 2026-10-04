@@ -15,6 +15,7 @@ type Symptom = {
   code: string;
   confidence?: number;
   source?: "texto" | "manual";
+  onset?: SymptomOnset | null;
 };
 
 type GenPhenResult = {
@@ -76,7 +77,7 @@ type RegenerationDraft = {
   localidad?: string | null;
   pais?: string | null;
   historiaClinica?: string;
-  sintomas?: Array<{ description?: string; code?: string }>;
+  sintomas?: Array<{ description?: string; code?: string; onset?: unknown }>;
 };
 
 const stepsMeta: Array<{ id: Step; title: string }> = [
@@ -106,6 +107,8 @@ import { errorMessage, isSessionError, jsonOrThrow } from "@/lib/api-errors";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { BROAD_NOTICE_MAX_SYMPTOMS, canRefine as canRefineTerm, fetchTerms, isBroadTerm, typesLabel, type HpoTerm } from "@/lib/hpo-terms";
 import { RefineTermDialog, type RefineTarget } from "./refine-term-dialog";
+import { isOnsetInformative } from "@/lib/onset-informative";
+import { onsetClass, onsetForSave, onsetPayloadFields, parseOnset, showsPrecisar, type SymptomOnset } from "@/lib/onset";
 import { ADJUSTED_LIST_NOTE, originsIn } from "@/lib/question-insights";
 import {
   answeredFindings,
@@ -538,6 +541,30 @@ function NuevoDiagnosticoScreen() {
     };
   }, [symptoms, termInfo]);
 
+  const precisarSymptoms = useMemo(
+    () =>
+      symptoms.filter((symptom) => {
+        const code = symptom.code.trim().toUpperCase();
+        return showsPrecisar({
+          refinable: canRefineTerm(termInfo.get(code)),
+          informative: isOnsetInformative(code),
+          dismissed: keptGeneral.has(code),
+          hasOnset: Boolean(symptom.onset),
+        });
+      }),
+    [symptoms, termInfo, keptGeneral],
+  );
+
+  const openPrecisar = (symptom: Symptom) =>
+    setRefineTarget({
+      code: symptom.code,
+      description: symptom.description,
+      refinable: canRefineTerm(termInfo.get(symptom.code.trim().toUpperCase())),
+    });
+
+  const handleOnsetChange = (code: string, onset: SymptomOnset | null) =>
+    setSymptoms((prev) => prev.map((symptom) => (symptom.code === code ? { ...symptom, onset } : symptom)));
+
   const generalSymptoms = useMemo(
     () =>
       symptoms.filter((symptom) => {
@@ -822,7 +849,9 @@ function NuevoDiagnosticoScreen() {
                         ? item.description.trim()
                         : code;
                     if (!description) return null;
-                    return { description, code };
+                    const onset = parseOnset(item?.onset);
+                    const symptom: Symptom = onset ? { description, code, onset } : { description, code };
+                    return symptom;
                   })
                   .filter((item): item is Symptom => item !== null)
               : [];
@@ -1031,7 +1060,7 @@ function NuevoDiagnosticoScreen() {
         id,
         nombre: datosBasicos.nombre.trim() || "Paciente",
         savedAt: new Date().toISOString(),
-        symptoms: symptoms.map((s) => ({ description: s.description, code: s.code })),
+        symptoms: symptoms.map((s) => ({ description: s.description, code: s.code, ...onsetForSave(s.onset) })),
         topSpecialties: payload?.specialties?.top_specialties ?? [],
         confidence: typeof payload?.confidence === "number" ? payload.confidence : null,
         topGenes: results.slice(0, 5).map((g) => g.gene_symbol),
@@ -1092,7 +1121,7 @@ function NuevoDiagnosticoScreen() {
       const response = await fetch(GENPHENAI_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hpo_ids: hpoIds, top_k: isDemoMode ? 1 : 50 }),
+        body: JSON.stringify({ hpo_ids: hpoIds, top_k: isDemoMode ? 1 : 50, ...onsetPayloadFields(symptoms) }),
       });
       const payload = await jsonOrThrow<{ results?: unknown; specialties?: GenPhenSpecialties; confidence?: unknown }>(response);
       const results = Array.isArray(payload?.results) ? payload.results : [];
@@ -1107,7 +1136,7 @@ function NuevoDiagnosticoScreen() {
         try {
           const diagnosisPayload = {
             historiaClinica: historiaClinica.trim(),
-            symptomsExtracted: symptoms.map((s) => ({ description: s.description, code: s.code })),
+            symptomsExtracted: symptoms.map((s) => ({ description: s.description, code: s.code, ...onsetForSave(s.onset) })),
             phenotypes: extractedPhenotypes,
             genphenGenes: results,
             genphenSpecialties: payload?.specialties ?? null,
@@ -1218,6 +1247,13 @@ function NuevoDiagnosticoScreen() {
       const parent = prev.find((symptom) => symptom.code === parentCode);
       if (!parent || code === parentCode.trim().toUpperCase()) return prev;
       const already = prev.some((symptom) => symptom.code.trim().toUpperCase() === code);
+      if (already && parent.onset) {
+        return prev
+          .filter((symptom) => symptom.code !== parentCode)
+          .map((symptom) =>
+            symptom.code.trim().toUpperCase() === code && !symptom.onset ? { ...symptom, onset: parent.onset } : symptom,
+          );
+      }
       return already
         ? prev.filter((symptom) => symptom.code !== parentCode)
         : prev.map((symptom) =>
@@ -1624,12 +1660,21 @@ function NuevoDiagnosticoScreen() {
                                 {symptom.code && (
                                   <span className="shrink-0 text-sm text-[var(--lu-subtle)]">{symptom.code}</span>
                                 )}
-                                {generalSymptoms.includes(symptom) && (
+                                {symptom.onset && (
+                                  <span className="shrink-0 rounded-full bg-[var(--lu-surface)] px-2 py-0.5 text-xs text-[var(--lu-subtle)]">
+                                    Empezó: {onsetClass(symptom.onset.hpo_id)?.label.toLowerCase()}
+                                  </span>
+                                )}
+                                {precisarSymptoms.includes(symptom) && (
                                   <button
                                     type="button"
-                                    onClick={() => setRefineTarget({ code: symptom.code, description: symptom.description })}
+                                    onClick={() => openPrecisar(symptom)}
                                     className="inline-flex min-h-[32px] items-center gap-1 rounded-full bg-amber-50 px-2.5 text-xs font-semibold text-amber-800 ring-1 ring-inset ring-amber-200 transition-colors hover:bg-amber-100"
-                                    aria-label={`Precisar ${symptom.description}: tiene tipos más específicos`}
+                                    aria-label={
+                                      canRefineTerm(termInfo.get(symptom.code.trim().toUpperCase()))
+                                        ? `Precisar ${symptom.description}: tiene tipos más específicos`
+                                        : `Precisar ${symptom.description}: indicar a qué edad empezó`
+                                    }
                                   >
                                     Precisar
                                   </button>
@@ -1679,7 +1724,7 @@ function NuevoDiagnosticoScreen() {
                                     <span className="flex gap-1.5">
                                       <button
                                         type="button"
-                                        onClick={() => setRefineTarget({ code: symptom.code, description: symptom.description })}
+                                        onClick={() => openPrecisar(symptom)}
                                         className="min-h-[36px] rounded-full bg-[var(--lu-accent-text)] px-3.5 text-xs font-semibold text-white hover:bg-[#134e4a]"
                                       >
                                         Precisar
@@ -1704,6 +1749,9 @@ function NuevoDiagnosticoScreen() {
                           target={refineTarget}
                           onClose={() => setRefineTarget(null)}
                           onChoose={(term) => refineTarget && handleRefineChoose(refineTarget.code, term)}
+                          onset={symptoms.find((symptom) => symptom.code === refineTarget?.code)?.onset ?? null}
+                          onOnsetChange={(onset) => refineTarget && handleOnsetChange(refineTarget.code, onset)}
+                          birthDate={datosBasicos.fechaNacimiento || null}
                         />
 
                         {negatedFindings.length > 0 && (
