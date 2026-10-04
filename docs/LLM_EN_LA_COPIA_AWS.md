@@ -15,7 +15,7 @@ token de suscripción (`claude setup-token`), no con una API key.
 | Por cuenta | 20 por hora, 60 por día | 20 por hora, 60 por día |
 | Todo el sitio | 40 cada 5 horas | 40 cada 5 horas |
 | Semana | 1.344 (el mismo ritmo de 40 cada 5 horas, sin tope propio) | 1.344 |
-| Concurrencia | 2 a la vez | 2 a la vez |
+| Concurrencia | 2 extracciones a la vez, 16 llamadas al modelo en paralelo | 1 extracción a la vez, 2 llamadas en paralelo (desde el 2026-10-04, por memoria) |
 
 ## Cómo se llegó
 
@@ -57,10 +57,11 @@ token de suscripción (`claude setup-token`), no con una API key.
   personal; usarla detrás de un sitio web es una decisión de Mate, ya tomada para
   staging. Para producción, con familias reales, el camino sigue siendo una API key
   de la organización.
-- **Memoria.** Cada extracción corre un proceso `claude`; con dos a la vez el
-  extractor puede acercarse a su techo de 1 GB en la `t3.small`. Si
-  `scripts/remote.sh stats` muestra poco margen, ver «Memoria» en
-  `infra/aws/README.md`.
+- **Memoria.** Cada llamada al modelo es un proceso `claude` de ~260 MB, y el
+  extractor ya ocupa ~500 MB: en los 2 GB de la `t3.small` entra una extracción a
+  la vez con dos llamadas en paralelo (techo de 1300 MB). Una historia larga tarda
+  más que en staging. Si `remote.sh stats` muestra poco margen, ver «Memoria» en
+  `infra/cloud/README.md`.
 
 ## Qué hacer si el token se filtra o hay que cambiarlo
 
