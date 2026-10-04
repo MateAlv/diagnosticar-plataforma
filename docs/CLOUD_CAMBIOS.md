@@ -127,7 +127,7 @@ No se tocó nada de producción ni de staging en nodo0.
 | Terraform | `fmt` y `validate` del módulo y de cada adaptador; `plan` real del adaptador AWS contra la cuenta | Válido; el plan crea 10 recursos con el puerto 22 cerrado |
 | El esqueleto de ejemplo para Hetzner | `terraform validate` | Válido (nunca se levantó) |
 | El frontend con URLs relativas | Build de producción + suite E2E completa | 291 pasadas, 7 salteadas a propósito; ninguna URL absoluta en el bundle |
-| En la nube, de punta a punta | La lista de verificación de `infra/cloud/README.md` | **Pendiente:** se hace al migrar la copia de AWS |
+| En la nube, de punta a punta (2026-10-04) | La lista de verificación de `infra/cloud/README.md`, al migrar la copia de AWS | Primer deploy en 7,5 min con todos los chequeos; HTTPS de Let's Encrypt; modelo `in-process` con el re-ranker; ranking `NF1, SPRED1, NF2`; extractor listo con Claude; `ops/smoke.sh` → SMOKE PASS; la base restaurada idéntica a la anterior y la cuenta existente entra; backup copiado a S3 con el rol de solo escritura; puerto 22 cerrado al terminar |
 
 El CI suma el job **Cloud infrastructure**, que repite estos chequeos estáticos en
 cada pull request que toca `infra/cloud/`.
@@ -144,17 +144,23 @@ ejemplo y la lista de verificación están en
 Para un proveedor sin adaptador no hace falta escribir nada: `providers/manual`
 genera el cloud-init para pegarlo al crear la VM a mano.
 
+## Cómo quedó (2026-10-04)
+
+- La copia de https://44-197-71-62.sslip.io corre sobre `infra/cloud/` con el
+  adaptador de AWS. Se conservó la URL moviendo la Elastic IP al state nuevo, la
+  base pasó con un backup y un restore, y la web estuvo caída unos 20 minutos.
+- Lo viejo se destruyó: la instancia anterior, los repositorios de ECR, el rol
+  OIDC, el documento y los parámetros de SSM, y el `genes.db` suelto en S3. Los
+  buckets quedaron: guardan el state de Terraform y los backups.
+- Los tres repositorios publican en GHCR al mergear a `main`, y la máquina toma
+  cada versión nueva sola.
+
 ## Lo que falta
 
-1. Revisar y mergear las ramas: primero las tres `feat/cloud-publish-ghcr`, para
-   que las imágenes empiecen a publicarse.
-2. El dueño de los repositorios: dar a `diagnostic.ar-api` y a
-   `spanish-symptoms-recognizer` permiso de escritura sobre el paquete
-   `diagnosticar-cloud-hpo-recognizer` (lo publican los dos), y crear un token de
-   solo lectura de paquetes para las máquinas.
-3. Mergear `feat/cloud-common-stack` y `feat/cloud-provider-aws`, y migrar la
-   copia de AWS siguiendo `infra/cloud/providers/aws/README.md`. Se conserva la
-   URL https://44-197-71-62.sslip.io.
-4. Verificar en la nube con la lista del README, incluido restaurar un backup.
-5. `chore/remove-aws-native` en los tres repositorios, y borrar el secreto
-   `AWS_DEPLOY_ROLE_ARN`.
+1. Mergear `chore/remove-aws-native` en los tres repositorios: borra `infra/aws/`
+   y los workflows viejos, que ya no tienen contra qué desplegar.
+2. El dueño de los repositorios: borrar el secreto `AWS_DEPLOY_ROLE_ARN` de
+   `diagnostic.ar`, `diagnostic.ar-api` y `spanish-symptoms-recognizer`.
+3. Agregar el escaneo de vulnerabilidades (Trivy) a los workflows de publicación.
+4. Probar un segundo proveedor, o `providers/manual` en una VM local, para mostrar
+   la portabilidad funcionando y no solo validada.
