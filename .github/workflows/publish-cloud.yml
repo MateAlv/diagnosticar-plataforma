@@ -1,0 +1,168 @@
+name: Publish to the cloud copy
+
+# A push to main that touches the backend or the frontend builds both images
+# and publishes them to GHCR, for the provider-neutral cloud copy
+# (infra/cloud/README.md). The machines follow the channel tag `cloud`: each
+# checks it every 5 minutes, deploys a new set, and goes back to the previous
+# one by itself if the new one fails its checks. Nothing here reaches into a
+# machine or holds a cloud credential, so the same run serves a copy on any
+# provider.
+#
+# The images go to their own packages (diagnosticar-cloud-*), apart from the
+# ones the nodo0 release publishes. The frontend is built once, with relative
+# URLs, so it serves whatever domain its machine has.
+#
+# Not a substitute for ci.yml: what reaches main already passed it as a pull
+# request. Production and staging on nodo0 are untouched by this.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/publish-cloud.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# One publish at a time, and never cancelled halfway: the channel moves last.
+concurrency:
+  group: publish-cloud
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      revision: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: target
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"   # GHCR names are lowercase
+          echo "registry=ghcr.io/$owner" >> "$GITHUB_OUTPUT"
+          echo "tag=app-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      # The machine reads org.opencontainers.image.revision into its
+      # /deploy-status.json, which the last job compares against this commit.
+      - name: Build and push the backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          provenance: false
+          tags: ${{ steps.target.outputs.registry }}/diagnosticar-cloud-backend:${{ steps.target.outputs.tag }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=cloud-backend
+          cache-to: type=gha,scope=cloud-backend,mode=max
+          build-args: |
+            RELEASE_VERSION=${{ steps.target.outputs.tag }}
+            RELEASE_COMMIT=${{ github.sha }}
+            RELEASE_BUILT_AT=${{ steps.target.outputs.built_at }}
+
+      # Relative URLs: Caddy serves /api, /hpo-api and /genphenai on the same
+      # host, whatever it is. Only the browser uses these; the server side
+      # reads BACKEND_API_URL at run time.
+      - name: Build and push the frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          provenance: false
+          tags: ${{ steps.target.outputs.registry }}/diagnosticar-cloud-frontend:${{ steps.target.outputs.tag }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=cloud-frontend
+          cache-to: type=gha,scope=cloud-frontend,mode=max
+          build-args: |
+            NEXT_PUBLIC_API_URL=/api
+            NEXT_PUBLIC_API_BASE_URL=/api
+            NEXT_PUBLIC_HPO_API_URL=/hpo-api
+            NEXT_PUBLIC_GENPHENAI_URL=/genphenai
+
+      # The frontend must render on its own before the channel moves.
+      - name: Smoke-test the frontend image
+        run: |
+          set -euo pipefail
+          image=${{ steps.target.outputs.registry }}/diagnosticar-cloud-frontend:${{ steps.target.outputs.tag }}
+          docker run -d --name fe -p 3000:3000 -e BACKEND_API_URL=http://127.0.0.1:9/api "$image"
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:3000/home | grep -q 'Diagnostic.ar'; then echo "frontend renders"; exit 0; fi
+            sleep 2
+          done
+          docker logs fe
+          exit 1
+
+      # Last, and only once both exist: the machines pull the channel, so it
+      # must never point at half a set.
+      - name: Move the channel
+        run: |
+          set -euo pipefail
+          for svc in backend frontend; do
+            src=${{ steps.target.outputs.registry }}/diagnosticar-cloud-$svc:${{ steps.target.outputs.tag }}
+            docker buildx imagetools create -t "${src%:*}:cloud" "$src"
+          done
+          echo "### Published \`${{ steps.target.outputs.tag }}\` to the \`cloud\` channel" >> "$GITHUB_STEP_SUMMARY"
+
+  # Optional: wait for each machine listed in the repository variable
+  # CLOUD_URLS (space-separated https://… URLs) to report this commit running,
+  # so the outcome shows here. Without the variable it is skipped. A machine
+  # that rolled back fails this job; the machine itself is already back on the
+  # previous images.
+  report:
+    needs: publish
+    if: vars.CLOUD_URLS != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Wait for the machines
+        env:
+          URLS: ${{ vars.CLOUD_URLS }}
+          REVISION: ${{ needs.publish.outputs.revision }}
+        run: |
+          set -euo pipefail
+          for url in $URLS; do
+            echo "::group::$url"
+            ok=""
+            for _ in $(seq 1 90); do
+              status=$(curl -sf --max-time 10 "$url/deploy-status.json" || true)
+              verdict=$(printf '%s' "$status" | python3 -c '
+          import json, os, sys
+          try:
+              d = json.load(sys.stdin)
+          except Exception:
+              print("wait"); sys.exit()
+          imgs = d.get("images", {})
+          ours = all(imgs.get(k, {}).get("revision") == os.environ["REVISION"] for k in ("backend", "frontend"))
+          if ours and d.get("result") == "ok":
+              print("ok")
+          elif d.get("result") in ("rolled_back", "failed") and not ours:
+              print("rolled_back:" + d.get("message", ""))
+          else:
+              print("wait")' )
+              case "$verdict" in
+                ok) echo "running ${REVISION::7}"; ok=1; break ;;
+                rolled_back:*) echo "::error::$url rejected ${REVISION::7}: ${verdict#rolled_back:}"; exit 1 ;;
+              esac
+              sleep 10
+            done
+            echo "::endgroup::"
+            [ -n "$ok" ] || { echo "::error::$url did not report ${REVISION::7} within 15 minutes"; exit 1; }
+          done
