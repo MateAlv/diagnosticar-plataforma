@@ -371,7 +371,9 @@ cmd_backup() {
     remote=$(kv_get "$SECRETS" BACKUP_REMOTE_SECRET)
     [ -n "$remote" ] || remote=$(conf BACKUP_REMOTE)
     if [ -n "$remote" ]; then
-        rclone rcat "$remote/$name" < "$file"
+        # -q: rclone otherwise notes that it has no config file, which it does
+        # not need (the remote is a connection string).
+        rclone -q rcat "$remote/$name" < "$file"
         log "Copied to the backup remote"
     fi
 }
