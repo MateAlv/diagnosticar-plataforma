@@ -10,6 +10,7 @@
 import { RESULTS_DISCLAIMER } from "./disclaimer";
 import { stripProvenance } from "./genes-api";
 import { onsetClass, onsetPhrase, type SymptomOnset } from "./onset";
+import { ageText } from "./patient-age";
 import { geneCardsUrl, hpoTermUrl } from "./reference-links";
 
 /** The public site, named in every summary that leaves the page. */
@@ -62,18 +63,6 @@ const SEX_LABELS: Record<string, string> = {
     no_binario: "No binario",
     prefiero_no_decir: "Prefirió no informarlo",
 };
-
-/** "7 años", "8 meses", or null without a valid birth date. */
-export function ageText(birthDate: string | null, now: Date): string | null {
-    if (!birthDate) return null;
-    const born = new Date(`${birthDate}T00:00:00`);
-    if (Number.isNaN(born.getTime()) || born > now) return null;
-    let months = (now.getFullYear() - born.getFullYear()) * 12 + (now.getMonth() - born.getMonth());
-    if (now.getDate() < born.getDate()) months -= 1;
-    if (months < 12) return months === 1 ? "1 mes" : `${Math.max(0, months)} meses`;
-    const years = Math.floor(months / 12);
-    return years === 1 ? "1 año" : `${years} años`;
-}
 
 function onsetDetail(onset: SymptomOnset | null | undefined): string {
     return onset && onsetClass(onset.hpo_id) ? onsetPhrase(onset) : "";

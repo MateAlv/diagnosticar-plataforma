@@ -108,12 +108,11 @@ import { errorMessage, isSessionError, jsonOrThrow } from "@/lib/api-errors";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { BROAD_NOTICE_MAX_SYMPTOMS, canRefine as canRefineTerm, fetchTerms, isBroadTerm, typesLabel, type HpoTerm } from "@/lib/hpo-terms";
 import { RefineTermDialog, type RefineTarget } from "./refine-term-dialog";
-import { AgePicker } from "./age-picker";
+import { BirthDateInput } from "./birth-date-input";
 import { HpoLink } from "./hpo-link";
 import { ResultsDownload } from "./results-download";
 import { especialidadesParaConsultar } from "@/lib/especialidades";
 import { isOnsetInformative } from "@/lib/onset-informative";
-import { ageFromBirthDate, birthDateFromAge } from "@/lib/patient-age";
 import { onsetClass, onsetForSave, onsetPayloadFields, parseOnset, showsPrecisar, type SymptomOnset } from "@/lib/onset";
 import { ADJUSTED_LIST_NOTE, originsIn } from "@/lib/question-insights";
 import {
@@ -1451,7 +1450,7 @@ function NuevoDiagnosticoScreen() {
               {step === 1 && (
                 <div className="space-y-6">
                   <p className="text-sm leading-relaxed text-[var(--lu-subtle)]">
-                    Todos los datos son opcionales. La edad y el sexo ayudan a leer los resultados; si preferís no
+                    Todos los datos son opcionales. La fecha de nacimiento y el sexo ayudan a leer los resultados; si preferís no
                     darlos, podés omitir este paso.
                   </p>
                   <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 [&>*]:min-w-0">
@@ -1473,11 +1472,9 @@ function NuevoDiagnosticoScreen() {
                       </p>
                     </div>
 
-                    <AgePicker
-                      value={ageFromBirthDate(datosBasicos.fechaNacimiento)}
-                      onChange={(age) =>
-                        setDatosBasicos((prev) => ({ ...prev, fechaNacimiento: age ? birthDateFromAge(age) : "" }))
-                      }
+                    <BirthDateInput
+                      value={datosBasicos.fechaNacimiento}
+                      onChange={(iso) => setDatosBasicos((prev) => ({ ...prev, fechaNacimiento: iso }))}
                     />
 
                     <label className="block text-sm font-bold text-[var(--lu-text)]">

@@ -5,7 +5,7 @@ import {
     mockBackend,
     mockGeneProfiles,
     collectPageErrors,
-    fillAgeFromBirthDate,
+    fillBirthDate,
 } from "./fixtures/services";
 
 /**
@@ -51,7 +51,7 @@ async function runToResults(page: Page) {
     await page.goto("/nuevo", { waitUntil: "networkidle" });
 
     await page.getByLabel(/^Apodo/).fill("Paciente E2E");
-    await fillAgeFromBirthDate(page, "2018-04-03");
+    await fillBirthDate(page, "2018-04-03");
     await page.getByPlaceholder("Ciudad o localidad").fill("CABA");
     await page.locator("select").filter({ hasText: "Argentina" }).selectOption("Argentina");
     await page.locator("select").filter({ hasText: "Femenino" }).selectOption("femenino");
@@ -381,7 +381,7 @@ test("symptoms added by hand are compared, not ignored", async ({ page }) => {
 
     await page.goto("/nuevo", { waitUntil: "networkidle" });
     await page.getByLabel(/^Apodo/).fill("Paciente E2E");
-    await fillAgeFromBirthDate(page, "2018-04-03");
+    await fillBirthDate(page, "2018-04-03");
     await page.getByPlaceholder("Ciudad o localidad").fill("CABA");
     await page.locator("select").filter({ hasText: "Argentina" }).selectOption("Argentina");
     await page.locator("select").filter({ hasText: "Femenino" }).selectOption("femenino");

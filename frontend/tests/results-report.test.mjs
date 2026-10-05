@@ -11,10 +11,11 @@ import { importTs } from './helpers/ts-module.mjs';
  * link. The PDF and the copied text come from the same report.
  */
 
-const { buildResultsReport, reportToText, ageText, briefGeneSummary, reportFileName, SITE_URL } = await importTs(
+const { buildResultsReport, reportToText, briefGeneSummary, reportFileName, SITE_URL } = await importTs(
   'lib/disclaimer.ts',
   'lib/genes-api.ts',
   'lib/onset.ts',
+  'lib/patient-age.ts',
   'lib/gene-pages.json',
   'lib/reference-links.ts',
   'lib/results-report.ts',
@@ -133,10 +134,10 @@ test('missing data is left out, never printed empty', () => {
   assert.doesNotMatch(t, /Nombre o apodo|Edad:|Sexo:|Relato cargado|No presenta|Respuestas a las preguntas|edad de inicio es un dato/);
 });
 
-test('age reads in months under a year, and the file is dated', () => {
-  assert.equal(ageText('2026-02-01', NOW), '8 meses');
-  assert.equal(ageText('2025-10-05', NOW), '1 año');
-  assert.equal(ageText('2030-01-01', NOW), null);
+test('the age is in the unit a clinical record would use, and the file is dated', () => {
+  assert.match(text({ patient: { name: '', birthDate: '2025-10-05', sex: null } }), /Edad: 12 meses/);
+  assert.match(text({ patient: { name: '', birthDate: '2026-09-20', sex: null } }), /Edad: 15 días/);
+  assert.doesNotMatch(text({ patient: { name: '', birthDate: '2030-01-01', sex: null } }), /Edad:/);
   assert.equal(reportFileName(NOW), 'diagnosticar-resumen-2026-10-05.pdf');
 });
 

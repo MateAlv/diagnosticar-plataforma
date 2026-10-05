@@ -5,7 +5,7 @@ import {
     collectPageErrors,
     EXTRACT_FIXTURE,
     RANK_FIXTURE,
-    fillAgeFromBirthDate,
+    fillBirthDate,
 } from "./fixtures/services";
 
 /**
@@ -41,7 +41,7 @@ async function openAuthedWizard(page: import("@playwright/test").Page) {
     await page.goto("/nuevo", { waitUntil: "networkidle" });
 
     await page.getByLabel(/^Apodo/).fill("Paciente E2E");
-    await fillAgeFromBirthDate(page, "2018-04-03");
+    await fillBirthDate(page, "2018-04-03");
     await page.getByPlaceholder("Ciudad o localidad").fill("CABA");
     await page.locator("select").filter({ hasText: "Argentina" }).selectOption("Argentina");
     await page.locator("select").filter({ hasText: "Femenino" }).selectOption("femenino");
@@ -78,25 +78,24 @@ test("skipping the step clears what was typed, the country included", async ({ p
     await expect(page.getByLabel(/^País/)).toHaveValue("");
 });
 
-test("the age picker counts in years and months, and months roll into years", async ({ page }) => {
+test("the birth date is typed as DD/MM/AAAA and the age reads in the unit that matters", async ({ page }) => {
     await mockBackend(page, { user: TEST_USER });
     await page.goto("/nuevo", { waitUntil: "networkidle" });
-    const age = page.getByTestId("age-picker");
+    const field = page.getByLabel(/^Fecha de nacimiento/);
 
-    await expect(age).toContainText("Sin indicar");
-    await age.getByRole("button", { name: "Sumar un mes" }).click();
-    await expect(age.getByLabel("Meses")).toHaveValue("1");
-    await expect(age.getByLabel("Años")).toHaveValue("0");
-    await age.getByLabel("Meses").fill("14");
-    await expect(age.getByLabel("Años")).toHaveValue("1");
-    await expect(age.getByLabel("Meses")).toHaveValue("2");
-    await expect(age).toContainText("1 año y 2 meses");
-    await age.getByRole("button", { name: "Restar un mes" }).click();
-    await age.getByRole("button", { name: "Restar un mes" }).click();
-    await age.getByRole("button", { name: "Restar un mes" }).click();
-    await expect(age).toContainText("11 meses");
-    await age.getByRole("button", { name: "Borrar" }).click();
-    await expect(age).toContainText("Sin indicar");
+    // Digits only: the slashes go in by themselves.
+    await field.pressSequentially("03041966");
+    await expect(field).toHaveValue("03/04/1966");
+    await expect(page.getByText(/^Edad: \d+ años$/)).toBeVisible();
+
+    await field.fill("31/02/2020");
+    await expect(page.getByText("Esa fecha no existe. Revisá el día y el mes.")).toBeVisible();
+    await field.fill("01/01/2999");
+    await expect(page.getByText("La fecha de nacimiento no puede ser posterior a hoy.")).toBeVisible();
+
+    await field.fill("12/3");
+    await field.blur();
+    await expect(page.getByText("Completá la fecha: DD/MM/AAAA.")).toBeVisible();
 });
 
 test("a search saved without an apodo leaves the name to the server", async ({ page }) => {
@@ -114,6 +113,21 @@ test("a search saved without an apodo leaves the name to the server", async ({ p
     expect(body.nombre).toBe("");
     expect(body.pais).toBeNull();
     expect(body.fechaNacimiento).toBeNull();
+});
+
+test("a typed birth date is saved as the date itself", async ({ page }) => {
+    await mockBackend(page, { user: TEST_USER });
+    await page.goto("/nuevo", { waitUntil: "networkidle" });
+    await page.getByLabel(/^Fecha de nacimiento/).fill("03/04/2018");
+    await page.getByRole("button", { name: /^Continuar$/ }).click();
+    await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
+    await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
+    await expect(page.getByText("Infecciones respiratorias recurrentes").first()).toBeVisible();
+
+    const saved = page.waitForRequest((req) => req.url().endsWith("/api/patients") && req.method() === "POST");
+    await page.getByRole("button", { name: /Revisar y continuar/ }).click();
+    await page.getByRole("button", { name: /Buscar genes candidatos/ }).click();
+    expect((await saved).postDataJSON().fechaNacimiento).toBe("2018-04-03");
 });
 
 test("extracting symptoms from clinical text populates the HPO list", async ({ page }) => {

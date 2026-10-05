@@ -97,9 +97,8 @@ export default function TerminosPage() {
                             </li>
                             <li>
                                 <strong>Las personas que cargás:</strong> los datos que indiques, todos opcionales:
-                                apodo (sin apodo, la numeramos «Paciente 1», «Paciente 2»…), edad, que guardamos como la
-                                fecha de nacimiento aproximada que da esa edad para que siga contando, sexo, localidad y
-                                país.
+                                apodo (sin apodo, la numeramos «Paciente 1», «Paciente 2»…), fecha de nacimiento, sexo,
+                                localidad y país.
                             </li>
                             <li>
                                 <strong>Cada búsqueda:</strong> el texto que pegues, los síntomas, los resultados y, si

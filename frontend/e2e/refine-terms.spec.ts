@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { mockBackend, mockHpoTree, mockModelServices, collectPageErrors, fillAgeFromBirthDate } from "./fixtures/services";
+import { mockBackend, mockHpoTree, mockModelServices, collectPageErrors, fillBirthDate } from "./fixtures/services";
 
 /**
  * A symptom high in the HPO tree is offered for refining, and a dialog
@@ -26,7 +26,7 @@ const TEST_USER = {
 async function toSymptoms(page: Page) {
     await page.goto("/nuevo", { waitUntil: "networkidle" });
     await page.getByLabel(/^Apodo/).fill("Paciente E2E");
-    await fillAgeFromBirthDate(page, "2018-04-03");
+    await fillBirthDate(page, "2018-04-03");
     await page.getByPlaceholder("Ciudad o localidad").fill("CABA");
     await page.locator("select").filter({ hasText: "Argentina" }).selectOption("Argentina");
     await page.locator("select").filter({ hasText: "Femenino" }).selectOption("femenino");
