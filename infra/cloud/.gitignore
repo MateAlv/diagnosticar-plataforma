@@ -11,3 +11,7 @@ backend.hcl
 
 # Rendered by providers/manual for whoever runs it.
 providers/manual/cloud-init.yaml
+
+# Database dumps (remote.sh restore takes them from anywhere): application
+# data, never in git.
+*.sql.gz

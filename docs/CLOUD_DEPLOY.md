@@ -6,10 +6,13 @@ que dice "medido" se midió ahí.
 
 Antes de empezar, leé **Datos** al final. No es un trámite.
 
-Una implementación de esta guía para AWS (Terraform, una EC2 con docker compose,
-Caddy, ECR y SSM) está en [`infra/aws/`](../infra/aws/README.md), con el paso a paso.
-Su despliegue automático desde GitHub (cada merge a `main` actualiza AWS) está
-en [`AWS_CICD.md`](AWS_CICD.md).
+La implementación de esta guía está en [`infra/cloud/`](../infra/cloud/README.md):
+Terraform, una VM con docker compose y Caddy, y un núcleo común que funciona en
+cualquier proveedor con Ubuntu 24.04 (hoy corre en AWS). Su despliegue automático
+desde GitHub está en [`CLOUD_CICD.md`](CLOUD_CICD.md), y por qué se hizo así, en
+[`CLOUD_CAMBIOS.md`](CLOUD_CAMBIOS.md). Donde esta guía dice que el frontend se
+construye con tu dominio, esa copia lo evita: lo compila una sola vez con URLs
+relativas (`/api`, `/hpo-api`, `/genphenai`).
 
 ## Qué es cada pieza
 

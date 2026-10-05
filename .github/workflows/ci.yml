@@ -26,10 +26,10 @@ env:
 jobs:
   # --------------------------------------------------------------------------
   # Whether the pull request touches anything the slow jobs test. A change
-  # only to documentation or to the cloud copy's infrastructure (infra/aws/,
-  # infra/cloud/, which only the `infra` job exercises) skips the backend
-  # suite, E2E, the image builds and the stack smoke test: about 20 of a run's
-  # 22 billed minutes. The skipped jobs
+  # only to documentation or to the cloud copy's infrastructure (infra/cloud/,
+  # which only the `infra` job exercises) skips the backend suite, E2E, the
+  # image builds and the stack smoke test: about 20 of a run's 22 billed
+  # minutes. The skipped jobs
   # still report, as skipped, which satisfies the required checks.
   # The weekly run looks for newly published vulnerabilities, which only the
   # audit (Checks) and the image scans can find, so it skips the test suites.
@@ -57,7 +57,7 @@ jobs:
             printf '%s\n' "$files"
             # Anything outside these paths counts as code; workflow changes
             # always do, since they change what CI itself runs.
-            if ! printf '%s\n' "$files" | grep -qvE '(\.md$|^docs/|^infra/aws/|^infra/cloud/|^LICENSE$|^\.gitignore$)'; then
+            if ! printf '%s\n' "$files" | grep -qvE '(\.md$|^docs/|^infra/cloud/|^LICENSE$|^\.gitignore$)'; then
               code=false
             fi
             # The cloud stack embeds ops/seed-admin.sh.
