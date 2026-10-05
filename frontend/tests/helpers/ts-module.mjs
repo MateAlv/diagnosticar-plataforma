@@ -1,5 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import ts from 'typescript';
@@ -9,22 +8,31 @@ import ts from 'typescript';
  * between them included: each file is transpiled next to the others in a
  * scratch directory, with `./x` rewritten to `./x.mjs`.
  *
- * Only for modules whose runtime imports are relative; `@/` aliases and
- * packages are not resolved.
+ * Local imports (`./x`, `../x`, `@/x`) are flattened to siblings in the scratch
+ * directory, so list every local module a file imports. Packages resolve from
+ * the frontend's node_modules, where the scratch directory lives. `.tsx` files
+ * are accepted, for rendering a component with react-dom/server.
  */
 const SRC = fileURLToPath(new URL('../../src/', import.meta.url));
+const SCRATCH = fileURLToPath(new URL('../../node_modules/.cache/ts-module/', import.meta.url));
+const base = (relative) => path.basename(relative).replace(/\.tsx?$/, '');
 
 export async function importTs(...relativePaths) {
-  const dir = mkdtempSync(path.join(tmpdir(), 'ts-module-'));
+  mkdirSync(SCRATCH, { recursive: true });
+  const dir = mkdtempSync(path.join(SCRATCH, 'm-'));
   for (const relative of relativePaths) {
     const source = readFileSync(path.join(SRC, relative), 'utf8');
     const js = ts
       .transpileModule(source, {
-        compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+        compilerOptions: {
+          module: ts.ModuleKind.ESNext,
+          target: ts.ScriptTarget.ES2022,
+          jsx: ts.JsxEmit.ReactJSX,
+        },
       })
-      .outputText.replace(/from (["'])(\.\/[^"']+)\1/g, (_, quote, spec) => `from ${quote}${spec}.mjs${quote}`);
-    writeFileSync(path.join(dir, `${path.basename(relative, '.ts')}.mjs`), js);
+      .outputText.replace(/from (["'])((?:\.{1,2}\/|@\/)[^"']+)\1/g, (_, quote, spec) => `from ${quote}./${base(spec)}.mjs${quote}`);
+    writeFileSync(path.join(dir, `${base(relative)}.mjs`), js);
   }
   const main = relativePaths.at(-1);
-  return import(pathToFileURL(path.join(dir, `${path.basename(main, '.ts')}.mjs`)).href);
+  return import(pathToFileURL(path.join(dir, `${base(main)}.mjs`)).href);
 }
