@@ -108,6 +108,7 @@ import { errorMessage, isSessionError, jsonOrThrow } from "@/lib/api-errors";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { BROAD_NOTICE_MAX_SYMPTOMS, canRefine as canRefineTerm, fetchTerms, isBroadTerm, typesLabel, type HpoTerm } from "@/lib/hpo-terms";
 import { RefineTermDialog, type RefineTarget } from "./refine-term-dialog";
+import { HpoLink } from "./hpo-link";
 import { ResultsDownload } from "./results-download";
 import { especialidadesParaConsultar } from "@/lib/especialidades";
 import { isOnsetInformative } from "@/lib/onset-informative";
@@ -1661,7 +1662,12 @@ function NuevoDiagnosticoScreen() {
                                   {symptom.description}
                                 </span>
                                 {symptom.code && (
-                                  <span className="shrink-0 text-sm text-[var(--lu-subtle)]">{symptom.code}</span>
+                                  <HpoLink
+                                    code={symptom.code}
+                                    className="shrink-0 text-sm text-[var(--lu-subtle)] underline decoration-dotted underline-offset-2 hover:text-[var(--lu-accent-text)]"
+                                  >
+                                    {symptom.code}
+                                  </HpoLink>
                                 )}
                                 {symptom.onset && (
                                   <span className="shrink-0 rounded-full bg-[var(--lu-surface)] px-2 py-0.5 text-xs text-[var(--lu-subtle)]">
@@ -2076,21 +2082,26 @@ function NuevoDiagnosticoScreen() {
                               </p>
                               <ul className="flex flex-wrap gap-1.5">
                                 {[...reportedWords.entries()].map(([code, said]) => (
-                                  <li
-                                    key={code}
-                                    className="rounded-full border border-[var(--lu-border)] bg-[var(--lu-surface)] px-2.5 py-1 text-xs text-[var(--lu-text)]"
-                                  >
-                                    {said}
+                                  <li key={code}>
+                                    <HpoLink
+                                      code={code}
+                                      className="inline-block rounded-full border border-[var(--lu-border)] bg-[var(--lu-surface)] px-2.5 py-1 text-xs text-[var(--lu-text)] hover:border-[var(--lu-accent-light)] hover:underline"
+                                    >
+                                      {said}
+                                      <span aria-hidden="true" className="ml-1 text-[10px] text-[var(--lu-accent-text)]">↗</span>
+                                    </HpoLink>
                                   </li>
                                 ))}
                                 {questionFindings.present.map((finding) => (
-                                  <li
-                                    key={finding.code}
-                                    data-from-questions
-                                    className="rounded-full border border-dashed border-[var(--lu-accent-text)] bg-white px-2.5 py-1 text-xs text-[var(--lu-text)]"
-                                  >
-                                    {finding.label}
-                                    <span className="whitespace-nowrap text-[var(--lu-subtle)]"> · de las preguntas</span>
+                                  <li key={finding.code} data-from-questions>
+                                    <HpoLink
+                                      code={finding.code}
+                                      className="inline-block rounded-full border border-dashed border-[var(--lu-accent-text)] bg-white px-2.5 py-1 text-xs text-[var(--lu-text)] hover:underline"
+                                    >
+                                      {finding.label}
+                                      <span className="whitespace-nowrap text-[var(--lu-subtle)]"> · de las preguntas</span>
+                                      <span aria-hidden="true" className="ml-1 text-[10px] text-[var(--lu-accent-text)]">↗</span>
+                                    </HpoLink>
                                   </li>
                                 ))}
                               </ul>
@@ -2098,9 +2109,19 @@ function NuevoDiagnosticoScreen() {
                                 <p className="text-xs text-[var(--lu-subtle)]">
                                   <span className="font-semibold text-[var(--lu-text)]">No presenta:</span>{" "}
                                   {[
-                                    ...negatedFindings.map((finding) => finding.label),
-                                    ...questionFindings.absent.map((finding) => `${finding.label} (de las preguntas)`),
-                                  ].join(" · ")}
+                                    ...negatedFindings.map((finding) => ({ code: finding.code, label: finding.label })),
+                                    ...questionFindings.absent.map((finding) => ({
+                                      code: finding.code,
+                                      label: `${finding.label} (de las preguntas)`,
+                                    })),
+                                  ].map((finding, index) => (
+                                    <span key={finding.code}>
+                                      {index > 0 && " · "}
+                                      <HpoLink code={finding.code} className="hover:underline">
+                                        {finding.label}
+                                      </HpoLink>
+                                    </span>
+                                  ))}
                                   .{" "}
                                   {/* /rank-genes takes present phenotypes only,
                                       and the agent now sends it only the
@@ -2108,8 +2129,41 @@ function NuevoDiagnosticoScreen() {
                                   Quedan registrados para la consulta; hoy no cambian el orden de ninguna lista.
                                 </p>
                               )}
+                              <p className="text-xs text-[var(--lu-subtle)]">
+                                Tocá un síntoma para ver su ficha en la ontología HPO (en inglés).
+                              </p>
                             </div>
                           )}
+
+                          <ResultsDownload
+                            input={() => ({
+                              date: new Date(),
+                              patient: {
+                                name: datosBasicos.nombre,
+                                birthDate: datosBasicos.fechaNacimiento || null,
+                                sex: datosBasicos.sexo || null,
+                              },
+                              clinicalText: historiaClinica,
+                              symptoms: symptoms.map((symptom) => ({
+                                label: symptom.description,
+                                code: symptom.code,
+                                onset: symptom.onset ?? null,
+                                source: symptom.source,
+                              })),
+                              negated: negatedFindings,
+                              answers: {
+                                yes: questionSession.state.history.filter((item) => item.effectiveAnswer === "si").map((item) => item.question.label),
+                                no: questionSession.state.history.filter((item) => item.effectiveAnswer === "no").map((item) => item.question.label),
+                                unsure: questionSession.state.history.filter((item) => item.effectiveAnswer === "no_se").map((item) => item.question.label),
+                              },
+                              genes: visibleGeneResults.map((gene) => {
+                                const symbol = gene.gene_symbol || gene.gene_id;
+                                return { symbol, summary: geneProfiles.get(symbol.toUpperCase())?.resumen_es ?? null };
+                              }),
+                              adjustedByAnswers: showingRefined,
+                              specialties: especialidadesParaConsultar(visibleSpecialties?.top_specialties ?? []),
+                            })}
+                          />
 
                           {/* No accuracy figure. It moves with the model, the
                               phenotypes and the disease, and a number on
@@ -2226,32 +2280,6 @@ function NuevoDiagnosticoScreen() {
                       </button>
                     </div>
 
-                    <div className="flex justify-center border-t border-[var(--lu-border)] pt-6">
-                      <ResultsDownload
-                        input={() => ({
-                          date: new Date(),
-                          patient: {
-                            name: datosBasicos.nombre,
-                            birthDate: datosBasicos.fechaNacimiento || null,
-                            sex: datosBasicos.sexo || null,
-                          },
-                          clinicalText: historiaClinica,
-                          symptoms: symptoms.map((symptom) => ({
-                            label: symptom.description,
-                            code: symptom.code,
-                            onset: symptom.onset ?? null,
-                          })),
-                          negated: negatedFindings,
-                          answers: {
-                            yes: questionSession.state.history.filter((item) => item.effectiveAnswer === "si").map((item) => item.question.label),
-                            no: questionSession.state.history.filter((item) => item.effectiveAnswer === "no").map((item) => item.question.label),
-                            unsure: questionSession.state.history.filter((item) => item.effectiveAnswer === "no_se").map((item) => item.question.label),
-                          },
-                          genes: genphenResults.map((gene) => gene.gene_symbol),
-                          specialties: especialidadesParaConsultar(genphenSpecialties?.top_specialties ?? []),
-                        })}
-                      />
-                    </div>
                   </div>
                   {refineOnScreen && (
                     <QuestionSidePanel

@@ -4,10 +4,12 @@ import {
     describeFrequency,
     MODEL_SCORE_TITLE,
     formatScore,
-    researchLinks,
+    omimUrl,
+    stripProvenance,
     type GeneProfile,
     type MatchedReport,
 } from "@/lib/genes-api";
+import { researchLinks } from "@/lib/reference-links";
 import { ENTERED_NOTE, MOVED_NOTE, rankMovement } from "@/lib/question-insights";
 import { ConditionRow, GeneReferenceLinks } from "./gene-links";
 import { MeterCaption } from "./match-meter";
@@ -36,10 +38,6 @@ export type GeneDetailProps = {
     professional: boolean;
     reportedWords: Map<string, string>;
 };
-
-function stripProvenance(text: string): string {
-    return text.replace(/\s*[[(](?:provided by|proporcionado por)[^\])]*[\])]\s*$/i, "").trim();
-}
 
 function MatchedReportRow({
     report,
@@ -139,6 +137,8 @@ export function GeneDetail({
     const covered = profile?.reportados_cubiertos?.length ?? 0;
     const reported = reportedWords.size;
     const totalExpected = profile?.total_esperados ?? 0;
+    const readingLinks = profile ? researchLinks(profile).filter((link) => link.family || professional) : [];
+    const linkedConditions = profile?.enfermedades.some((disease) => omimUrl(disease.omim)) ?? false;
 
     return (
         <article
@@ -258,6 +258,11 @@ export function GeneDetail({
                             <h5 className="text-sm font-semibold text-[var(--lu-text)]">
                                 Condiciones asociadas · {profile.enfermedades.length}
                             </h5>
+                            {linkedConditions && (
+                                <p className="mt-0.5 text-xs text-[var(--lu-subtle)]">
+                                    Tocá una condición para ver su ficha en OMIM (en inglés).
+                                </p>
+                            )}
                             <ul className="mt-2 flex flex-col gap-1.5">
                                 {profile.enfermedades.map((disease) => (
                                     <ConditionRow
@@ -349,29 +354,27 @@ export function GeneDetail({
                 </p>
             )}
 
-            {profile && (
+            {readingLinks.length > 0 && (
                 <section className="border-t border-[var(--lu-border)] pt-4">
                     <h5 className="text-sm font-semibold text-[var(--lu-text)]">Para leer más</h5>
                     <ul className="mt-2 flex flex-wrap gap-2">
-                        {researchLinks(profile)
-                            .filter((link) => link.spanish || professional)
-                            .map((link) => (
-                                <li key={link.url}>
-                                    <a
-                                        href={link.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex min-h-[44px] items-center gap-1.5 rounded-full border border-[var(--lu-border-strong)] px-3.5 text-xs font-medium text-[var(--lu-accent-text)]"
-                                    >
-                                        {link.label}
-                                        {!link.spanish && (
-                                            <span className="text-[10.5px] text-[var(--lu-subtle)]">
-                                                en inglés
-                                            </span>
-                                        )}
-                                    </a>
-                                </li>
-                            ))}
+                        {readingLinks.map((link) => (
+                            <li key={link.url}>
+                                <a
+                                    href={link.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex min-h-[44px] items-center gap-1.5 rounded-full border border-[var(--lu-border-strong)] px-3.5 text-xs font-medium text-[var(--lu-accent-text)]"
+                                >
+                                    {link.label}
+                                    {!link.spanish && (
+                                        <span className="text-[10.5px] text-[var(--lu-subtle)]">
+                                            en inglés
+                                        </span>
+                                    )}
+                                </a>
+                            </li>
+                        ))}
                     </ul>
                     <p className="mt-2 text-xs leading-relaxed text-[var(--lu-subtle)]">
                         Son fuentes para investigar y llevar a una consulta, no un diagnóstico.

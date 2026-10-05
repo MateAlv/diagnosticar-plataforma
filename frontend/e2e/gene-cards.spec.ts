@@ -227,8 +227,9 @@ test("the disclaimer survives on a screen that now names diseases", async ({ pag
     await expect(page.getByText(/no constituye un diagnóstico médico/i)).toBeVisible();
 });
 
-test("a family gets Spanish sources to read further, not English databases", async ({ page }) => {
-    // "Researchable" has to mean researchable by the person reading it.
+test("a family gets the gene pages written for them, not the specialist databases", async ({ page }) => {
+    // "Researchable" has to mean researchable by the person reading it, and
+    // every link has to open a real page about the gene, not a search.
     await runToResults(page);
 
     // Says which view it is about rather than relying on the default, since
@@ -236,8 +237,14 @@ test("a family gets Spanish sources to read further, not English databases", asy
     await page.getByLabel("Ver detalle médico").uncheck();
 
     const card = await openGene(page, "CFTR");
-    await expect(card.getByRole("link", { name: /Orphanet/ })).toBeVisible();
-    await expect(card.getByRole("link", { name: /MedlinePlus en español/ })).toBeVisible();
+    await expect(card.getByRole("link", { name: /Orphanet/ })).toHaveAttribute(
+        "href",
+        "https://www.orpha.net/es/disease/gene/CFTR",
+    );
+    await expect(card.getByRole("link", { name: /MedlinePlus Genetics/ })).toHaveAttribute(
+        "href",
+        "https://medlineplus.gov/genetics/gene/cftr/",
+    );
 
     // The curated English databases stay in the technical view.
     await expect(card.getByRole("link", { name: /^NCBI Gene$/ })).toHaveCount(0);
@@ -486,12 +493,34 @@ test("a gene named under a speciality opens its detail", async ({ page }) => {
     await expect(page.getByRole("dialog").getByRole("article", { name: "Detalle del gen DNAH5" })).toBeVisible();
 });
 
-test("downloading the results is offered at the bottom, below the disclaimer", async ({ page }) => {
+test("the summary download sits right under what was reported, above the genes", async ({ page }) => {
     await runToResults(page);
 
     const download = page.getByRole("button", { name: "Descargar resumen (PDF)" });
     await expect(download).toBeEnabled();
+    await expect(page.getByRole("heading", { name: "Resumen para llevar a la consulta" })).toBeVisible();
     const downloadTop = (await download.boundingBox())!.y;
-    const disclaimerTop = (await page.getByText(/no constituye un diagnóstico médico/i).boundingBox())!.y;
-    expect(downloadTop).toBeGreaterThan(disclaimerTop);
+    const reportedTop = (await page.getByText("Lo que nos contaste").boundingBox())!.y;
+    const gridTop = (await page.locator("[data-gene-grid]").boundingBox())!.y;
+    expect(downloadTop).toBeGreaterThan(reportedTop);
+    expect(downloadTop).toBeLessThan(gridTop);
+});
+
+test("each reported symptom opens its HPO term page", async ({ page }) => {
+    await runToResults(page);
+
+    const reported = page.getByText("Lo que nos contaste").locator("..");
+    const links = reported.locator('a[href*="hpo.jax.org"]');
+    expect(await links.count()).toBeGreaterThan(0);
+    for (const href of await links.evaluateAll((all) => all.map((a) => a.getAttribute("href")))) {
+        expect(href).toMatch(/^https:\/\/hpo\.jax\.org\/browse\/term\/HP:\d{7}$/);
+    }
+    await expect(links.first()).toHaveAttribute("target", "_blank");
+});
+
+test("the associated conditions say they open their OMIM page", async ({ page }) => {
+    await runToResults(page);
+
+    const card = await openGene(page, "CFTR");
+    await expect(card.getByText("Tocá una condición para ver su ficha en OMIM (en inglés).")).toBeVisible();
 });

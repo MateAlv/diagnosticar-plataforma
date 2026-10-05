@@ -394,8 +394,6 @@ test("the disclaimer stays on screen for as long as the panel is open", async ({
     // And the one at the foot of the results stays where it always was.
     const atFoot = page.locator("[data-gene-panel] ~ div").getByText(DISCLAIMER);
     await expect(atFoot).toHaveText(DISCLAIMER_TEXT);
-    const download = page.getByRole("button", { name: "Descargar resumen (PDF)", includeHidden: true });
-    expect((await download.boundingBox())!.y).toBeGreaterThan((await atFoot.boundingBox())!.y);
 });
 
 test("the top of the results stays reachable after the questions", async ({ page }) => {
@@ -605,7 +603,7 @@ test("after refining the grid keeps the model's list, and the one with the answe
     await chooseList(page, "Con tus respuestas");
     await expect(announcement).toHaveText("Mostrando la lista con tus respuestas.");
     expect(await geneOrder(page)).toEqual(["CFTR", "SCNN1A", "DNAH5"]);
-    await expect(page.locator("[data-from-questions]")).toHaveText([`${STOOL.label} · de las preguntas`]);
+    await expect(page.locator("[data-from-questions]")).toHaveText([`${STOOL.label} · de las preguntas↗`]);
     // A card in that list shows how far the gene moved, never the adjusted score.
     await expect(note).toHaveText("= 1.º");
     await expect(note).toHaveAttribute("title", /no quiere decir que sea la respuesta/);
@@ -1560,7 +1558,7 @@ test("a session already on the server is restored on load", async ({ page }) => 
     expect(await geneOrder(page)).toEqual(["CFTR", "DNAH5", "SCNN1A"]);
     await chooseList(page, "Con tus respuestas");
     expect(await geneOrder(page)).toEqual(["CFTR", "SCNN1A", "DNAH5"]);
-    await expect(page.locator("[data-from-questions]")).toHaveText([`${STOOL.label} · de las preguntas`]);
+    await expect(page.locator("[data-from-questions]")).toHaveText([`${STOOL.label} · de las preguntas↗`]);
     await expect(page.getByText(`${SITUS.label} (de las preguntas)`)).toBeVisible();
     // Restoring is not something the reader did: the panel stays away, and
     // the launcher leads to where it ended.

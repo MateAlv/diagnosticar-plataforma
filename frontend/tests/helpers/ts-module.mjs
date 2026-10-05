@@ -11,7 +11,8 @@ import ts from 'typescript';
  * Local imports (`./x`, `../x`, `@/x`) are flattened to siblings in the scratch
  * directory, so list every local module a file imports. Packages resolve from
  * the frontend's node_modules, where the scratch directory lives. `.tsx` files
- * are accepted, for rendering a component with react-dom/server.
+ * are accepted, for rendering a component with react-dom/server, and `.json`
+ * files, for a module that imports its data.
  */
 const SRC = fileURLToPath(new URL('../../src/', import.meta.url));
 const SCRATCH = fileURLToPath(new URL('../../node_modules/.cache/ts-module/', import.meta.url));
@@ -22,6 +23,10 @@ export async function importTs(...relativePaths) {
   const dir = mkdtempSync(path.join(SCRATCH, 'm-'));
   for (const relative of relativePaths) {
     const source = readFileSync(path.join(SRC, relative), 'utf8');
+    if (relative.endsWith('.json')) {
+      writeFileSync(path.join(dir, `${base(relative)}.mjs`), `export default ${source};\n`);
+      continue;
+    }
     const js = ts
       .transpileModule(source, {
         compilerOptions: {

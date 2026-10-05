@@ -37,7 +37,7 @@ async function runToResults(page: Page) {
     await expect(page.getByRole("heading", { name: /Genes para llevar a la consulta/ })).toBeVisible({ timeout: 20_000 });
 }
 
-test("the PDF carries what was reported, every gene with its link, and the warnings", async ({ page }) => {
+test("the PDF carries the reported profile, every gene with its link, and the warnings", async ({ page }) => {
     const errors = collectPageErrors(page);
     await runToResults(page);
 
@@ -51,6 +51,8 @@ test("the PDF carries what was reported, every gene with its link, and the warni
     expect(pdf.startsWith("%PDF")).toBe(true);
     for (const text of [
         "Juli",
+        "Perfil informado del paciente",
+        "hpo.jax.org/browse/term/HP:",
         "Infecciones respiratorias recurrentes",
         "Convulsiones",
         "CFTR",
@@ -73,7 +75,8 @@ test("the same summary can be copied as text", async ({ page, context, browserNa
     await expect(page.getByRole("button", { name: "Copiado ✓" })).toBeVisible();
     const copied = await page.evaluate(() => navigator.clipboard.readText());
     expect(copied).toContain("Resumen de la búsqueda");
-    expect(copied).toMatch(/1\. CFTR — https:\/\/www\.genecards\.org/);
-    expect(copied).toMatch(/No presenta, según el relato:\n- Convulsiones/);
+    expect(copied).toMatch(/^1\. CFTR( — .+)?\n   Ficha en GeneCards: https:\/\/www\.genecards\.org\/cgi-bin\/carddisp\.pl\?gene=CFTR$/m);
+    expect(copied.indexOf("3. RESULTADO DEL MODELO")).toBeGreaterThan(copied.indexOf("2. QUÉ SON LAS ENFERMEDADES GENÉTICAS"));
+    expect(copied).toMatch(/No presenta, según el relato:\n- Convulsiones \(HP:0001250\) — https:\/\/hpo\.jax\.org\/browse\/term\/HP:0001250/);
     expect(copied).toContain("Este resultado no constituye un diagnóstico médico.");
 });

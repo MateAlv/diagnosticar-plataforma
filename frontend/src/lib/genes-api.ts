@@ -88,6 +88,11 @@ export type GeneProfile = {
     tecnico?: GeneTechnical;
 };
 
+/** Drops the trailing "[provided by RefSeq]" a curated summary carries. */
+export function stripProvenance(text: string): string {
+    return text.replace(/\s*[[(](?:provided by|proporcionado por)[^\])]*[\])]\s*$/i, "").trim();
+}
+
 const HPO_RE = /^HP:\d{7}$/i;
 const MAX_REPORTED = 100;
 
@@ -207,48 +212,10 @@ export function describeFrequency(symptom: Symptom): string | null {
 export type ResearchLink = {
     label: string;
     url: string;
-    /** Spanish, patient-facing sources come first; the rest are English databases. */
     spanish: boolean;
+    /** Written for families rather than specialists, whatever the language. */
+    family?: boolean;
 };
-
-/**
- * Where a person can read more about a gene and its associated conditions.
- *
- * Ordered for the reader, not for us: Orphanet publishes patient-facing pages
- * in Spanish, so those lead. MedlinePlus covers many genes in Spanish too. The
- * curated databases are English and technical, so they come last — useful to a
- * clinician, largely impenetrable to a family.
- *
- * Every link is built from an identifier already in the profile. Nothing is
- * guessed, so a link is either correct or absent.
- */
-export function researchLinks(profile: GeneProfile): ResearchLink[] {
-    const links: ResearchLink[] = [];
-    const symbol = profile.simbolo;
-
-    // Orphanet's Spanish search, scoped to the gene, is the best patient-facing
-    // entry point for rare disease.
-    links.push({
-        label: `Orphanet — enfermedades asociadas a ${symbol}`,
-        url: `https://www.orpha.net/es/disease/search?query=${encodeURIComponent(symbol)}`,
-        spanish: true,
-    });
-
-    // MedlinePlus retired its per-gene Spanish pages, so this goes to the
-    // Spanish search rather than a path that 404s. Verified 2026-09-21.
-    links.push({
-        label: `MedlinePlus en español — buscar ${symbol}`,
-        url: "https://vsearch.nlm.nih.gov/vivisimo/cgi-bin/query-meta"
-            + `?v%3Aproject=medlineplus-spanish&query=${encodeURIComponent(symbol)}`,
-        spanish: true,
-    });
-
-    for (const [name, url] of Object.entries(profile.referencias)) {
-        if (url) links.push({ label: name, url, spanish: false });
-    }
-
-    return links;
-}
 
 const MIM_RE = /^\d{6}$/;
 

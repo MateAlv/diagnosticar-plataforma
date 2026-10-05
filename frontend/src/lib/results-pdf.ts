@@ -3,7 +3,7 @@
  * only when someone asks for the file, so it costs nothing to the page.
  */
 
-import type { Report, ReportBlock } from "./results-report";
+import type { Report, ReportBlock, ReportGene, ReportTerm } from "./results-report";
 
 // jsPDF's built-in fonts cover Latin-1 and the WinAnsi extras; anything else
 // would come out as garbage, so it is spelled out or replaced.
@@ -87,37 +87,87 @@ export async function reportToPdfBlob(report: Report): Promise<Blob> {
         }
     };
 
+    // A bullet with the HPO code after it, the code linked to its page.
+    const termRow = (t: ReportTerm) => {
+        const size = 10.5;
+        const lineH = size * 1.35;
+        const indent = 10;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(size);
+        const code = pdfSafe(t.code);
+        const codeW = doc.getTextWidth(code);
+        const lines = doc.splitTextToSize(pdfSafe(`•  ${t.label}${t.detail ? ` · ${t.detail}` : ""}`), width - indent) as string[];
+        lines.forEach((line, i) => {
+            ensure(lineH);
+            doc.setTextColor(...TEXT);
+            doc.text(line, margin + indent, y + size);
+            if (i === lines.length - 1) {
+                const after = margin + indent + doc.getTextWidth(line) + 8;
+                const fits = after + codeW <= margin + width;
+                if (!fits) {
+                    y += lineH;
+                    ensure(lineH);
+                }
+                const x = fits ? after : margin + indent + 12;
+                doc.setTextColor(...(t.url ? LINK : SUBTLE));
+                if (t.url) doc.textWithLink(code, x, y + size, { url: t.url });
+                else doc.text(code, x, y + size);
+            }
+            y += lineH;
+        });
+        y += 1;
+    };
+
+    // One gene: rank and symbol, what it does, and its links on their own
+    // line. Kept on one page, so a gene is never split from its description.
+    const geneEntry = (g: ReportGene) => {
+        const indent = 24;
+        doc.setFontSize(9.5);
+        doc.setFont("helvetica", "normal");
+        const description = g.description
+            ? (doc.splitTextToSize(pdfSafe(g.description), width - indent) as string[])
+            : [];
+        ensure(16 + description.length * 12.5 + g.links.length * 13 + 8);
+
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...SUBTLE);
+        doc.text(`${g.rank}.`, margin, y + 11);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...TEXT);
+        doc.text(pdfSafe(g.symbol), margin + indent, y + 11);
+        y += 16;
+
+        doc.setFontSize(9.5);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...TEXT);
+        for (const line of description) {
+            doc.text(line, margin + indent, y + 9.5);
+            y += 12.5;
+        }
+        for (const l of g.links) {
+            const label = pdfSafe(`${l.label}: `);
+            doc.setTextColor(...SUBTLE);
+            doc.text(label, margin + indent, y + 9.5);
+            doc.setTextColor(...LINK);
+            const url = pdfSafe(l.url);
+            doc.textWithLink(url, margin + indent + doc.getTextWidth(label), y + 9.5, { url: l.url });
+            y += 13;
+        }
+        y += 8;
+    };
+
     const block = (b: ReportBlock) => {
         if (b.kind === "paragraph") write(b.text, 10.5, { bold: b.emphasis });
         else if (b.kind === "list") for (const item of b.items) write(`•  ${item}`, 10.5, { indent: 10, gap: 1 });
-        else if (b.kind === "links") for (const l of b.links) link(l.label, l.url, l.note);
+        else if (b.kind === "terms") {
+            for (const t of b.terms) termRow(t);
+            y += 3;
+        } else if (b.kind === "links") for (const l of b.links) link(l.label, l.url, l.note);
         else {
-            // Three columns of linked symbols, read down each column.
-            const cols = 3;
-            const colW = width / cols;
-            const rows = Math.ceil(b.genes.length / cols);
-            // Title and table together, on one page: read down each column,
-            // a table split across pages reads out of order.
-            ensure(40 + rows * 14);
-            write(b.title, 10.5, { bold: true });
-            doc.setFontSize(10);
-            for (let r = 0; r < rows; r++) {
-                ensure(14);
-                for (let c = 0; c < cols; c++) {
-                    const gene = b.genes[c * rows + r];
-                    if (!gene) continue;
-                    const x = margin + c * colW;
-                    doc.setFont("helvetica", "normal");
-                    doc.setTextColor(...SUBTLE);
-                    const rank = `${gene.rank}.`;
-                    doc.text(rank, x, y + 10);
-                    doc.setFont("helvetica", "bold");
-                    doc.setTextColor(...LINK);
-                    doc.textWithLink(pdfSafe(gene.symbol), x + 22, y + 10, { url: gene.url });
-                }
-                y += 14;
-            }
-            y += 6;
+            ensure(60);
+            write(b.title, 10.5, { bold: true, gap: 8 });
+            for (const g of b.genes) geneEntry(g);
         }
     };
 
@@ -146,6 +196,10 @@ export async function reportToPdfBlob(report: Report): Promise<Blob> {
             }
             y += 18;
             continue;
+        }
+        if (section.newPage && y > margin) {
+            doc.addPage();
+            y = margin;
         }
         ensure(40);
         write(section.title, 13.5, { bold: true, color: TEAL, gap: 6 });

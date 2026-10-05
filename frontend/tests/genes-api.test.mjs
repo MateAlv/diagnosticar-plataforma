@@ -32,7 +32,7 @@ function load(fetchImpl) {
   return new Function(
     'fetch',
     'process',
-    `${body}; return { fetchGeneProfile, fetchGeneProfiles, describeFrequency, researchLinks, geneReferenceLinks, omimUrl, formatScore };`,
+    `${body}; return { fetchGeneProfile, fetchGeneProfiles, describeFrequency, geneReferenceLinks, omimUrl, formatScore, stripProvenance };`,
   )(fetchImpl, { env: { NEXT_PUBLIC_API_URL: 'http://api.test' } });
 }
 
@@ -190,38 +190,6 @@ test('a failed batch leaves the ranking renderable', async () => {
 
 // --- research links ---------------------------------------------------------
 
-const LINKED = {
-  simbolo: 'CFTR',
-  enfermedades: [{ nombre: 'Fibrosis quística', descripcion_es: '', omim: '219700' }],
-  coincidencias: [],
-  frecuentes_no_reportados: [],
-  referencias: { 'NCBI Gene': 'https://www.ncbi.nlm.nih.gov/gene/1080' },
-};
-
-test('Spanish patient-facing sources come before the English databases', () => {
-  const { researchLinks } = load(ok);
-  const links = researchLinks(LINKED);
-
-  const firstEnglish = links.findIndex((l) => !l.spanish);
-  const lastSpanish = links.map((l) => l.spanish).lastIndexOf(true);
-  assert.ok(lastSpanish < firstEnglish, 'a Spanish source appears after an English one');
-});
-
-test('links are built only from identifiers the profile actually has', () => {
-  const { researchLinks } = load(ok);
-
-  // A gene with no references still gets the Spanish searches, and nothing is
-  // invented for the identifiers it lacks.
-  const bare = researchLinks({ ...LINKED, referencias: {} });
-  assert.ok(bare.every((l) => l.spanish));
-});
-
-test('conditions are not repeated among the reading links', () => {
-  // Each condition row opens its own OMIM entry now.
-  const { researchLinks } = load(ok);
-  assert.ok(!researchLinks(LINKED).some((l) => l.url.includes('omim.org')));
-});
-
 test('the gene links to GeneCards by symbol and to its own OMIM entry', () => {
   const { geneReferenceLinks } = load(ok);
   const urls = geneReferenceLinks('TCF4', '602272').map((l) => l.url);
@@ -248,13 +216,10 @@ test('only a six-digit MIM number becomes an OMIM link', () => {
   }
 });
 
-test('the gene symbol is URL-encoded into every search', () => {
-  const { researchLinks } = load(ok);
-  const links = researchLinks({ ...LINKED, simbolo: 'HLA-DRB1' });
-
-  for (const link of links.filter((l) => l.spanish)) {
-    assert.ok(link.url.includes('HLA-DRB1') || link.url.includes('HLA%2DDRB1'));
-  }
+test('a curated summary loses its trailing provenance note', () => {
+  const { stripProvenance } = load(ok);
+  assert.equal(stripProvenance('Codifica una proteína. [provided by RefSeq, Jul 2008]'), 'Codifica una proteína.');
+  assert.equal(stripProvenance('Codifica una proteína. (proporcionado por RefSeq)'), 'Codifica una proteína.');
 });
 
 test('a score under 0.01 reads as low, never as a number', () => {
