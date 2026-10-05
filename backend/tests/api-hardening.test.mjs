@@ -133,11 +133,32 @@ test('a field longer than its column is refused with 400, not a database error',
     assert.ok(!/value too long|character varying/i.test(res.text), 'a database error leaked');
 });
 
-test('an empty patient name is refused', { skip }, async () => {
-    for (const nombre of ['', '   ', null, undefined, 123, { toString: () => 'x' }]) {
+test('a patient name of the wrong type is refused', { skip }, async () => {
+    for (const nombre of [123, { toString: () => 'x' }, ['x']]) {
         const res = await client.post('/api/patients', samplePayload({ nombre }));
         assert.equal(res.status, 400, `nombre=${JSON.stringify(nombre)} was accepted`);
     }
+});
+
+test('a patient saved without a name is numbered within its account', { skip }, async () => {
+    const fresh = await seedUser();
+    const own = authenticateClient(createClient(server.baseUrl), fresh);
+    const names = [];
+    for (const nombre of ['', '   ', null, undefined]) {
+        const res = await own.post('/api/patients', samplePayload({ nombre }));
+        assert.equal(res.status, 201, `nombre=${JSON.stringify(nombre)} was refused`);
+        names.push(res.json.patient.nombre);
+    }
+    assert.deepEqual(names, ['Paciente 1', 'Paciente 2', 'Paciente 3', 'Paciente 4']);
+
+    // A named patient does not take a number, and another account starts at 1.
+    const named = await own.post('/api/patients', samplePayload({ nombre: 'Juli' }));
+    assert.equal(named.json.patient.nombre, 'Juli');
+    const other = await client.post('/api/patients', samplePayload({ nombre: '' }));
+    assert.match(other.json.patient.nombre, /^Paciente \d+$/);
+    assert.notEqual(other.json.patient.nombre, 'Paciente 5');
+    await client.delete(`/api/patients/${other.json.patient.id}`);
+    await deleteUser(fresh.id);
 });
 
 test('wrongly typed collection fields are refused', { skip }, async () => {
@@ -248,7 +269,7 @@ test('no error response carries a stack trace or file path', { skip }, async () 
         () => client.get('/api/patients/not-a-uuid'),
         () => client.get('/api/questions/not-a-uuid'),
         () => client.post('/api/questions/rounds', { diagnosisId: 'not-a-uuid', mode: 'paciente' }),
-        () => client.post('/api/patients', samplePayload({ nombre: '' })),
+        () => client.post('/api/patients', samplePayload({ nombre: 123 })),
         () => client.get('/api/nope'),
         () => client.post('/api/auth/login', { email: 'nope', password: 'short' }),
     ];

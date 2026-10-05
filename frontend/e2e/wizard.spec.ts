@@ -5,6 +5,7 @@ import {
     collectPageErrors,
     EXTRACT_FIXTURE,
     RANK_FIXTURE,
+    fillAgeFromBirthDate,
 } from "./fixtures/services";
 
 /**
@@ -39,9 +40,8 @@ async function openAuthedWizard(page: import("@playwright/test").Page) {
     await mockBackend(page, { user: TEST_USER });
     await page.goto("/nuevo", { waitUntil: "networkidle" });
 
-    // Step 1 gates on all five demographic fields being filled.
-    await page.getByPlaceholder(/Ej\. Marcelo, Mamá/).fill("Paciente E2E");
-    await page.locator('input[type="date"]').fill("2018-04-03");
+    await page.getByLabel(/^Apodo/).fill("Paciente E2E");
+    await fillAgeFromBirthDate(page, "2018-04-03");
     await page.getByPlaceholder("Ciudad o localidad").fill("CABA");
     await page.locator("select").filter({ hasText: "Argentina" }).selectOption("Argentina");
     await page.locator("select").filter({ hasText: "Femenino" }).selectOption("femenino");
@@ -52,6 +52,68 @@ async function openAuthedWizard(page: import("@playwright/test").Page) {
 test.beforeEach(async ({ page }) => {
     await mockBackend(page);
     await mockModelServices(page);
+});
+
+test("every basic datum is optional: Continuar works on an empty form, with Argentina preselected", async ({ page }) => {
+    await mockBackend(page, { user: TEST_USER });
+    await page.goto("/nuevo", { waitUntil: "networkidle" });
+
+    await expect(page.getByLabel(/^País/)).toHaveValue("Argentina");
+    await expect(page.getByLabel(/^Apodo/)).toHaveValue("");
+    // Nothing on the form pushes the page sideways, on a phone either.
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+    await page.getByRole("button", { name: /^Continuar$/ }).click();
+    await expect(page.getByPlaceholder(/Nena de 7 años/)).toBeVisible();
+});
+
+test("skipping the step clears what was typed, the country included", async ({ page }) => {
+    await mockBackend(page, { user: TEST_USER });
+    await page.goto("/nuevo", { waitUntil: "networkidle" });
+    await page.getByLabel(/^Apodo/).fill("Juli");
+
+    await page.getByRole("button", { name: "Omitir este paso" }).click();
+    await expect(page.getByPlaceholder(/Nena de 7 años/)).toBeVisible();
+    await page.getByTitle("Ir a Datos básicos").click();
+    await expect(page.getByLabel(/^Apodo/)).toHaveValue("");
+    await expect(page.getByLabel(/^País/)).toHaveValue("");
+});
+
+test("the age picker counts in years and months, and months roll into years", async ({ page }) => {
+    await mockBackend(page, { user: TEST_USER });
+    await page.goto("/nuevo", { waitUntil: "networkidle" });
+    const age = page.getByTestId("age-picker");
+
+    await expect(age).toContainText("Sin indicar");
+    await age.getByRole("button", { name: "Sumar un mes" }).click();
+    await expect(age.getByLabel("Meses")).toHaveValue("1");
+    await expect(age.getByLabel("Años")).toHaveValue("0");
+    await age.getByLabel("Meses").fill("14");
+    await expect(age.getByLabel("Años")).toHaveValue("1");
+    await expect(age.getByLabel("Meses")).toHaveValue("2");
+    await expect(age).toContainText("1 año y 2 meses");
+    await age.getByRole("button", { name: "Restar un mes" }).click();
+    await age.getByRole("button", { name: "Restar un mes" }).click();
+    await age.getByRole("button", { name: "Restar un mes" }).click();
+    await expect(age).toContainText("11 meses");
+    await age.getByRole("button", { name: "Borrar" }).click();
+    await expect(age).toContainText("Sin indicar");
+});
+
+test("a search saved without an apodo leaves the name to the server", async ({ page }) => {
+    await mockBackend(page, { user: TEST_USER });
+    await page.goto("/nuevo", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Omitir este paso" }).click();
+    await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
+    await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
+    await expect(page.getByText("Infecciones respiratorias recurrentes").first()).toBeVisible();
+
+    const saved = page.waitForRequest((req) => req.url().endsWith("/api/patients") && req.method() === "POST");
+    await page.getByRole("button", { name: /Revisar y continuar/ }).click();
+    await page.getByRole("button", { name: /Buscar genes candidatos/ }).click();
+    const body = (await saved).postDataJSON();
+    expect(body.nombre).toBe("");
+    expect(body.pais).toBeNull();
+    expect(body.fechaNacimiento).toBeNull();
 });
 
 test("extracting symptoms from clinical text populates the HPO list", async ({ page }) => {

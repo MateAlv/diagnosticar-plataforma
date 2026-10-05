@@ -8,6 +8,7 @@ import {
     QUESTIONS_FIXTURE,
     SAVED_DIAGNOSIS_ID,
     type QuestionsMockOptions,
+    fillAgeFromBirthDate,
 } from "./fixtures/services";
 
 /**
@@ -78,8 +79,8 @@ function roundPosts(page: Page) {
 async function runToResults(page: Page, { medical = false } = {}) {
     await page.goto("/nuevo", { waitUntil: "networkidle" });
 
-    await page.getByPlaceholder(/Ej\. Marcelo, Mamá/).fill("Paciente E2E");
-    await page.locator('input[type="date"]').fill("2018-04-03");
+    await page.getByLabel(/^Apodo/).fill("Paciente E2E");
+    await fillAgeFromBirthDate(page, "2018-04-03");
     await page.getByPlaceholder("Ciudad o localidad").fill("CABA");
     await page.locator("select").filter({ hasText: "Argentina" }).selectOption("Argentina");
     await page.locator("select").filter({ hasText: "Femenino" }).selectOption("femenino");

@@ -96,8 +96,10 @@ export default function TerminosPage() {
                                 también el nombre y el email de esa cuenta de Google.
                             </li>
                             <li>
-                                <strong>Las personas que cargás:</strong> nombre o apodo, fecha de nacimiento, sexo,
-                                localidad y país.
+                                <strong>Las personas que cargás:</strong> los datos que indiques, todos opcionales:
+                                apodo (sin apodo, la numeramos «Paciente 1», «Paciente 2»…), edad, que guardamos como la
+                                fecha de nacimiento aproximada que da esa edad para que siga contando, sexo, localidad y
+                                país.
                             </li>
                             <li>
                                 <strong>Cada búsqueda:</strong> el texto que pegues, los síntomas, los resultados y, si

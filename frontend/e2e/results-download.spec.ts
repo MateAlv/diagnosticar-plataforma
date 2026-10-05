@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { test, expect, type Page } from "@playwright/test";
-import { mockBackend, mockGeneProfiles, mockModelServices, collectPageErrors } from "./fixtures/services";
+import { mockBackend, mockGeneProfiles, mockModelServices, collectPageErrors, fillAgeFromBirthDate } from "./fixtures/services";
 
 /**
  * The summary a family takes away: a PDF and the same text to copy. What it
@@ -23,8 +23,8 @@ async function runToResults(page: Page) {
     await mockModelServices(page);
     await mockGeneProfiles(page);
     await page.goto("/nuevo", { waitUntil: "networkidle" });
-    await page.getByPlaceholder(/Ej\. Marcelo, Mamá/).fill("Juli");
-    await page.locator('input[type="date"]').fill("2019-04-03");
+    await page.getByLabel(/^Apodo/).fill("Juli");
+    await fillAgeFromBirthDate(page, "2019-04-03");
     await page.getByPlaceholder("Ciudad o localidad").fill("CABA");
     await page.locator("select").filter({ hasText: "Argentina" }).selectOption("Argentina");
     await page.locator("select").filter({ hasText: "Femenino" }).selectOption("femenino");

@@ -452,3 +452,17 @@ export async function mockAdminApi(
         return json(route, 404, { error: "Not found" });
     });
 }
+
+/**
+ * Fills «Edad» with the age a birth date gives today, so specs that reason
+ * about a child born on a given day keep doing so.
+ */
+export async function fillAgeFromBirthDate(page: Page, birthDate: string) {
+    const [y, m, d] = birthDate.split("-").map(Number);
+    const now = new Date();
+    let months = (now.getFullYear() - y) * 12 + (now.getMonth() - (m - 1));
+    if (now.getDate() < d) months -= 1;
+    const age = page.getByTestId("age-picker");
+    await age.getByLabel("Años").fill(String(Math.floor(months / 12)));
+    await age.getByLabel("Meses").fill(String(months % 12));
+}

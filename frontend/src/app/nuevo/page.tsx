@@ -108,10 +108,12 @@ import { errorMessage, isSessionError, jsonOrThrow } from "@/lib/api-errors";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { BROAD_NOTICE_MAX_SYMPTOMS, canRefine as canRefineTerm, fetchTerms, isBroadTerm, typesLabel, type HpoTerm } from "@/lib/hpo-terms";
 import { RefineTermDialog, type RefineTarget } from "./refine-term-dialog";
+import { AgePicker } from "./age-picker";
 import { HpoLink } from "./hpo-link";
 import { ResultsDownload } from "./results-download";
 import { especialidadesParaConsultar } from "@/lib/especialidades";
 import { isOnsetInformative } from "@/lib/onset-informative";
+import { ageFromBirthDate, birthDateFromAge } from "@/lib/patient-age";
 import { onsetClass, onsetForSave, onsetPayloadFields, parseOnset, showsPrecisar, type SymptomOnset } from "@/lib/onset";
 import { ADJUSTED_LIST_NOTE, originsIn } from "@/lib/question-insights";
 import {
@@ -359,12 +361,14 @@ function NuevoDiagnosticoScreen() {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sintomaInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Every field is optional. País starts on Argentina, where most families
+  // are, and can be changed or cleared.
   const [datosBasicos, setDatosBasicos] = useState({
     nombre: "",
     fechaNacimiento: "",
     sexo: "",
     localidad: "",
-    pais: "",
+    pais: "Argentina",
   });
 
   const HC_DRAFT_KEY = "diagnosticar:hc-draft";
@@ -435,16 +439,6 @@ function NuevoDiagnosticoScreen() {
   const [hpoSuggestions, setHpoSuggestions] = useState<HpoSuggestion[]>([]);
   const [hpoSuggestOpen, setHpoSuggestOpen] = useState(false);
   const [hpoSuggestLoading, setHpoSuggestLoading] = useState(false);
-
-  const canGoStep1 = useMemo(() => {
-    return (
-      datosBasicos.nombre.trim() !== "" &&
-      datosBasicos.fechaNacimiento.trim() !== "" &&
-      datosBasicos.sexo.trim() !== "" &&
-      datosBasicos.localidad.trim() !== "" &&
-      datosBasicos.pais.trim() !== ""
-    );
-  }, [datosBasicos]);
 
   const canGoStep2 = symptoms.length > 0;
   const puedeAnalizarTexto =
@@ -1062,7 +1056,7 @@ function NuevoDiagnosticoScreen() {
     try {
       const record = {
         id,
-        nombre: datosBasicos.nombre.trim() || "Paciente",
+        nombre: datosBasicos.nombre.trim() || "Paciente sin apodo",
         savedAt: new Date().toISOString(),
         symptoms: symptoms.map((s) => ({ description: s.description, code: s.code, ...onsetForSave(s.onset) })),
         topSpecialties: payload?.specialties?.top_specialties ?? [],
@@ -1152,7 +1146,8 @@ function NuevoDiagnosticoScreen() {
           const saveBody = regenerationPatientId
             ? diagnosisPayload
             : {
-                nombre: datosBasicos.nombre.trim() || "Paciente",
+                // Empty: the server numbers it «Paciente N» within the account.
+                nombre: datosBasicos.nombre.trim(),
                 fechaNacimiento: datosBasicos.fechaNacimiento || null,
                 sexo: datosBasicos.sexo || null,
                 localidad: datosBasicos.localidad || null,
@@ -1192,6 +1187,12 @@ function NuevoDiagnosticoScreen() {
     if (step === 2) {
       setShowConfirmModal(true);
     }
+  };
+
+  // Skipping means giving none of it, so the país default goes too.
+  const omitirDatosBasicos = () => {
+    setDatosBasicos({ nombre: "", fechaNacimiento: "", sexo: "", localidad: "", pais: "" });
+    setStep(2);
   };
 
   const firstStep: Step = isDemoMode ? 2 : 1;
@@ -1448,40 +1449,60 @@ function NuevoDiagnosticoScreen() {
               )}
 
               {step === 1 && (
-                <div className="grid gap-6 lg:grid-cols-2">
-                  <div className="lg:col-span-2">
-                    <label className="block text-sm font-bold text-[var(--lu-text)] mb-2">
-                      Nombre o apodo del integrante
-                      <input
-                        type="text"
-                        value={datosBasicos.nombre}
-                        onChange={(event) => setDatosBasicos((prev) => ({ ...prev, nombre: event.target.value }))}
-                        className="mt-2 w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
-                        placeholder="Ej. Marcelo, Mamá, Equipo Beta..."
-                      />
-                    </label>
-                  </div>
+                <div className="space-y-6">
+                  <p className="text-sm leading-relaxed text-[var(--lu-subtle)]">
+                    Todos los datos son opcionales. La edad y el sexo ayudan a leer los resultados; si preferís no
+                    darlos, podés omitir este paso.
+                  </p>
+                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 [&>*]:min-w-0">
+                    <div className="lg:col-span-2">
+                      <label className="block text-sm font-bold text-[var(--lu-text)]">
+                        Apodo <span className="font-normal text-[var(--lu-subtle)]">(opcional)</span>
+                        <input
+                          type="text"
+                          value={datosBasicos.nombre}
+                          onChange={(event) => setDatosBasicos((prev) => ({ ...prev, nombre: event.target.value }))}
+                          className="mt-2 w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
+                          placeholder="Ej. Juli, Mamá, Abuelo"
+                          aria-describedby="apodo-ayuda"
+                          maxLength={255}
+                        />
+                      </label>
+                      <p id="apodo-ayuda" className="mt-1.5 text-xs text-[var(--lu-subtle)]">
+                        Para reconocerlo en tu cuenta. Si lo dejás vacío, lo guardamos como «Paciente 1», «Paciente 2»…
+                      </p>
+                    </div>
 
-                  <div className="space-y-5">
-                    <label className="block text-sm font-bold text-[var(--lu-text)] mb-2">
-                      Fecha de nacimiento
-                      <input
-                        type="date"
-                        value={datosBasicos.fechaNacimiento}
-                        onChange={(event) =>
-                          setDatosBasicos((prev) => ({ ...prev, fechaNacimiento: event.target.value }))
-                        }
-                        className="mt-2 w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
-                      />
+                    <AgePicker
+                      value={ageFromBirthDate(datosBasicos.fechaNacimiento)}
+                      onChange={(age) =>
+                        setDatosBasicos((prev) => ({ ...prev, fechaNacimiento: age ? birthDateFromAge(age) : "" }))
+                      }
+                    />
+
+                    <label className="block text-sm font-bold text-[var(--lu-text)]">
+                      Sexo <span className="font-normal text-[var(--lu-subtle)]">(opcional)</span>
+                      <select
+                        value={datosBasicos.sexo}
+                        onChange={(event) => setDatosBasicos((prev) => ({ ...prev, sexo: event.target.value }))}
+                        className="mt-2 w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all appearance-none"
+                      >
+                        <option value="">Sin indicar</option>
+                        <option value="femenino">Femenino</option>
+                        <option value="masculino">Masculino</option>
+                        <option value="no_binario">No binario</option>
+                        <option value="prefiero_no_decir">Prefiero no decirlo</option>
+                      </select>
                     </label>
-                    <label className="block text-sm font-bold text-[var(--lu-text)] mb-2">
-                      País
+
+                    <label className="block text-sm font-bold text-[var(--lu-text)]">
+                      País <span className="font-normal text-[var(--lu-subtle)]">(opcional)</span>
                       <select
                         value={datosBasicos.pais}
                         onChange={(event) => setDatosBasicos((prev) => ({ ...prev, pais: event.target.value }))}
                         className="mt-2 w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all appearance-none"
                       >
-                        <option value="">Seleccioná</option>
+                        <option value="">Sin indicar</option>
                         {countries.map((country) => (
                           <option key={country} value={country}>
                             {country}
@@ -1489,25 +1510,9 @@ function NuevoDiagnosticoScreen() {
                         ))}
                       </select>
                     </label>
-                  </div>
 
-                  <div className="space-y-5">
-                    <label className="block text-sm font-bold text-[var(--lu-text)] mb-2">
-                      Sexo
-                      <select
-                        value={datosBasicos.sexo}
-                        onChange={(event) => setDatosBasicos((prev) => ({ ...prev, sexo: event.target.value }))}
-                        className="mt-2 w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all appearance-none"
-                      >
-                        <option value="">Seleccioná</option>
-                        <option value="femenino">Femenino</option>
-                        <option value="masculino">Masculino</option>
-                        <option value="no_binario">No binario</option>
-                        <option value="prefiero_no_decir">Prefiero no decirlo</option>
-                      </select>
-                    </label>
-                    <label className="block text-sm font-bold text-[var(--lu-text)] mb-2">
-                      Localidad
+                    <label className="block text-sm font-bold text-[var(--lu-text)]">
+                      Localidad <span className="font-normal text-[var(--lu-subtle)]">(opcional)</span>
                       <input
                         type="text"
                         value={datosBasicos.localidad}
@@ -1516,10 +1521,10 @@ function NuevoDiagnosticoScreen() {
                         }
                         className="mt-2 w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3 text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
                         placeholder="Ciudad o localidad"
+                        maxLength={255}
                       />
                     </label>
                   </div>
-
                 </div>
               )}
 
@@ -2338,13 +2343,21 @@ function NuevoDiagnosticoScreen() {
                 )}
 
                 <div className="flex flex-wrap items-center gap-3">
+                  {step === 1 && (
+                    <button
+                      type="button"
+                      onClick={omitirDatosBasicos}
+                      className="inline-flex h-11 items-center justify-center rounded-xl px-5 font-semibold text-[var(--lu-subtle)] transition-colors hover:bg-[var(--lu-surface)] hover:text-[var(--lu-text)]"
+                    >
+                      Omitir este paso
+                    </button>
+                  )}
                   {step < 3 && (
                   <button
                     type="button"
                     className="inline-flex items-center justify-center h-11 px-8 rounded-xl bg-[var(--lu-green)] text-white font-bold hover:bg-[color-mix(in_oklab,var(--lu-green)_90%,#000)] shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
                     onClick={handleContinue}
                     disabled={
-                      (step === 1 && !canGoStep1) ||
                       (step === 2 && !canGoStep2) ||
                       isLoading
                     }

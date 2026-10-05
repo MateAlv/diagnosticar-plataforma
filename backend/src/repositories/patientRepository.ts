@@ -35,12 +35,33 @@ export type DiagnosisInput = {
 };
 
 export type PatientInput = {
-    nombre: string;
+    /** Empty or absent: named «Paciente N», the next number in the account. */
+    nombre?: string | null;
     fechaNacimiento?: string | null;
     sexo?: string | null;
     localidad?: string | null;
     pais?: string | null;
 };
+
+/**
+ * «Paciente N» for a patient saved without a name: one more than the highest
+ * N already in the account, so a deleted patient's number is not handed out
+ * twice in a row. The per-account lock keeps two saves at once from both
+ * taking the same N.
+ */
+async function nextUnnamedPatient(
+    client: Awaited<ReturnType<typeof getClient>>,
+    userId: string,
+): Promise<string> {
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext('patient-name:' || $1))`, [userId]);
+    const res = await client.query<{ next: number }>(
+        `SELECT COALESCE(MAX(substring(nombre FROM '^Paciente ([0-9]{1,9})$')::int), 0) + 1 AS next
+           FROM patients
+          WHERE user_id = $1 AND nombre ~ '^Paciente [0-9]{1,9}$'`,
+        [userId],
+    );
+    return `Paciente ${res.rows[0].next}`;
+}
 
 /**
  * Creates a patient and their first diagnosis in a single transaction.
@@ -58,6 +79,8 @@ export async function createPatientWithDiagnosis(
     try {
         await client.query('BEGIN');
 
+        const nombre = patientData.nombre?.trim() || (await nextUnnamedPatient(client, userId));
+
         const patientRes = await client.query<Patient>(
             `INSERT INTO patients
                (user_id, user_email_snapshot, nombre, fecha_nacimiento, sexo, localidad, pais)
@@ -66,7 +89,7 @@ export async function createPatientWithDiagnosis(
             [
                 userId,
                 userEmailSnapshot,
-                patientData.nombre,
+                nombre,
                 patientData.fechaNacimiento ?? null,
                 patientData.sexo ?? null,
                 patientData.localidad ?? null,

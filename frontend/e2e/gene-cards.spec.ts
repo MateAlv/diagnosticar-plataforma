@@ -5,6 +5,7 @@ import {
     mockBackend,
     mockGeneProfiles,
     collectPageErrors,
+    fillAgeFromBirthDate,
 } from "./fixtures/services";
 
 /**
@@ -49,8 +50,8 @@ async function openGene(page: Page, symbol: string) {
 async function runToResults(page: Page) {
     await page.goto("/nuevo", { waitUntil: "networkidle" });
 
-    await page.getByPlaceholder(/Ej\. Marcelo, Mamá/).fill("Paciente E2E");
-    await page.locator('input[type="date"]').fill("2018-04-03");
+    await page.getByLabel(/^Apodo/).fill("Paciente E2E");
+    await fillAgeFromBirthDate(page, "2018-04-03");
     await page.getByPlaceholder("Ciudad o localidad").fill("CABA");
     await page.locator("select").filter({ hasText: "Argentina" }).selectOption("Argentina");
     await page.locator("select").filter({ hasText: "Femenino" }).selectOption("femenino");
@@ -379,8 +380,8 @@ test("symptoms added by hand are compared, not ignored", async ({ page }) => {
     );
 
     await page.goto("/nuevo", { waitUntil: "networkidle" });
-    await page.getByPlaceholder(/Ej\. Marcelo, Mamá/).fill("Paciente E2E");
-    await page.locator('input[type="date"]').fill("2018-04-03");
+    await page.getByLabel(/^Apodo/).fill("Paciente E2E");
+    await fillAgeFromBirthDate(page, "2018-04-03");
     await page.getByPlaceholder("Ciudad o localidad").fill("CABA");
     await page.locator("select").filter({ hasText: "Argentina" }).selectOption("Argentina");
     await page.locator("select").filter({ hasText: "Femenino" }).selectOption("femenino");

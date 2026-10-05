@@ -58,7 +58,8 @@ const historiaClinicaSchema = z
 
 const createPatientSchema = z.object({
     // Patient demographics
-    nombre: z.string().trim().min(1).max(255),
+    // Optional: left empty, the patient is numbered «Paciente N» in its account.
+    nombre: z.string().trim().max(255).nullable().optional(),
     fechaNacimiento: z.string().nullable().optional(),
     sexo: z.string().max(50).nullable().optional(),
     localidad: z.string().max(255).nullable().optional(),

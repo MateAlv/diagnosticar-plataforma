@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { mockBackend, mockHpoTree, mockModelServices, collectPageErrors, EXTRACT_FIXTURE } from "./fixtures/services";
+import { mockBackend, mockHpoTree, mockModelServices, collectPageErrors, EXTRACT_FIXTURE, fillAgeFromBirthDate } from "./fixtures/services";
 
 /**
  * "¿A qué edad empezó este síntoma?" in the Precisar dialog. The extraction
@@ -28,8 +28,8 @@ const seizurePresent = {
 
 async function toSymptoms(page: Page) {
     await page.goto("/nuevo", { waitUntil: "networkidle" });
-    await page.getByPlaceholder(/Ej\. Marcelo, Mamá/).fill("Paciente E2E");
-    await page.locator('input[type="date"]').fill("2018-04-03");
+    await page.getByLabel(/^Apodo/).fill("Paciente E2E");
+    await fillAgeFromBirthDate(page, "2018-04-03");
     await page.getByPlaceholder("Ciudad o localidad").fill("CABA");
     await page.locator("select").filter({ hasText: "Argentina" }).selectOption("Argentina");
     await page.locator("select").filter({ hasText: "Femenino" }).selectOption("femenino");

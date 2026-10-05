@@ -630,8 +630,17 @@ const server = http.createServer(async (req, res) => {
     if (segments.length === 2 && method === "POST") {
       if (FAIL.has("save")) { log("500 (MOCK_FAIL=save)"); return send(res, 500, { error: "Internal server error", code: "internal" }); }
       const body = await readBody(req);
-      const nombre = String(body.nombre ?? "").trim();
-      if (!nombre) { log("400 missing nombre"); return send(res, 400, { error: "Invalid request", code: "invalid_request" }); }
+      if (body.nombre != null && typeof body.nombre !== "string") { log("400 bad nombre"); return send(res, 400, { error: "Invalid request", code: "invalid_request" }); }
+      // Same rule as the backend: no name → «Paciente N», one past the highest N in the account.
+      let nombre = (body.nombre ?? "").trim();
+      if (!nombre) {
+        const taken = [...patients.values()]
+          .filter((p) => p.user_id === user.id)
+          .map((p) => /^Paciente ([0-9]{1,9})$/.exec(p.nombre)?.[1])
+          .filter(Boolean)
+          .map(Number);
+        nombre = `Paciente ${Math.max(0, ...taken) + 1}`;
+      }
       const now = new Date().toISOString();
       const pid = crypto.randomUUID();
       const diagId = crypto.randomUUID();
