@@ -149,7 +149,8 @@ test("re-analysing after an edit does not duplicate already-found symptoms", asy
     await page.getByPlaceholder(/Nena de 7 años/).fill(`${HISTORIA} Sin fiebre.`);
     await page.getByRole("button", { name: /Analizar de nuevo/ }).click();
 
-    await expect(page.getByText(/ya estaban en la lista/i)).toBeVisible();
+    await expect(page.getByRole("button", { name: /Analizar de nuevo/ })).toBeDisabled();
+    await expect(page.getByText(/ya estaban en la lista/i)).toHaveCount(0);
     await expect(page.getByText("Infecciones respiratorias recurrentes")).toHaveCount(1);
 });
 

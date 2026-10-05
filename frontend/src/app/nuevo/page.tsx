@@ -1014,7 +1014,7 @@ function NuevoDiagnosticoScreen() {
         agregados > 0
           ? `Agregamos ${agregados} ${agregados === 1 ? "síntoma" : "síntomas"} a la lista.`
           : detectados.length > 0
-            ? "Los síntomas detectados ya estaban en la lista."
+            ? null
             : "No encontramos síntomas en el texto. Podés agregarlos buscándolos abajo."
       );
     } catch (error) {
