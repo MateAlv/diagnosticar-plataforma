@@ -96,6 +96,13 @@ services:
       PREGUNTAS_LLM_EFFORT:
       PREGUNTAS_LLM_QUESTION_EFFORT:
       PREGUNTAS_MAX_CONCURRENT_ROUNDS:
+      # The two switches to back out of what the 2026-10-05 agent adds, without
+      # a new image: PREGUNTAS_SELECTOR=legacy restores the previous question
+      # selector (the default is q2b, D-19), and PREGUNTAS_RERANK_NEGATIONS=false
+      # stops sending the "no" answers to the model's re-ranker, whose output
+      # is then v3.0's, bit for bit.
+      PREGUNTAS_SELECTOR:
+      PREGUNTAS_RERANK_NEGATIONS:
       # Always set, because QUESTION_AGENT_TIMEOUT_MS above is sized against it.
       PREGUNTAS_ROUND_BUDGET_S: ${QUESTION_AGENT_ROUND_BUDGET_S:-75}
       PREGUNTAS_LOG_LEVEL:
