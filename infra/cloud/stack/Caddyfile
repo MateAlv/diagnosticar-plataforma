@@ -1,6 +1,7 @@
 # One origin, routed by path, as docs/CLOUD_DEPLOY.md asks. The session cookie
 # is sameSite=lax, and the extractor validates it, so everything must stay on
-# this one host.
+# this one host. The frontend calls the services by relative path, which is
+# what lets one frontend image serve any domain.
 #
 # Caddy gets and renews the certificate itself (Let's Encrypt, HTTP-01 on
 # port 80) and redirects http to https.
@@ -9,6 +10,14 @@
 	# A copy for testing, with synthetic data only: keep it out of search
 	# results, where a family could mistake it for the real service.
 	header X-Robots-Tag "noindex, nofollow"
+
+	# What the last deploy did (image tags, result, time; never a secret),
+	# written by `diagnosticar deploy`. CI reads it to report the outcome.
+	handle /deploy-status.json {
+		header Cache-Control "no-store"
+		root * /srv/status
+		file_server
+	}
 
 	# handle_path strips the prefix: the services answer at their root.
 	handle_path /hpo-api/* {
