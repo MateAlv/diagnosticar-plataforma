@@ -7,6 +7,7 @@
  * "subió" must not read as "closer to the answer".
  */
 
+import { onsetReportLines, type ReportedSymptom } from "./onset";
 import type { QuestionSessionState } from "./question-session";
 import { answerLabel, type AnsweredQuestion, type AnswerValue, type RankedGeneRow } from "./questions-api";
 
@@ -196,6 +197,8 @@ export type ConsultSheet = {
     finishNote: string | null;
     changes: SessionChanges | null;
     history: AnsweredQuestion[];
+    /** Symptoms of the search; those with a reported onset are written into the text. */
+    symptoms?: ReportedSymptom[];
     professional: boolean;
     /** The model's own list, in order: always the sheet's list. */
     genes: string[];
@@ -236,6 +239,9 @@ export function buildConsultText(sheet: ConsultSheet): string {
     const blocks: string[] = [`${sheet.title}\nDiagnostic.ar · ${date}`];
 
     blocks.push([sheet.summary, sheet.finishNote].filter(Boolean).join("\n"));
+
+    const onsetLines = onsetReportLines(sheet.symptoms ?? []);
+    if (onsetLines.length > 0) blocks.push(["Síntomas informados:", ...onsetLines].join("\n"));
 
     if (sheet.changes) {
         const { caption, result } = sheet.changes;

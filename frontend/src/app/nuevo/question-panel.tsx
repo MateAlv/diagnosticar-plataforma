@@ -13,6 +13,7 @@ import {
 } from "@/lib/questions-api";
 import { ChangeReceipt } from "./change-receipt";
 import { ConsultSummary, type SheetGene } from "./consult-summary";
+import type { ReportedSymptom } from "@/lib/onset";
 import { AlertIcon, ChevronIcon, ClockIcon, InfoIcon, QuestionIcon, RoundsIcon, ShieldIcon } from "./icons";
 import { ACTION_BAR, EYEBROW, PRIMARY, SECONDARY } from "./panel-styles";
 import { RoundForm } from "./round-form";
@@ -157,6 +158,8 @@ export type QuestionPanelBodyProps = {
      * one the summary lists first, and what every move is measured from.
      */
     originalGenes: string[];
+    /** The symptoms of the search, with the onset the patient reported, for the summary. */
+    symptoms: ReportedSymptom[];
     /** Whether the reader chose the order adjusted by the answers; the summary then adds it, labelled. */
     showAdjusted: boolean;
     /** The place of each gene in the list on screen, by upper-cased symbol. */
@@ -226,6 +229,7 @@ export function QuestionPanelBody({
     onRetry,
     disclaimer,
     originalGenes,
+    symptoms,
     showAdjusted,
     geneRanks,
     onOpenGene,
@@ -364,6 +368,7 @@ export function QuestionPanelBody({
                         }
                         changes={sessionChanges(state, "session", originalGenes)}
                         history={history}
+                        symptoms={symptoms}
                         professional={professional}
                         sheetGenes={sheetGenes(null, originalGenes)}
                         adjustedGenes={showAdjusted && refined && history.length > 0 ? sheetGenes(refined.ranking, originalGenes) : null}

@@ -11,6 +11,8 @@ import {
     type SessionChanges,
 } from "@/lib/question-insights";
 import { answerLabel, type AnsweredQuestion, type AnswerValue } from "@/lib/questions-api";
+import { OnsetInline, OnsetSummary } from "@/components/ui/OnsetReport";
+import type { ReportedSymptom } from "@/lib/onset";
 import { ChangeReceipt } from "./change-receipt";
 import { GeneChip } from "./gene-chip";
 import { CheckIcon, CopyIcon, PrintIcon } from "./icons";
@@ -42,6 +44,7 @@ export function ConsultSummary({
     finishNote,
     changes,
     history,
+    symptoms,
     professional,
     sheetGenes,
     adjustedGenes,
@@ -57,6 +60,7 @@ export function ConsultSummary({
     finishNote: string | null;
     changes: SessionChanges | null;
     history: AnsweredQuestion[];
+    symptoms: ReportedSymptom[];
     professional: boolean;
     /** The model's own list: the sheet's list, whatever the grid shows. */
     sheetGenes: SheetGene[];
@@ -77,6 +81,7 @@ export function ConsultSummary({
             finishNote,
             changes,
             history,
+            symptoms,
             professional,
             genes: sheetGenes.map((gene) => gene.symbol),
             adjustedGenes: adjustedGenes?.map((gene) => gene.symbol) ?? null,
@@ -110,6 +115,22 @@ export function ConsultSummary({
                         onShowList={onShowList}
                         listCue={listCue}
                     />
+                )}
+
+                {symptoms.some((symptom) => symptom.onset) && (
+                    <section data-onset-report aria-labelledby="sintomas-resumen-titulo">
+                        <h4 id="sintomas-resumen-titulo" className="text-[15px] font-semibold text-[var(--lu-text)]">
+                            Síntomas informados
+                        </h4>
+                        <ul className="mt-2 flex flex-col gap-1 text-sm text-[var(--lu-text)]">
+                            {symptoms.map((symptom) => (
+                                <li key={symptom.label} className="break-words">
+                                    <span className="font-medium">{symptom.label}</span> <OnsetInline onset={symptom.onset} />
+                                </li>
+                            ))}
+                        </ul>
+                        <OnsetSummary symptoms={symptoms} className="mt-3" />
+                    </section>
                 )}
 
                 {history.length > 0 && (

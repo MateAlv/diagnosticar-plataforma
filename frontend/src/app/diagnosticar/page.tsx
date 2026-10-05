@@ -11,6 +11,7 @@ import { errorMessage, isSessionError, jsonOrThrow } from "../../lib/api-errors"
 import { RESULTS_DISCLAIMER } from "../../lib/disclaimer";
 import { especialidadesParaConsultar } from "../../lib/especialidades";
 import { parseOnset, type SymptomOnset } from "../../lib/onset";
+import { OnsetInline, OnsetSummary } from "../../components/ui/OnsetReport";
 
 type TabId = "overview" | "integrantes";
 
@@ -546,9 +547,14 @@ function DiagnosticarContent() {
                                 <li key={symptom.id} className="flex items-center gap-2 rounded-full border border-[var(--lu-border)] bg-[var(--lu-surface)] px-3 py-1 text-xs text-[var(--lu-text)]">
                                   <span className="font-semibold">{symptom.label}</span>
                                   {symptom.codigo && <span className="text-[10px] text-[var(--lu-subtle)]">{symptom.codigo}</span>}
+                                  <OnsetInline onset={symptom.onset} />
                                 </li>
                               ))}
                             </ul>
+                            <OnsetSummary
+                              symptoms={activeMember.sintomas.map((s) => ({ label: s.label, onset: s.onset }))}
+                              className="mt-3"
+                            />
                           </div>
 
                           <div>

@@ -102,6 +102,7 @@ import { InfoIcon } from "./icons";
 import { useFlipReorder } from "./use-flip-reorder";
 import { useQuestionSession } from "./use-question-session";
 import { RESULTS_DISCLAIMER } from "@/lib/disclaimer";
+import { OnsetInline, OnsetSummary } from "@/components/ui/OnsetReport";
 import { fetchGeneProfiles, formatScore, type GeneProfile } from "@/lib/genes-api";
 import { errorMessage, isSessionError, jsonOrThrow } from "@/lib/api-errors";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -2180,6 +2181,30 @@ function NuevoDiagnosticoScreen() {
                       />
                     )}
 
+                    {!genphenError && symptoms.some((symptom) => symptom.onset) && (
+                      <section
+                        data-onset-report
+                        aria-labelledby="sintomas-informados-titulo"
+                        className="rounded-2xl border border-[var(--lu-border)] bg-white px-5 py-4"
+                      >
+                        <h3 id="sintomas-informados-titulo" className="text-[15px] font-semibold text-[var(--lu-text)]">
+                          Síntomas informados
+                        </h3>
+                        <ul className="mt-2 flex flex-col gap-1 text-sm text-[var(--lu-text)]">
+                          {symptoms.map((symptom) => (
+                            <li key={symptom.code} className="break-words">
+                              <span className="font-medium">{symptom.description}</span>{" "}
+                              <OnsetInline onset={symptom.onset} />
+                            </li>
+                          ))}
+                        </ul>
+                        <OnsetSummary
+                          symptoms={symptoms.map((s) => ({ label: s.description, onset: s.onset }))}
+                          className="mt-3 border-t border-[var(--lu-border)] pt-3"
+                        />
+                      </section>
+                    )}
+
                     {disclaimer}
 
                     <div className="flex flex-wrap gap-3">
@@ -2241,6 +2266,7 @@ function NuevoDiagnosticoScreen() {
                         onFinish: (drafts) => questionSession.finish(questionMode, drafts),
                         onRetry: () => questionSession.retry(questionMode),
                         originalGenes: originalSymbols,
+                        symptoms: symptoms.map((s) => ({ label: s.description, onset: s.onset })),
                         showAdjusted: showingRefined,
                         geneRanks,
                         onOpenGene: setSelectedSymbol,

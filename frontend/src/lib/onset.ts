@@ -198,3 +198,59 @@ export function showsPrecisar(opts: {
     if (opts.hasOnset) return true;
     return (opts.refinable || opts.informative) && !opts.dismissed;
 }
+
+export const ONSET_HINT = "Dato clínico informado por el paciente; no modifica el orden de genes.";
+
+/** "empezó entre 1 y 5 años", or with an exact age "empezó a los 3 años" / "a los 8 meses". */
+export function onsetPhrase(onset: SymptomOnset): string {
+    const cls = onsetClass(onset.hpo_id);
+    if (onset.age_years === null) return cls ? `empezó ${cls.label.toLowerCase()}` : "";
+    const { amount, unit } = fromYears(onset.age_years);
+    if (unit === "months" && amount === 0) return "empezó al nacer";
+    const text = String(amount).replace(".", ",");
+    const one = amount === 1;
+    if (unit === "months") return one ? "empezó al mes" : `empezó a los ${text} meses`;
+    return one ? "empezó al año" : `empezó a los ${text} años`;
+}
+
+export type ReportedSymptom = { label: string; onset?: SymptomOnset | null };
+type Reported = ReportedSymptom;
+
+/** The symptom whose onset came first; among equals, the one with the earlier exact age. */
+function earliestReported<T extends Reported>(symptoms: readonly T[]): (T & { onset: SymptomOnset }) | null {
+    let best: (T & { onset: SymptomOnset }) | null = null;
+    for (const symptom of symptoms) {
+        const onset = symptom.onset;
+        if (!onset || rank(onset.hpo_id) < 0) continue;
+        const current = best?.onset;
+        const earlier =
+            !current ||
+            rank(onset.hpo_id) < rank(current.hpo_id) ||
+            (rank(onset.hpo_id) === rank(current.hpo_id) &&
+                onset.age_years !== null &&
+                (current.age_years === null || onset.age_years < current.age_years));
+        if (earlier) best = symptom as T & { onset: SymptomOnset };
+    }
+    return best;
+}
+
+/** "Inicio de los síntomas: entre 1 y 5 años (Convulsiones)"; null when no symptom has onset. */
+export function onsetSummaryLine(symptoms: readonly Reported[]): string | null {
+    const first = earliestReported(symptoms);
+    if (!first) return null;
+    const phrase = onsetPhrase(first.onset).replace(/^empezó /, "");
+    return `Inicio de los síntomas: ${phrase} (${first.label})`;
+}
+
+/** "Convulsiones · empezó entre 1 y 5 años"; just the label when there is no onset. */
+export function symptomWithOnset(symptom: Reported): string {
+    const phrase = symptom.onset && onsetClass(symptom.onset.hpo_id) ? onsetPhrase(symptom.onset) : "";
+    return phrase ? `${symptom.label} · ${phrase}` : symptom.label;
+}
+
+/** The report lines for plain text: the summary line, the symptoms with onset and the hint. Empty when none. */
+export function onsetReportLines(symptoms: readonly Reported[]): string[] {
+    const line = onsetSummaryLine(symptoms);
+    if (!line) return [];
+    return [line, ...symptoms.filter((s) => s.onset).map((s) => `- ${symptomWithOnset(s)}`), ONSET_HINT];
+}

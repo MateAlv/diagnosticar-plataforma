@@ -11,7 +11,7 @@ import { importTs } from './helpers/ts-module.mjs';
 
 const {
   ONSET_CLASSES, classForAge, toYears, fromYears, patientAgeYears, ageContext, classAllowed, ageAllowed,
-  parseOnset, earliestOnset, onsetPayloadFields, onsetForSave, onsetInformativeIds, showsPrecisar,
+  parseOnset, earliestOnset, onsetPhrase, onsetSummaryLine, symptomWithOnset, onsetReportLines, ONSET_HINT, onsetPayloadFields, onsetForSave, onsetInformativeIds, showsPrecisar,
 } = await importTs('lib/onset.ts');
 
 const NOW = new Date('2026-10-04T12:00:00Z');
@@ -176,4 +176,54 @@ test('the onset-informative list reads from the JSON file, whatever its contents
   assert.equal(ids.has('HP:0000000'), false);
   assert.equal(onsetInformativeIds({ terms: [{ hpo_id: 'hp:0000118 ' }, { hpo_id: 'oops' }, null, {}] }).size, 1);
   for (const bad of [null, undefined, {}, { terms: 'x' }, []]) assert.equal(onsetInformativeIds(bad).size, 0);
+});
+
+test('onset phrases use the selector labels, or the exact age', () => {
+  assert.equal(onsetPhrase(on('HP:0011463')), 'empezó entre 1 y 5 años');
+  assert.equal(onsetPhrase(on('HP:0003584')), 'empezó después de los 60');
+  assert.equal(onsetPhrase(on('HP:0011463', 3)), 'empezó a los 3 años');
+  assert.equal(onsetPhrase(on('HP:0011463', 1)), 'empezó al año');
+  assert.equal(onsetPhrase(on('HP:0011463', 2.5)), 'empezó a los 2,5 años');
+  assert.equal(onsetPhrase(on('HP:0003593', 8 / 12)), 'empezó a los 8 meses');
+  assert.equal(onsetPhrase(on('HP:0003593', 1 / 12)), 'empezó al mes');
+  assert.equal(onsetPhrase(on('HP:0003577', 0)), 'empezó al nacer');
+});
+
+test('a symptom shows its onset after the label, and nothing extra without one', () => {
+  assert.equal(symptomWithOnset({ label: 'Convulsiones', onset: on('HP:0011463') }), 'Convulsiones · empezó entre 1 y 5 años');
+  assert.equal(symptomWithOnset({ label: 'Tos', onset: null }), 'Tos');
+  assert.equal(symptomWithOnset({ label: 'Tos' }), 'Tos');
+});
+
+test('the summary line names the earliest onset and its symptom; none, no line', () => {
+  assert.equal(onsetSummaryLine([{ label: 'Tos' }, { label: 'Talla baja', onset: null }]), null);
+  assert.equal(
+    onsetSummaryLine([
+      { label: 'Tos', onset: on('HP:0011462') },
+      { label: 'Convulsiones', onset: on('HP:0011463') },
+    ]),
+    'Inicio de los síntomas: entre 1 y 5 años (Convulsiones)',
+  );
+  assert.equal(
+    onsetSummaryLine([{ label: 'Convulsiones', onset: on('HP:0011463', 3) }]),
+    'Inicio de los síntomas: a los 3 años (Convulsiones)',
+  );
+  assert.equal(
+    onsetSummaryLine([
+      { label: 'A', onset: on('HP:0011463') },
+      { label: 'B', onset: on('HP:0011463', 2) },
+    ]),
+    'Inicio de los síntomas: a los 2 años (B)',
+  );
+});
+
+test('the plain-text report lists the symptoms with onset and says it does not change the ranking', () => {
+  assert.deepEqual(onsetReportLines([{ label: 'Tos' }]), []);
+  const lines = onsetReportLines([{ label: 'Tos' }, { label: 'Convulsiones', onset: on('HP:0011463') }]);
+  assert.deepEqual(lines, [
+    'Inicio de los síntomas: entre 1 y 5 años (Convulsiones)',
+    '- Convulsiones · empezó entre 1 y 5 años',
+    ONSET_HINT,
+  ]);
+  assert.match(ONSET_HINT, /no modifica el orden de genes/);
 });

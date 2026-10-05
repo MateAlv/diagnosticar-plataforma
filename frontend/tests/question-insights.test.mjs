@@ -25,7 +25,7 @@ const {
   ADJUSTED_LIST_NOTE,
   RERANK_NOTE,
   MOVED_NOTE,
-} = await importTs('lib/questions-api.ts', 'lib/question-insights.ts');
+} = await importTs('lib/questions-api.ts', 'lib/onset.ts', 'lib/question-insights.ts');
 const { RESULTS_DISCLAIMER } = await importTs('lib/disclaimer.ts');
 
 const fixtures = JSON.parse(readFileSync(new URL('../mocks/fixtures.json', import.meta.url), 'utf8')).questions;
@@ -242,4 +242,13 @@ test('a round measures its own answers against the list before them; the session
   const entered = sessionChanges({ refined: { ranking: [row('CFTR', 1), row('DNAI1', 2), row('SCNN1A', 3)] }, history: first, lastChange: null }, 'session', ORIGINAL);
   assert.deepEqual(entered.result.moves.map((m) => [m.symbol, m.from, m.to]), [['DNAI1', null, 2]]);
   assert.deepEqual(entered.result.dropped, ['DNAH5']);
+});
+
+test('the copied summary carries the onset the patient reported, only when there is one', () => {
+  const none = buildConsultText(sheet({ symptoms: [{ label: 'Tos' }] }));
+  assert.doesNotMatch(none, /Inicio de los síntomas/);
+  const text = buildConsultText(
+    sheet({ symptoms: [{ label: 'Tos' }, { label: 'Convulsiones', onset: { hpo_id: 'HP:0011463', age_years: null } }] }),
+  );
+  assert.match(text, /Síntomas informados:\nInicio de los síntomas: entre 1 y 5 años \(Convulsiones\)\n- Convulsiones · empezó entre 1 y 5 años\nDato clínico informado por el paciente; no modifica el orden de genes\./);
 });

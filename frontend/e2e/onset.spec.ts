@@ -10,6 +10,8 @@ import { mockBackend, mockHpoTree, mockModelServices, collectPageErrors, EXTRACT
  * what it always was.
  */
 
+const SHOTS = "/tmp/claude-1000/-home-mate-FIUBA-trabajo-profesional/b9805cfc-a24d-4af9-a308-191c12e58674/scratchpad";
+
 const HISTORIA = "Nena de 7 años. Tiene convulsiones desde chiquita y tos todos los días.";
 
 const TEST_USER = {
@@ -181,4 +183,115 @@ test("the onset question meets WCAG 2.1 AA", async ({ page }) => {
         .analyze();
     expect(results.violations).toEqual([]);
     expect(errors).toEqual([]);
+});
+
+const SEIZURE_LINE = "Inicio de los síntomas: a los 3 años (Convulsiones)";
+const HINT = "Dato clínico informado por el paciente; no modifica el orden de genes";
+
+async function diagnoseWithSeizureOnset(page: Page) {
+    await toSymptoms(page);
+    await seizureButton(page).click();
+    await dialog(page).getByRole("textbox", { name: /Edad exacta/ }).fill("3");
+    await dialog(page).getByRole("button", { name: "Listo" }).click();
+    await search(page);
+    await expect(page.getByRole("heading", { name: /Genes para llevar a la consulta/ })).toBeVisible({ timeout: 20_000 });
+}
+
+test("without onset the results show no onset section", async ({ page }) => {
+    await toSymptoms(page);
+    await search(page);
+    await expect(page.getByRole("heading", { name: /Genes para llevar a la consulta/ })).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator("[data-onset-report]")).toHaveCount(0);
+    await expect(page.getByText(/Inicio de los síntomas/)).toHaveCount(0);
+});
+
+test("the onset shows in the results, in the saved consultation and in the summary to take along", async ({ page, context }, testInfo) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    const saved: { symptomsExtracted: Record<string, unknown>[]; historiaClinica?: string }[] = [];
+    await page.route("**/api/patients", async (route) => {
+        if (route.request().method() === "POST") saved.push(route.request().postDataJSON());
+        await route.fallback();
+    });
+    await diagnoseWithSeizureOnset(page);
+
+    const report = page.locator("[data-onset-report]");
+    await expect(report).toContainText("Convulsiones · empezó a los 3 años");
+    await expect(report.getByText("Infecciones respiratorias recurrentes")).not.toContainText("empezó");
+    await expect(report.locator("[data-onset-summary]")).toContainText(SEIZURE_LINE);
+    await expect(report).toContainText(HINT);
+    const axe = await new AxeBuilder({ page })
+        .include("[data-onset-report]")
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+        .analyze();
+    expect(axe.violations).toEqual([]);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${SHOTS}/results-${testInfo.project.name}.png`, fullPage: true });
+
+    await expect.poll(() => saved.length).toBe(1);
+    const stored = saved[0].symptomsExtracted;
+
+    // Reopening the saved consultation, which stores onset inside symptoms_extracted.
+    await page.unroute("**/api/patients");
+    await page.route("**/api/patients", (route) =>
+        route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify([
+                {
+                    id: "11111111-1111-4111-8111-111111111111",
+                    nombre: "Paciente E2E",
+                    fecha_nacimiento: "2018-04-03",
+                    sexo: "femenino",
+                    localidad: "CABA",
+                    pais: "Argentina",
+                    created_at: new Date().toISOString(),
+                    latest_diagnosis: {
+                        id: "22222222-2222-4222-8222-222222222222",
+                        historia_clinica: HISTORIA,
+                        symptoms_extracted: stored,
+                        genphen_confidence: null,
+                        genphen_specialties: { top_specialties: [] },
+                        genphen_genes_top5: [],
+                        created_at: new Date().toISOString(),
+                    },
+                },
+            ]),
+        }),
+    );
+    await page.goto("/diagnosticar?tab=integrantes", { waitUntil: "networkidle" });
+    const detail = page.locator("main").filter({ hasText: "Síntomas reportados" });
+    await expect(detail.getByText("Convulsiones").first()).toBeVisible();
+    await expect(detail.locator("[data-onset]")).toHaveCount(1);
+    await expect(detail.locator("li", { hasText: "Convulsiones" })).toContainText("empezó a los 3 años");
+    await expect(detail.locator("[data-onset-summary]")).toContainText(SEIZURE_LINE);
+    await expect(detail.locator("[data-onset-summary]")).toContainText(HINT);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${SHOTS}/saved-consultation-${testInfo.project.name}.png`, fullPage: true });
+
+    // Regenerating starts from the same symptoms, onset included.
+    await detail.getByRole("button", { name: "Volver a buscar" }).click();
+    await expect(page.getByText("Empezó: entre 1 y 5 años")).toBeVisible();
+});
+
+test("the summary of the questions, copied and printed, carries the onset", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await diagnoseWithSeizureOnset(page);
+
+    await page.locator("[data-question-launcher]").click();
+    const panel = page.locator("[data-question-panel]");
+    await panel.getByRole("button", { name: "Empezar las preguntas" }).click();
+    await expect(panel.getByRole("heading", { name: "Ronda 1 de 3" })).toBeVisible();
+    await panel.getByRole("button", { name: "Terminar acá" }).click();
+    await panel.getByRole("button", { name: "Sí, terminar" }).click();
+    await expect(panel.getByRole("heading", { name: "Para conversar en la consulta" })).toBeVisible();
+
+    await expect(panel.locator("[data-onset-report]")).toContainText("Convulsiones · empezó a los 3 años");
+    await expect(panel.locator("[data-onset-summary]")).toContainText(SEIZURE_LINE);
+    await panel.getByRole("button", { name: "Copiar resumen" }).click();
+    await expect(panel.getByRole("button", { name: "Resumen copiado" })).toBeVisible();
+    const text = await page.evaluate(() => navigator.clipboard.readText());
+    expect(text).toContain(`Síntomas informados:\n${SEIZURE_LINE}\n- Convulsiones · empezó a los 3 años\n${HINT}.`);
+
+    await page.emulateMedia({ media: "print" });
+    await expect(panel.locator("[data-onset-report]")).toBeVisible();
 });
