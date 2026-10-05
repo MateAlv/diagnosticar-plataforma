@@ -394,7 +394,7 @@ test("the disclaimer stays on screen for as long as the panel is open", async ({
     // And the one at the foot of the results stays where it always was.
     const atFoot = page.locator("[data-gene-panel] ~ div").getByText(DISCLAIMER);
     await expect(atFoot).toHaveText(DISCLAIMER_TEXT);
-    const download = page.getByRole("button", { name: /Descargar resultados/, includeHidden: true });
+    const download = page.getByRole("button", { name: "Descargar resumen (PDF)", includeHidden: true });
     expect((await download.boundingBox())!.y).toBeGreaterThan((await atFoot.boundingBox())!.y);
 });
 

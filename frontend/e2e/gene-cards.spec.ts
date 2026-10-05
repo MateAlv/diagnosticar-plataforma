@@ -486,11 +486,11 @@ test("a gene named under a speciality opens its detail", async ({ page }) => {
     await expect(page.getByRole("dialog").getByRole("article", { name: "Detalle del gen DNAH5" })).toBeVisible();
 });
 
-test("downloading the results is offered at the bottom, but not yet enabled", async ({ page }) => {
+test("downloading the results is offered at the bottom, below the disclaimer", async ({ page }) => {
     await runToResults(page);
 
-    const download = page.getByRole("button", { name: /Descargar resultados/ });
-    await expect(download).toBeDisabled();
+    const download = page.getByRole("button", { name: "Descargar resumen (PDF)" });
+    await expect(download).toBeEnabled();
     const downloadTop = (await download.boundingBox())!.y;
     const disclaimerTop = (await page.getByText(/no constituye un diagnóstico médico/i).boundingBox())!.y;
     expect(downloadTop).toBeGreaterThan(disclaimerTop);

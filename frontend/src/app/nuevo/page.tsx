@@ -108,6 +108,8 @@ import { errorMessage, isSessionError, jsonOrThrow } from "@/lib/api-errors";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { BROAD_NOTICE_MAX_SYMPTOMS, canRefine as canRefineTerm, fetchTerms, isBroadTerm, typesLabel, type HpoTerm } from "@/lib/hpo-terms";
 import { RefineTermDialog, type RefineTarget } from "./refine-term-dialog";
+import { ResultsDownload } from "./results-download";
+import { especialidadesParaConsultar } from "@/lib/especialidades";
 import { isOnsetInformative } from "@/lib/onset-informative";
 import { onsetClass, onsetForSave, onsetPayloadFields, parseOnset, showsPrecisar, type SymptomOnset } from "@/lib/onset";
 import { ADJUSTED_LIST_NOTE, originsIn } from "@/lib/question-insights";
@@ -2225,29 +2227,30 @@ function NuevoDiagnosticoScreen() {
                     </div>
 
                     <div className="flex justify-center border-t border-[var(--lu-border)] pt-6">
-                      <button
-                        type="button"
-                        disabled
-                        title="Próximamente"
-                        className="inline-flex items-center justify-center gap-2 h-11 px-6 rounded-xl border border-[var(--lu-border)] bg-[var(--lu-surface)] text-[var(--lu-subtle)] font-medium cursor-not-allowed opacity-60"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={2}
-                          aria-hidden="true"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                          />
-                        </svg>
-                        Descargar resultados — Próximamente
-                      </button>
+                      <ResultsDownload
+                        input={() => ({
+                          date: new Date(),
+                          patient: {
+                            name: datosBasicos.nombre,
+                            birthDate: datosBasicos.fechaNacimiento || null,
+                            sex: datosBasicos.sexo || null,
+                          },
+                          clinicalText: historiaClinica,
+                          symptoms: symptoms.map((symptom) => ({
+                            label: symptom.description,
+                            code: symptom.code,
+                            onset: symptom.onset ?? null,
+                          })),
+                          negated: negatedFindings,
+                          answers: {
+                            yes: questionSession.state.history.filter((item) => item.effectiveAnswer === "si").map((item) => item.question.label),
+                            no: questionSession.state.history.filter((item) => item.effectiveAnswer === "no").map((item) => item.question.label),
+                            unsure: questionSession.state.history.filter((item) => item.effectiveAnswer === "no_se").map((item) => item.question.label),
+                          },
+                          genes: genphenResults.map((gene) => gene.gene_symbol),
+                          specialties: especialidadesParaConsultar(genphenSpecialties?.top_specialties ?? []),
+                        })}
+                      />
                     </div>
                   </div>
                   {refineOnScreen && (
