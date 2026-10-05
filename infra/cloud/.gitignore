@@ -1,0 +1,17 @@
+# Terraform's working files and state. The state of a real deployment lives in
+# that provider's remote backend, never here.
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+
+# Per deployment, and possibly personal (an email for the budget alert).
+terraform.tfvars
+backend.hcl
+
+# Rendered by providers/manual for whoever runs it.
+providers/manual/cloud-init.yaml
+
+# Database dumps (remote.sh restore takes them from anywhere): application
+# data, never in git.
+*.sql.gz

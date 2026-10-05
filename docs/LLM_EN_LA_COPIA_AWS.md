@@ -1,8 +1,10 @@
 # Cómo llama a Claude el extractor de la copia en AWS
 
 Decisión del 2026-10-02. Registra qué se decidió, por qué, qué se descartó y qué
-riesgos se aceptaron. La configuración está en `infra/aws/` (variable
-`recognizer_provider`); el runbook, en `infra/aws/README.md`, fase 7.
+riesgos se aceptaron. La configuración está en `infra/cloud/` (ajuste
+`recognizer_provider` de `stack_settings`); cómo cargar el token, en
+`infra/cloud/README.md`. Desde el 2026-10-04 la copia corre sobre ese esquema,
+independiente del proveedor (`docs/CLOUD_CAMBIOS.md`).
 
 ## La decisión
 
@@ -37,21 +39,21 @@ token de suscripción (`claude setup-token`), no con una API key.
    - **El mismo modelo:** `claude-opus-5`, como staging, así que lo que se
      evalúe en una copia vale para la otra.
 4. **Se dejó la otra opción a mano:** `recognizer_provider = "anthropic"` en
-   `terraform.tfvars` vuelve a la API key con su presupuesto, sin tocar código.
+   `stack_settings` vuelve a la API key con su presupuesto, sin tocar código.
 
 ## Riesgos aceptados
 
-- **Un token personal en una cuenta de AWS de otra persona.** El token queda en SSM
-  Parameter Store como SecureString (`/diagnosticar/secrets/CLAUDE_CODE_OAUTH_TOKEN`).
-  No está en git, ni en el estado de Terraform, ni en GitHub, ni en los logs: el
-  deploy solo imprime nombres de variables y el rol de GitHub no puede leer
-  secretos (`infra/aws/main/github.tf`). Pero **cualquiera con acceso de
-  administrador a esa cuenta de AWS puede leerlo**, y también quien tenga root en
-  la instancia. Hoy eso es Gonzalo.
+- **Un token personal en una máquina de otra persona.** El token queda en la
+  máquina, en `/etc/diagnosticar/secrets.env` (modo 600, solo root). No está en
+  git, ni en el estado de Terraform, ni en GitHub, ni en los logs: la herramienta
+  de la máquina solo imprime nombres de variables, y GitHub no tiene ningún acceso
+  a la máquina (el deploy es *pull*). Pero **quien tenga root en la máquina puede
+  leerlo**: quien tenga la clave SSH de administración o acceso de administrador
+  a la cuenta del proveedor. Hoy eso es Gonzalo.
 - **La cuota se comparte.** Staging y AWS llevan cada uno su propio contador, así
   que juntos pueden hacer **hasta 80 extracciones cada 5 horas** sobre la misma
   suscripción, además del uso propio de Mate con Claude. Si eso aprieta, bajar
-  `global_extractions_per_5h` en `terraform.tfvars` (por ejemplo a 20 en cada
+  `global_extractions_per_5h` en `stack_settings` (por ejemplo a 20 en cada
   copia) en vez de compartir un contador entre máquinas.
 - **El uso de la suscripción.** Una suscripción de Claude está pensada para uso
   personal; usarla detrás de un sitio web es una decisión de Mate, ya tomada para
@@ -67,8 +69,10 @@ token de suscripción (`claude setup-token`), no con una API key.
 
 1. Desde la cuenta de Mate, revocar el token viejo y generar uno nuevo con
    `claude setup-token`.
-2. Cargarlo sin que pase por la pantalla:
-   `infra/aws/scripts/make-secrets.sh --set-claude-token < archivo-con-el-token`.
-3. `infra/aws/scripts/remote.sh deploy`.
+2. Cargarlo sin que pase por la pantalla, con el puerto 22 abierto
+   (`infra/cloud/scripts/remote.sh open`):
+   `infra/cloud/scripts/remote.sh set-secret CLAUDE_CODE_OAUTH_TOKEN < archivo-con-el-token`.
+   El extractor se reinicia solo con el token nuevo.
+3. `infra/cloud/scripts/remote.sh close`.
 4. Si el mismo token se usaba en staging, cambiarlo también en `.env.staging` de
    nodo0 (`STAGING_CLAUDE_CODE_OAUTH_TOKEN`; ver `STAGING.md`).

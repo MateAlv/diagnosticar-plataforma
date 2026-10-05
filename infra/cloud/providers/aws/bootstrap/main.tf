@@ -1,15 +1,15 @@
 # Two buckets that have to exist before anything else, applied once with a
-# local state:
+# local state (the same two infra/aws/bootstrap created: moving here changed
+# nothing in AWS, only where the code lives):
 #
-#   tfstate    the remote state of ../main. Terraform writes every attribute it
+#   tfstate    the remote state of the AWS adapter (..). Terraform writes every attribute it
 #              manages there in plain text, so it is private, encrypted and
 #              versioned (a bad apply can be rolled back to the previous state).
-#   artifacts  what the instance reads and git does not hold: genes.db, the
-#              compose stack, and the nightly database dumps.
+#   artifacts  the nightly database dumps (backups/), which the instance can
+#              write but not read back or delete.
 #
-# Neither holds a secret by design (secrets live in SSM, see
-# ../scripts/make-secrets.sh), but the dumps are the application's data, so both
-# get the same treatment.
+# Neither holds a secret by design (secrets are generated on the machine), but
+# the dumps are the application's data, so both get the same treatment.
 
 terraform {
   required_version = ">= 1.10"
@@ -138,13 +138,13 @@ output "artifacts_bucket" {
   value = aws_s3_bucket.this["artifacts"].id
 }
 
-# ../main reads its backend settings from a file, because a backend block
+# The adapter reads its backend settings from a file, because a backend block
 # cannot use variables:
-#   terraform output -raw backend_config > ../main/backend.hcl
+#   terraform output -raw backend_config > ../backend.hcl
 output "backend_config" {
   value = <<-EOT
     bucket       = "${aws_s3_bucket.this["tfstate"].id}"
-    key          = "main/terraform.tfstate"
+    key          = "cloud/aws/terraform.tfstate"
     region       = "${var.region}"
     profile      = "${var.aws_profile}"
     encrypt      = true

@@ -1,0 +1,17 @@
+# Optional: copy to terraform.tfvars (gitignored). Nothing secret belongs here.
+# Every value has a default; the file is only for changing one.
+
+# An AWS Budgets alert by email. Leave it out if the account already has a
+# budget made in the console.
+# budget_email = "vos@ejemplo.org"
+
+# instance_type      = "t3.small"      # c7i-flex.large for 4 GB
+# monthly_budget_usd = 25
+
+# Settings of what runs on the machine (../../README.md, "Ajustes"):
+# stack_settings = {
+#   recognizer_provider = "claude-cli"   # or "anthropic" with an API key
+#   global_extractions_per_5h = 40
+# }
+
+# Never set admin_cidrs here: `remote.sh open` passes it for the moment.
