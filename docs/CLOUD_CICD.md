@@ -44,6 +44,22 @@ cada máquina, cada 5 minutos (timer de systemd, `diagnosticar deploy`)
 - **Cada imagen se fija por digest**, no por tag: lo que corre es exactamente lo
   que se probó, y volver atrás es volver a los digests anteriores.
 - **Dos despliegues no se pisan:** la máquina los hace de a uno (`flock`).
+- **Dos publicaciones del extractor tampoco.** El extractor lo publican la API y
+  el reconocedor, cada uno con su commit y el último `main` del otro, así que sin
+  control el canal quedaría con el que **termina** último, que puede traer código
+  más viejo. Cada imagen del extractor lleva los dos commits como etiquetas, y
+  antes de mover el canal `.github/scripts/cloud-channel-guard.py` (idéntico en
+  los dos repos) los compara con los de la imagen publicada, usando la API de
+  GitHub:
+
+  | La imagen nueva, frente a la del canal | Qué hace |
+  |---|---|
+  | No está atrás en ningún repo | Mueve el canal |
+  | Está atrás en uno y no aporta nada nuevo | No lo toca: el canal ya es más nuevo |
+  | Está atrás en uno y adelante en el otro | No lo toca y dispara otra ejecución, que toma lo último de los dos `main` |
+
+  El modelo, el backend y el frontend los publica un solo repo cada uno, y cada
+  repo publica de a una ejecución a la vez, así que no tienen esta carrera.
 - **Ver el resultado en GitHub (opcional):** con la variable de repositorio
   `CLOUD_URLS` (URLs separadas por espacios), cada workflow suma un job `report`
   que espera hasta 15 minutos a que `/deploy-status.json` muestre la versión
