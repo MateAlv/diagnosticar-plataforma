@@ -9,6 +9,7 @@
 #   caddy ─┬─ /api/*               backend ─▶ db, genes.db (read-only)
 #          ├─ /hpo-api/*           hpo-recognizer   (prefix stripped)
 #          ├─ /genphenai/*         model            (prefix stripped)
+#          │                       question-agent ◀─ backend only, never routed
 #          ├─ /deploy-status.json  what the last deploy did
 #          └─ everything           frontend
 #
@@ -16,9 +17,9 @@
 # digest: `diagnosticar deploy` resolves the channel tag (CHANNEL, "cloud") to
 # digests, and goes back to the previous ones if the new set fails its checks.
 #
-# Only caddy publishes ports. The question agent is left out: its repository is
-# not reachable from here, and the backend switches the feature off when
-# QUESTION_AGENT_URL is empty.
+# Only caddy publishes ports. The question agent is reached by the backend
+# alone, with an internal token, and spends from the same Claude token as the
+# extractor.
 #
 # Memory: sized for 2 GB (the stack measured ~1.05 GB at rest). Each service
 # has a ceiling, and if the host still runs short the kernel picks the
@@ -104,7 +105,13 @@ services:
       BACKEND_URL: https://${DOMAIN}
       GENE_PROFILES_DB_PATH: /app/data/genes.db
       # No SMTP and no Google sign-in: no test run can email anyone.
-      QUESTION_AGENT_URL: ""
+      QUESTION_AGENT_URL: http://question-agent:8010
+      QUESTION_AGENT_TOKEN: ${QUESTION_AGENT_TOKEN:?run diagnosticar init-secrets}
+      # Staging's limits: each round spends from the Claude subscription.
+      # Above the agent's round budget (PREGUNTAS_ROUND_BUDGET_S) plus its queue.
+      QUESTION_AGENT_TIMEOUT_MS: "100000"
+      QUESTION_AGENT_ROUNDS_PER_HOUR: ${QUESTION_AGENT_ROUNDS_PER_HOUR:-20}
+      QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H: ${QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H:-50}
     volumes:
       - ./data/genes.db:/app/data/genes.db:ro
     depends_on:
@@ -181,3 +188,27 @@ services:
       CORS_ORIGINS: https://${DOMAIN}
     networks: [edge]
     mem_limit: 384m
+
+  # Follow-up questions (MarBL00126/diagnosticar-question-agent), called only
+  # by the backend: no route in Caddy.
+  question-agent:
+    image: ${QUESTION_AGENT_IMAGE:?run diagnosticar deploy}
+    restart: unless-stopped
+    init: true
+    environment:
+      PREGUNTAS_PORT: "8010"
+      PREGUNTAS_MODEL_SERVICE_URL: http://model:18020
+      PREGUNTAS_LLM_PROVIDER: ${RECOGNIZER_PROVIDER:-claude-cli}
+      PREGUNTAS_LLM_MODEL: ${RECOGNIZER_MODEL:-claude-opus-5}
+      # Each round runs the claude CLI (~260 MB): one at a time, the rest queue.
+      PREGUNTAS_MAX_CONCURRENT_ROUNDS: ${QUESTION_AGENT_MAX_CONCURRENT_ROUNDS:-1}
+      PREGUNTAS_ROUND_BUDGET_S: "75"
+      PREGUNTAS_SERVICE_TOKEN: ${QUESTION_AGENT_TOKEN}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    depends_on:
+      - model
+    networks: [edge]
+    # ~200 MiB at rest (staging); the rest is the claude CLI during a round.
+    mem_limit: ${QUESTION_AGENT_MEM_LIMIT:-640m}
+    oom_score_adj: 400

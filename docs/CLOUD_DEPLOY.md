@@ -152,7 +152,8 @@ Chequeo antes de mandarle tráfico: `GET /healthz` tiene que decir
 muestra cuánto queda del presupuesto (`extraction_budget`). El detalle de
 cada límite está en `docs/EXTRACTION_LIMITS.md` de diagnostic.ar-api.
 
-**Agente de preguntas** (opcional; sin él la app anda igual). Hace hasta 3
+**Agente de preguntas** (en `infra/cloud` ya viene armado así; sin él la app
+anda igual, sin «Afinar con preguntas»). Hace hasta 3
 rondas de preguntas sí/no después del ranking; solo lo llama el backend, así
 que va en la red interna, sin ruta pública. Su código está en
 `MarBL00126/diagnosticar-question-agent` y su imagen se construye con
@@ -162,8 +163,9 @@ completa del módulo es `docs/GUIA_DE_INTEGRACION.md` en su repo.
 
 | Dónde | Variable | Valor |
 |---|---|---|
-| agente | `PREGUNTAS_LLM_PROVIDER` | `anthropic` |
-| agente | `ANTHROPIC_API_KEY` | La misma key del extractor |
+| agente | `PREGUNTAS_LLM_PROVIDER` | El mismo proveedor que el extractor: `claude-cli` (suscripción, como staging) o `anthropic` (API key) |
+| agente | `CLAUDE_CODE_OAUTH_TOKEN` o `ANTHROPIC_API_KEY` | La misma credencial del extractor |
+| agente | `PREGUNTAS_MAX_CONCURRENT_ROUNDS` | `1` en una máquina chica: cada ronda corre un proceso del CLI de ~260 MB |
 | agente | `PREGUNTAS_MODEL_SERVICE_URL` | La URL interna de `model`, p. ej. `http://model:18020` |
 | agente | `PREGUNTAS_SERVICE_TOKEN` | Un secreto aleatorio (`openssl rand -hex 32`) |
 | backend | `QUESTION_AGENT_URL` | La URL interna del agente, p. ej. `http://question-agent:8010`. Sin esto, la función queda apagada |

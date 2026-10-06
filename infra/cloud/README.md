@@ -53,6 +53,7 @@ Internet ─▶ IP pública ─▶ VM Ubuntu 24.04 (≥ 2 GB + 2 GB de swap, ≥
                               │    /genphenai/*          → model
                               │    /deploy-status.json   → qué hizo el último deploy
                               │    resto                 → frontend
+                              └─ question-agent  solo lo llama el backend, sin ruta pública
 ```
 
 El dominio es `<ip-con-guiones>.sslip.io`: gratis, apunta solo a la IP de la
@@ -345,9 +346,12 @@ Con el 22 abierto (`remote.sh open`):
 
 Cada llamada al CLI de Claude es un proceso de ~260 MB y el extractor ya ocupa
 ~500 MB, así que en 2 GB corre una extracción a la vez con dos llamadas en
-paralelo. Si `remote.sh stats` muestra menos de ~300 MB libres o el swap se usa
-todo el tiempo, pasá a una máquina de 4 GB y subí `max_concurrent_extractions`
-y `recognizer_llm_threads` en `stack_settings`.
+paralelo. El agente de preguntas suma ~200 MB en reposo y otro proceso del CLI
+mientras arma una ronda (una a la vez, `question_agent_max_concurrent_rounds`),
+así que con él la máquina recomendada es de 4 GB (en AWS, `c7i-flex.large`).
+Si `remote.sh stats` muestra menos de ~300 MB libres o el swap se usa todo el
+tiempo, pasá a una más grande y subí `max_concurrent_extractions` y
+`recognizer_llm_threads` en `stack_settings`.
 
 ## Reglas
 

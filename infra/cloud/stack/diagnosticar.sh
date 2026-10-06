@@ -34,7 +34,7 @@ PREVIOUS=$STATE/images.previous.env
 REJECTED=$STATE/images.rejected.env
 STATUS_FILE=$ROOT/status/deploy-status.json
 
-SERVICES=(backend frontend hpo-recognizer model)
+SERVICES=(backend frontend hpo-recognizer model question-agent)
 COMPOSE=(docker compose --project-directory "$ROOT" -f "$ROOT/docker-compose.yml" --env-file "$ROOT/.env")
 
 # Secrets set by hand; everything else in secrets.env is generated here.
@@ -69,6 +69,7 @@ image_var() {
         frontend)       echo FRONTEND_IMAGE ;;
         hpo-recognizer) echo RECOGNIZER_IMAGE ;;
         model)          echo MODEL_IMAGE ;;
+        question-agent) echo QUESTION_AGENT_IMAGE ;;
     esac
 }
 
@@ -193,6 +194,10 @@ check_stack() {
     # be up, with its HPO index loaded.
     wait_for recognizer http://hpo-recognizer:8000/healthz \
         'd.get("status") == "ok" and d.get("hpo_index_loaded")' || return 1
+    # Up with its knowledge base, and able to reach the model. Its LLM
+    # credentials may still be missing, like the extractor's.
+    wait_for question-agent http://question-agent:8010/healthz \
+        'd.get("status") == "ok" and d.get("model_service") == "ok"' || return 1
     for _ in $(seq 1 24); do
         if probe http://frontend:3000/home 2>/dev/null | grep -q 'Diagnostic.ar'; then
             log "frontend healthy"
@@ -254,6 +259,10 @@ cmd_deploy() {
     mkdir -p "$STATE" "$ROOT/status"
     [ -s "$ROOT/docker-compose.yml" ] || die "the stack is not installed yet: remote.sh setup"
     [ -s "$ROOT/data/genes.db" ] || die "genes.db is not installed yet: remote.sh install-genes"
+
+    # A secret a newer stack needs (QUESTION_AGENT_TOKEN) is generated on the
+    # first deploy that has it; the existing ones are never touched.
+    cmd_init_secrets >/dev/null
 
     registry_login
     new=$(mktemp)
@@ -431,7 +440,7 @@ cmd_init_secrets() {
     # POSTGRES_PASSWORD is fixed in the database volume when it is created:
     # never regenerated.
     [ -n "$(kv_get "$SECRETS" POSTGRES_PASSWORD)" ] || { kv_set "$SECRETS" POSTGRES_PASSWORD "$(hex 24)"; echo "  generated POSTGRES_PASSWORD"; }
-    for name in JWT_ACCESS_SECRET JWT_REFRESH_SECRET; do
+    for name in JWT_ACCESS_SECRET JWT_REFRESH_SECRET QUESTION_AGENT_TOKEN; do
         [ -n "$(kv_get "$SECRETS" "$name")" ] || { kv_set "$SECRETS" "$name" "$(hex 32)"; echo "  generated $name"; }
     done
     if [ -z "$(kv_get "$SECRETS" JWT_ACCESS_PRIVATE_KEY)" ] || [ -z "$(kv_get "$SECRETS" JWT_ACCESS_PUBLIC_KEY)" ]; then
@@ -457,8 +466,8 @@ cmd_set_secret() {
     case "$name" in
         REGISTRY_*) echo "Next: diagnosticar deploy" ;;
         BACKUP_*)   echo "Used by the next backup (diagnosticar backup to try it now)" ;;
-        *)          render_env 2>/dev/null && "${COMPOSE[@]}" up -d hpo-recognizer >/dev/null 2>&1 \
-                        && echo "the extractor restarted with it" || echo "Next: diagnosticar deploy --force" ;;
+        *)          render_env 2>/dev/null && "${COMPOSE[@]}" up -d hpo-recognizer question-agent >/dev/null 2>&1 \
+                        && echo "the extractor and the question agent restarted with it" || echo "Next: diagnosticar deploy --force" ;;
     esac
 }
 

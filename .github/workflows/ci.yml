@@ -200,12 +200,14 @@ jobs:
           JWT_REFRESH_SECRET='ci'
           JWT_ACCESS_PRIVATE_KEY='ci'
           JWT_ACCESS_PUBLIC_KEY='ci'
+          QUESTION_AGENT_TOKEN='ci'
           GLOBAL_EXTRACTIONS_PER_WEEK='1'
           GLOBAL_EXTRACTIONS_PER_5H='1'
           BACKEND_IMAGE='ci/backend'
           FRONTEND_IMAGE='ci/frontend'
           RECOGNIZER_IMAGE='ci/recognizer'
           MODEL_IMAGE='ci/model'
+          QUESTION_AGENT_IMAGE='ci/question-agent'
           ENV
           docker compose -f infra/cloud/stack/docker-compose.yml --env-file "$RUNNER_TEMP/ci.env" config -q
 
