@@ -111,17 +111,20 @@ export function createClient(baseUrl, { origin = TEST_ORIGIN } = {}) {
 }
 
 /**
- * Seeds a verified user straight through the repository layer. Going via
+ * Seeds a verified user straight through the repository layer, with the
+ * health-data consent given unless `consent: false`. Going via
  * POST /signup would burn the 5-per-hour rate-limit budget that some tests
  * need to assert on.
  */
-export async function seedUser({ password = 'correct horse battery staple' } = {}) {
-    const { createUser, verifyUser, getUserById } = await import('../../dist/repositories/userRepository.js');
+export async function seedUser({ password = 'correct horse battery staple', consent = true } = {}) {
+    const { createUser, verifyUser, getUserById, recordHealthDataConsent } = await import('../../dist/repositories/userRepository.js');
+    const { HEALTH_DATA_CONSENT_VERSION } = await import('../../dist/services/consent.js');
     const { hashPassword, signAccessToken, signRefreshToken } = await import('../../dist/services/authService.js');
 
     const email = `test-${crypto.randomUUID()}@example.test`;
     const created = await createUser(email, await hashPassword(password), null, 'Test User', 'Test Org');
     await verifyUser(created.id);
+    if (consent) await recordHealthDataConsent(created.id, HEALTH_DATA_CONSENT_VERSION);
     const user = await getUserById(created.id);
 
     return {

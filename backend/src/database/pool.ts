@@ -77,6 +77,14 @@ export async function migrate() {
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
     `);
+        // The express consent Ley 25.326 asks for health data (art. 7) and for
+        // sending it abroad (art. 12), and which wording of /terminos it was
+        // given for. Null until the account gives it.
+        await client.query(`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS health_data_consent_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS health_data_consent_version VARCHAR(32);
+    `);
         // patients — one per completed diagnosis, tied to the authenticated user
         await client.query(`
       CREATE TABLE IF NOT EXISTS patients (

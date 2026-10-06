@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { HealthDataConsentText } from "@/components/ui/HealthDataConsent";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -19,6 +20,7 @@ export default function SignUpPage() {
   const [showMainPass, setShowMainPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acceptedHealthData, setAcceptedHealthData] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const { register, user, loading } = useAuth();
@@ -54,12 +56,18 @@ export default function SignUpPage() {
       return;
     }
 
+    if (!acceptedHealthData) {
+      setError("Tenés que autorizar el tratamiento de los datos de salud para continuar.");
+      return;
+    }
+
     setError(null);
     setSubmitting(true);
     register({
       email,
       password,
       name: fullName,
+      healthDataConsent: true,
     })
       .then(setOutcome)
       .catch((err) => {
@@ -312,6 +320,19 @@ export default function SignUpPage() {
                   términos de uso y la política de privacidad
                 </Link>
                 .
+              </span>
+            </label>
+
+            <label className="flex items-start gap-3 text-sm text-[color:var(--lu-subtle)]">
+              <input
+                type="checkbox"
+                checked={acceptedHealthData}
+                onChange={(event) => setAcceptedHealthData(event.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-[var(--lu-border)] accent-[var(--lu-accent)]"
+                required
+              />
+              <span>
+                <HealthDataConsentText />
               </span>
             </label>
 

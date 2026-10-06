@@ -16,6 +16,8 @@ export type User = {
     password_hash: string;
     verification_token?: string | null;
     must_change_password?: boolean;
+    health_data_consent_at?: string | null;
+    health_data_consent_version?: string | null;
 };
 
 export async function getUserByEmail(email: string): Promise<User | null> {
@@ -89,6 +91,13 @@ export async function linkGoogleAccount(
     );
     if (res.rows.length === 0) return null;
     return res.rows[0];
+}
+
+export async function recordHealthDataConsent(id: string, version: string): Promise<void> {
+    await query(
+        'UPDATE users SET health_data_consent_at = now(), health_data_consent_version = $2 WHERE id = $1',
+        [id, version],
+    );
 }
 
 export async function verifyUser(id: string) {

@@ -7,7 +7,9 @@ export const metadata: Metadata = {
 };
 
 const CONTACTO = "diagnosticar.ar@gmail.com";
-const ACTUALIZADO = "30 de septiembre de 2026";
+const ACTUALIZADO = "6 de octubre de 2026";
+const RESPONSABLE = "Grupo de Genómica Clínica, Facultad de Ciencias Exactas y Naturales, Universidad de Buenos Aires";
+const DOMICILIO = "Intendente Güiraldes 2160, Ciudad Universitaria, C1428EGA, Ciudad Autónoma de Buenos Aires";
 
 function Seccion({ id, titulo, children }: { id?: string; titulo: string; children: React.ReactNode }) {
     return (
@@ -40,7 +42,10 @@ export default function TerminosPage() {
                         <li><a href="#que-es" className="text-[var(--lu-accent-text)] underline underline-offset-2">Qué es</a></li>
                         <li><a href="#uso" className="text-[var(--lu-accent-text)] underline underline-offset-2">Uso</a></li>
                         <li><a href="#privacidad" className="text-[var(--lu-accent-text)] underline underline-offset-2">Privacidad</a></li>
+                        <li><a href="#datos-de-salud" className="text-[var(--lu-accent-text)] underline underline-offset-2">Datos de salud</a></li>
+                        <li><a href="#conservacion" className="text-[var(--lu-accent-text)] underline underline-offset-2">Conservación</a></li>
                         <li><a href="#derechos" className="text-[var(--lu-accent-text)] underline underline-offset-2">Tus derechos</a></li>
+                        <li><a href="#ley" className="text-[var(--lu-accent-text)] underline underline-offset-2">Ley aplicable</a></li>
                     </ul>
                 </nav>
 
@@ -49,8 +54,15 @@ export default function TerminosPage() {
                         <p>
                             Diagnostic.ar es una herramienta gratuita que, a partir de los síntomas que cargás,
                             sugiere genes que podrían estar relacionados y especialidades médicas para consultar.
-                            La desarrolla un equipo académico de la Universidad de Buenos Aires junto con
-                            instituciones colaboradoras.
+                            La desarrolla el Grupo de Genómica Clínica de la Facultad de Ciencias Exactas y Naturales
+                            de la Universidad de Buenos Aires, junto con instituciones colaboradoras.
+                        </p>
+                        <p>
+                            <strong>Responsable de los datos:</strong> {RESPONSABLE}. {DOMICILIO}. Contacto:{" "}
+                            <a href={`mailto:${CONTACTO}`} className="font-semibold text-[var(--lu-accent-text)] underline underline-offset-2">
+                                {CONTACTO}
+                            </a>
+                            .
                         </p>
                         <p>
                             <strong>No es un diagnóstico médico ni reemplaza una consulta con un profesional de la
@@ -115,17 +127,48 @@ export default function TerminosPage() {
                             mejorarla. <strong>No vendemos ni compartimos tus datos con fines comerciales.</strong>
                         </p>
                         <p>
-                            Para reconocer los síntomas en el texto y para redactar las preguntas de seguimiento, el
-                            texto se procesa con un servicio de inteligencia artificial de un proveedor externo
-                            (Anthropic). Por eso te recomendamos no incluir datos que identifiquen a la persona.
-                        </p>
-                        <p>
                             Los datos se alojan en servidores de la Facultad de Ciencias Exactas y Naturales de la
                             Universidad de Buenos Aires.
                         </p>
                     </Seccion>
 
-                    <Seccion id="derechos" titulo="4. Tus derechos">
+                    <Seccion id="datos-de-salud" titulo="4. Datos de salud y su tratamiento fuera del país">
+                        <p>
+                            Los síntomas, el relato y las respuestas son <strong>datos de salud</strong>, que la Ley
+                            25.326 considera datos sensibles. Solo los tratamos con tu autorización expresa, que te
+                            pedimos al crear la cuenta o antes de tu primera búsqueda, y solo para darte la
+                            orientación y guardarla en tu cuenta.
+                        </p>
+                        <p>
+                            Para reconocer los síntomas en el texto y para redactar las preguntas de seguimiento, el
+                            texto se envía a un servicio de inteligencia artificial de Anthropic, PBC, que lo procesa
+                            en <strong>Estados Unidos</strong>. Esa transferencia internacional también forma parte de
+                            la autorización que das. Por eso te recomendamos no incluir en el texto datos que
+                            identifiquen a la persona.
+                        </p>
+                        <p>
+                            Podés retirar la autorización cuando quieras escribiéndonos; a partir de ese momento no
+                            vas a poder hacer búsquedas nuevas, y podés pedir que borremos las que ya hiciste.
+                        </p>
+                    </Seccion>
+
+                    <Seccion id="conservacion" titulo="5. Cuánto tiempo guardamos los datos">
+                        <p>
+                            Las búsquedas se guardan por tiempo indefinido, para que puedas volver a verlas. Para
+                            identificar a la persona alcanza con un apodo o un número: no pedimos nombre completo, DNI
+                            ni dirección. Cuando usamos los datos para medir o mejorar la plataforma, lo hacemos
+                            siempre de forma anonimizada.
+                        </p>
+                        <p>
+                            Para borrar tus datos o tu cuenta, escribí al Grupo de Genómica Clínica a{" "}
+                            <a href={`mailto:${CONTACTO}`} className="font-semibold text-[var(--lu-accent-text)] underline underline-offset-2">
+                                {CONTACTO}
+                            </a>{" "}
+                            desde el email de tu cuenta y los borramos.
+                        </p>
+                    </Seccion>
+
+                    <Seccion id="derechos" titulo="6. Tus derechos">
                         <p>
                             Según la Ley 25.326 de Protección de Datos Personales, podés pedir acceso a tus datos,
                             corregirlos o que los borremos. Escribinos a{" "}
@@ -134,10 +177,26 @@ export default function TerminosPage() {
                             </a>{" "}
                             desde el email de tu cuenta y te respondemos dentro de los plazos de la ley.
                         </p>
+                        <p>
+                            El responsable de la base de datos es el {RESPONSABLE}, que debe inscribirla en el Registro
+                            Nacional de Bases de Datos Personales de la Agencia de Acceso a la Información Pública.
+                        </p>
                         <p className="text-sm text-[var(--lu-subtle)]">
                             La Agencia de Acceso a la Información Pública, órgano de control de la Ley 25.326, atiende
                             las denuncias y reclamos de quienes resulten afectados en sus derechos por incumplimiento de
                             las normas vigentes en materia de protección de datos personales.
+                        </p>
+                    </Seccion>
+
+                    <Seccion id="ley" titulo="7. Ley aplicable y jurisdicción">
+                        <p>
+                            Estos términos se rigen por las leyes de la República Argentina. Cualquier controversia
+                            sobre ellos se somete a los tribunales competentes de la Ciudad Autónoma de Buenos Aires.
+                        </p>
+                        <p>
+                            Si los cambiamos, publicamos la versión nueva en esta página con su fecha. Si el cambio
+                            afecta cómo tratamos los datos de salud, te pedimos de nuevo la autorización antes de tu
+                            próxima búsqueda.
                         </p>
                     </Seccion>
                 </div>

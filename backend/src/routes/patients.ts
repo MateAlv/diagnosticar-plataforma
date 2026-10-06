@@ -5,6 +5,7 @@ import {
     requireFreshAccessToken,
     blockUntilPasswordChanged,
     type AuthRequest,
+    requireHealthDataConsent,
 } from '../middleware/authMiddleware.js';
 import { userRateLimit } from '../middleware/rateLimit.js';
 import {
@@ -92,6 +93,7 @@ router.post(
     authenticate,
     requireFreshAccessToken,
     blockUntilPasswordChanged,
+    requireHealthDataConsent,
     async (req: AuthRequest, res: Response) => {
         const parsed = createPatientSchema.safeParse(req.body);
         if (!parsed.success) {
@@ -133,6 +135,7 @@ router.post(
     authenticate,
     requireFreshAccessToken,
     blockUntilPasswordChanged,
+    requireHealthDataConsent,
     async (req: AuthRequest, res: Response) => {
         const parsed = createDiagnosisSchema.safeParse(req.body);
         if (!parsed.success) {

@@ -12,6 +12,7 @@ import {
     updateUserTokenVersion,
     getUserByVerificationToken,
     setPassword,
+    recordHealthDataConsent,
 } from '../repositories/userRepository.js';
 import {
     hashPassword,
@@ -22,6 +23,7 @@ import {
     verifyAccessToken,
 } from '../services/authService.js';
 import { authenticate, AuthRequest, requireFreshAccessToken } from '../middleware/authMiddleware.js';
+import { HEALTH_DATA_CONSENT_VERSION, publicUser } from '../services/consent.js';
 import { CSRF_COOKIE_NAME } from '../middleware/csrfMiddleware.js';
 import { rateLimit, userRateLimit } from '../middleware/rateLimit.js';
 import { hashToken } from '../utils/tokens.js';
@@ -40,8 +42,13 @@ const signupSchema = z
         fullName: z.string().trim().min(1).max(255).optional().nullable(),
         name: z.string().trim().min(1).max(255).optional().nullable(),
         organization: z.string().trim().min(1).max(255).optional().nullable(),
+        // The sign-up form's own checkbox; accounts made without it (Google,
+        // older ones) give it in the wizard, through /consent.
+        healthDataConsent: z.literal(true).optional(),
     })
     .strict();
+
+const consentSchema = z.object({ version: z.string().max(32) }).strict();
 
 const loginSchema = z
     .object({
@@ -89,6 +96,7 @@ const verifyRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
 // a ceiling on abuse, not a quota for normal use.
 const refreshRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 60 });
 const sessionReadRateLimit = userRateLimit({ windowMs: 60 * 1000, max: 60 });
+const consentRateLimit = userRateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
 const logoutRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
 
 const changePasswordSchema = z
@@ -227,7 +235,7 @@ router.post('/signup', signupRateLimit, async (req, res) => {
         if (!parsed.success) {
             return invalidPayload(res, parsed.error.issues);
         }
-        const { email, password, fullName, name, organization } = stripNullBytes(parsed.data);
+        const { email, password, fullName, name, organization, healthDataConsent } = stripNullBytes(parsed.data);
         const safeFullName = fullName ?? name ?? undefined;
         const safeOrganization = organization ?? undefined;
 
@@ -243,12 +251,13 @@ router.post('/signup', signupRateLimit, async (req, res) => {
                 (await verifyPassword(password, existing.password_hash))
             ) {
                 await verifyUser(existing.id);
+                if (healthDataConsent) await recordHealthDataConsent(existing.id, HEALTH_DATA_CONSENT_VERSION);
                 const accessToken = signAccessToken(existing);
                 const refreshToken = signRefreshToken(existing);
                 res.cookie('access_token', accessToken, { ...accessCookieOptions, maxAge: ACCESS_TOKEN_MAX_AGE_MS });
                 res.cookie('refresh_token', refreshToken, { ...refreshCookieOptions, maxAge: REFRESH_TOKEN_MAX_AGE_MS });
                 setCsrfCookie(res);
-                return res.json({ user: { id: existing.id, email: existing.email, full_name: existing.full_name, role: existing.role } });
+                return res.json({ user: publicUser((await getUserById(existing.id)) ?? existing) });
             }
             // Same answer whether or not the email is taken, so signup cannot
             // be used to find out who has an account.
@@ -261,6 +270,7 @@ router.post('/signup', signupRateLimit, async (req, res) => {
 
         // Auto-verify immediately — email verification is handled separately
         await verifyUser(newUser.id);
+        if (healthDataConsent) await recordHealthDataConsent(newUser.id, HEALTH_DATA_CONSENT_VERSION);
 
         const accessToken = signAccessToken(newUser);
         const refreshToken = signRefreshToken(newUser);
@@ -268,7 +278,7 @@ router.post('/signup', signupRateLimit, async (req, res) => {
         res.cookie('refresh_token', refreshToken, { ...refreshCookieOptions, maxAge: REFRESH_TOKEN_MAX_AGE_MS });
         setCsrfCookie(res);
 
-        res.json({ user: { id: newUser.id, email: newUser.email, full_name: newUser.full_name, role: newUser.role } });
+        res.json({ user: publicUser((await getUserById(newUser.id)) ?? newUser) });
     } catch (error) {
         console.error(error);
         internalError(res);
@@ -401,8 +411,27 @@ router.get('/me', sessionReadRateLimit, authenticate, requireFreshAccessToken, a
     try {
         const user = req.userRecord ?? (req.user?.sub ? await getUserById(req.user.sub) : null);
         if (!user) return sendError(res, 401, 'unauthenticated', 'Unauthorized');
-        res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role } });
+        res.json({ user: publicUser(user) });
     } catch {
+        internalError(res);
+    }
+});
+
+// The express consent for health data and its processing abroad, for the
+// wording the client showed. A version other than the current one is refused,
+// so a stale page cannot consent to text it never displayed.
+router.post('/consent', consentRateLimit, authenticate, requireFreshAccessToken, async (req: AuthRequest, res) => {
+    try {
+        const user = req.userRecord;
+        if (!user) return sendError(res, 401, 'unauthenticated', 'Unauthorized');
+        const parsed = consentSchema.safeParse(req.body);
+        if (!parsed.success || parsed.data.version !== HEALTH_DATA_CONSENT_VERSION) {
+            return sendError(res, 409, 'consent_version_mismatch', 'The terms changed; reload and read them again');
+        }
+        await recordHealthDataConsent(user.id, HEALTH_DATA_CONSENT_VERSION);
+        res.json({ user: publicUser((await getUserById(user.id)) ?? user) });
+    } catch (error) {
+        console.error('[auth] consent failed', (error as Error)?.message);
         internalError(res);
     }
 });
@@ -434,7 +463,7 @@ router.post('/refresh', refreshRateLimit, async (req, res) => {
         });
         setCsrfCookie(res);
 
-        res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role } });
+        res.json({ user: publicUser(user) });
     } catch {
         internalError(res);
     }

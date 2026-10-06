@@ -98,16 +98,24 @@ export async function mockModelServices(page: Page, overrides: ServiceOverrides 
 export async function mockBackend(
     page: Page,
     {
-        user = null as null | { id: string; email: string; full_name?: string | null; role?: string },
+        user = null as null | { id: string; email: string; full_name?: string | null; role?: string; health_data_consent?: boolean },
         patients = [] as unknown[],
         questions = {} as QuestionsMockOptions,
     } = {},
 ) {
+    // An account has the health-data consent unless a test says otherwise
+    // (`health_data_consent: false`, as an account made with Google before it).
+    const account = user ? { health_data_consent: true, ...user } : null;
     await page.route("**/api/auth/me", (route) =>
-        user ? json(route, 200, { user }) : json(route, 401, { error: "Unauthorized" }),
+        account ? json(route, 200, { user: account }) : json(route, 401, { error: "Unauthorized" }),
     );
+    await page.route("**/api/auth/consent", (route) => {
+        if (!account) return json(route, 401, { error: "Unauthorized", code: "unauthenticated" });
+        account.health_data_consent = true;
+        return json(route, 200, { user: account });
+    });
     await page.route("**/api/auth/refresh", (route) =>
-        user ? json(route, 200, { user }) : json(route, 401, { error: "No refresh token" }),
+        account ? json(route, 200, { user: account }) : json(route, 401, { error: "No refresh token" }),
     );
     await page.route("**/api/auth/logout", (route) => json(route, 200, { message: "Logged out" }));
     await page.route("**/api/patients", (route) => {

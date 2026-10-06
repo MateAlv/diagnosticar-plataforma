@@ -108,6 +108,7 @@ import { errorMessage, isSessionError, jsonOrThrow } from "@/lib/api-errors";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { BROAD_NOTICE_MAX_SYMPTOMS, canRefine as canRefineTerm, fetchTerms, isBroadTerm, typesLabel, type HpoTerm } from "@/lib/hpo-terms";
 import { RefineTermDialog, type RefineTarget } from "./refine-term-dialog";
+import { HealthDataConsentGate } from "@/components/ui/HealthDataConsent";
 import { BirthDateInput } from "./birth-date-input";
 import { HpoLink } from "./hpo-link";
 import { ResultsDownload } from "./results-download";
@@ -1302,6 +1303,13 @@ function NuevoDiagnosticoScreen() {
 
   if (!isDemoMode && !user) {
     return null;
+  }
+
+  // Nothing about a patient is typed, let alone sent, before the account has
+  // the health-data consent. `false`, not falsy: an older backend that does
+  // not report it must not lock everyone out.
+  if (!isDemoMode && user?.health_data_consent === false) {
+    return <HealthDataConsentGate />;
   }
 
   // Clipped, not hidden: an overflow-hidden <main> is a scroll container that
