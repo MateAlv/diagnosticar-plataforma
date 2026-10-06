@@ -145,7 +145,7 @@ export function isSessionError(error: unknown): boolean {
   return e.status === 403 && !NOT_SESSION_403.has(e.code ?? "");
 }
 
-const NOT_SESSION_403 = new Set(["csrf_mismatch", "invalid_origin", "PASSWORD_CHANGE_REQUIRED", "consent_required"]);
+const NOT_SESSION_403 = new Set(["csrf_mismatch", "invalid_origin", "PASSWORD_CHANGE_REQUIRED"]);
 
 export const SESSION_MESSAGE = "Tu sesión se cerró. Iniciá sesión de nuevo para continuar.";
 const BUSCADOR = "Mientras tanto, podés cargar los síntomas con el buscador.";
@@ -238,10 +238,6 @@ function byContext(e: ApiError, context: ErrorContext | undefined): string | nul
 function byStatus(e: ApiError): string {
   const espera = waitText(e.retryAfterSeconds);
   if (e.code === "PASSWORD_CHANGE_REQUIRED") return "Antes de seguir tenés que cambiar tu contraseña temporal.";
-  if (e.code === "consent_required")
-    return "Para guardar la búsqueda falta tu autorización para tratar datos de salud. Recargá la página para darla.";
-  if (e.code === "consent_version_mismatch")
-    return "Los términos cambiaron. Recargá la página, leelos y volvé a aceptar.";
   if (e.code === "csrf_mismatch" || e.code === "invalid_origin")
     return "Tu sesión necesita actualizarse. Recargá la página y probá de nuevo.";
   if (isSessionError(e)) return SESSION_MESSAGE;

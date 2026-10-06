@@ -3,7 +3,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { ApiError, errorMessage, readApiError } from "./api-errors";
-import { HEALTH_DATA_CONSENT_VERSION } from "./consent";
 
 type AuthUser = {
   id: string;
@@ -36,8 +35,7 @@ type AuthContextValue = {
     name?: string | null;
     healthDataConsent?: true;
   }) => Promise<"created" | "ambiguous">;
-  /** Records the health-data consent for the current wording on the account. */
-  giveHealthDataConsent: () => Promise<void>;
+
   /** Resolves to whether the server signed the person out; on false a notice explains why. */
   logout: () => Promise<boolean>;
   /** Renews the access token from the refresh cookie; resolves to whether it worked. */
@@ -181,17 +179,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const giveHealthDataConsent = useCallback(async () => {
-    const res = await fetch(
-      `${API_URL}/auth/consent`,
-      buildInit({ method: "POST", body: JSON.stringify({ version: HEALTH_DATA_CONSENT_VERSION }) })
-    );
-    if (!res.ok) throw await readApiError(res);
-    const payload = await parseResponse(res);
-    if (!payload.user) throw new ApiError("bad_response", { status: res.status });
-    setUser(payload.user);
-  }, []);
-
   const [logoutFailure, setLogoutFailure] = useState<unknown>(null);
 
   // The session cookies are httpOnly, so only the server can clear them.
@@ -220,8 +207,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, login, register, giveHealthDataConsent, logout, refreshSession }),
-    [user, loading, login, register, giveHealthDataConsent, logout, refreshSession]
+    () => ({ user, loading, login, register, logout, refreshSession }),
+    [user, loading, login, register, logout, refreshSession]
   );
 
   return (

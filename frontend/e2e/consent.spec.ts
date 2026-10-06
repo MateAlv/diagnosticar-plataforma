@@ -1,10 +1,9 @@
 import { test, expect } from "@playwright/test";
-import { mockBackend, collectPageErrors } from "./fixtures/services";
+import { mockBackend } from "./fixtures/services";
 
 /**
  * The express consent Ley 25.326 asks for health data and for sending the
- * text abroad: given at sign-up with its own checkbox, or in the wizard by an
- * account that never saw it, and described in /terminos.
+ * text abroad: a checkbox of its own at sign-up, described in /terminos.
  */
 
 const TEST_USER = {
@@ -41,35 +40,6 @@ test("sign-up asks for the health-data consent apart from the terms, and sends i
     await page.getByRole("button", { name: "Crear cuenta" }).click();
     await expect.poll(() => body).not.toBeNull();
     expect(body!.healthDataConsent).toBe(true);
-});
-
-test("an account without the consent gives it before the wizard, and only then sees the form", async ({ page }) => {
-    const errors = collectPageErrors(page);
-    await mockBackend(page, { user: { ...TEST_USER, health_data_consent: false } });
-    let sent: Record<string, unknown> | null = null;
-    page.on("request", (req) => {
-        if (req.url().endsWith("/api/auth/consent")) sent = req.postDataJSON();
-    });
-    await page.goto("/nuevo", { waitUntil: "networkidle" });
-
-    await expect(page.getByRole("heading", { name: "Antes de cargar síntomas" })).toBeVisible();
-    await expect(page.getByLabel(/^Apodo/)).toHaveCount(0);
-    const accept = page.getByRole("button", { name: "Autorizar y continuar" });
-    await expect(accept).toBeDisabled();
-
-    await page.getByRole("checkbox", { name: /Autorizo al Grupo de Genómica Clínica/ }).check();
-    await accept.click();
-
-    await expect(page.getByLabel(/^Apodo/)).toBeVisible();
-    expect(sent).toEqual({ version: "2026-10-06" });
-    expect(errors).toEqual([]);
-});
-
-test("an account that already gave it goes straight to the wizard", async ({ page }) => {
-    await mockBackend(page, { user: TEST_USER });
-    await page.goto("/nuevo", { waitUntil: "networkidle" });
-    await expect(page.getByLabel(/^Apodo/)).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Antes de cargar síntomas" })).toHaveCount(0);
 });
 
 test("the terms name the controller, the transfer abroad, retention, the registry and the law", async ({ page }) => {

@@ -42,13 +42,10 @@ const signupSchema = z
         fullName: z.string().trim().min(1).max(255).optional().nullable(),
         name: z.string().trim().min(1).max(255).optional().nullable(),
         organization: z.string().trim().min(1).max(255).optional().nullable(),
-        // The sign-up form's own checkbox; accounts made without it (Google,
-        // older ones) give it in the wizard, through /consent.
+        // The sign-up form's own checkbox: recorded with the wording's version.
         healthDataConsent: z.literal(true).optional(),
     })
     .strict();
-
-const consentSchema = z.object({ version: z.string().max(32) }).strict();
 
 const loginSchema = z
     .object({
@@ -96,7 +93,6 @@ const verifyRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
 // a ceiling on abuse, not a quota for normal use.
 const refreshRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 60 });
 const sessionReadRateLimit = userRateLimit({ windowMs: 60 * 1000, max: 60 });
-const consentRateLimit = userRateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
 const logoutRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
 
 const changePasswordSchema = z
@@ -413,25 +409,6 @@ router.get('/me', sessionReadRateLimit, authenticate, requireFreshAccessToken, a
         if (!user) return sendError(res, 401, 'unauthenticated', 'Unauthorized');
         res.json({ user: publicUser(user) });
     } catch {
-        internalError(res);
-    }
-});
-
-// The express consent for health data and its processing abroad, for the
-// wording the client showed. A version other than the current one is refused,
-// so a stale page cannot consent to text it never displayed.
-router.post('/consent', consentRateLimit, authenticate, requireFreshAccessToken, async (req: AuthRequest, res) => {
-    try {
-        const user = req.userRecord;
-        if (!user) return sendError(res, 401, 'unauthenticated', 'Unauthorized');
-        const parsed = consentSchema.safeParse(req.body);
-        if (!parsed.success || parsed.data.version !== HEALTH_DATA_CONSENT_VERSION) {
-            return sendError(res, 409, 'consent_version_mismatch', 'The terms changed; reload and read them again');
-        }
-        await recordHealthDataConsent(user.id, HEALTH_DATA_CONSENT_VERSION);
-        res.json({ user: publicUser((await getUserById(user.id)) ?? user) });
-    } catch (error) {
-        console.error('[auth] consent failed', (error as Error)?.message);
         internalError(res);
     }
 });

@@ -103,17 +103,11 @@ export async function mockBackend(
         questions = {} as QuestionsMockOptions,
     } = {},
 ) {
-    // An account has the health-data consent unless a test says otherwise
-    // (`health_data_consent: false`, as an account made with Google before it).
+    // As the backend reports an account made through the sign-up form.
     const account = user ? { health_data_consent: true, ...user } : null;
     await page.route("**/api/auth/me", (route) =>
         account ? json(route, 200, { user: account }) : json(route, 401, { error: "Unauthorized" }),
     );
-    await page.route("**/api/auth/consent", (route) => {
-        if (!account) return json(route, 401, { error: "Unauthorized", code: "unauthenticated" });
-        account.health_data_consent = true;
-        return json(route, 200, { user: account });
-    });
     await page.route("**/api/auth/refresh", (route) =>
         account ? json(route, 200, { user: account }) : json(route, 401, { error: "No refresh token" }),
     );

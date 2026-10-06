@@ -136,8 +136,7 @@ export default function TerminosPage() {
                         <p>
                             Los síntomas, el relato y las respuestas son <strong>datos de salud</strong>, que la Ley
                             25.326 considera datos sensibles. Solo los tratamos con tu autorización expresa, que te
-                            pedimos al crear la cuenta o antes de tu primera búsqueda, y solo para darte la
-                            orientación y guardarla en tu cuenta.
+                            pedimos al crear la cuenta, y solo para darte la orientación y guardarla en tu cuenta.
                         </p>
                         <p>
                             Para reconocer los síntomas en el texto y para redactar las preguntas de seguimiento, el
@@ -193,11 +192,7 @@ export default function TerminosPage() {
                             Estos términos se rigen por las leyes de la República Argentina. Cualquier controversia
                             sobre ellos se somete a los tribunales competentes de la Ciudad Autónoma de Buenos Aires.
                         </p>
-                        <p>
-                            Si los cambiamos, publicamos la versión nueva en esta página con su fecha. Si el cambio
-                            afecta cómo tratamos los datos de salud, te pedimos de nuevo la autorización antes de tu
-                            próxima búsqueda.
-                        </p>
+                        <p>Si los cambiamos, publicamos la versión nueva en esta página con su fecha.</p>
                     </Seccion>
                 </div>
             </div>

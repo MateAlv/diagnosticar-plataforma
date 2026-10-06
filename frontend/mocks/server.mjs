@@ -281,16 +281,6 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { user: publicUser(user) });
   }
 
-  if (pathname === "/api/auth/consent" && method === "POST") {
-    const user = currentUser(cookies);
-    if (!user) { log("401"); return send(res, 401, { error: "Unauthorized", code: "unauthenticated" }); }
-    const body = await readBody(req);
-    if (body.version !== HEALTH_DATA_CONSENT_VERSION) { log("409 stale consent wording"); return send(res, 409, { error: "The terms changed; reload and read them again", code: "consent_version_mismatch" }); }
-    user.health_data_consent_version = HEALTH_DATA_CONSENT_VERSION;
-    log(`200 consent from ${user.email}`);
-    return send(res, 200, { user: publicUser(user) });
-  }
-
   if (pathname === "/api/auth/refresh" && method === "POST") {
     const user = currentUser(cookies);
     if (!user) { log("401"); return send(res, 401, { error: "No refresh token", code: "no_refresh_token" }); }
@@ -308,8 +298,6 @@ const server = http.createServer(async (req, res) => {
 
     // Any email works and is created on demand — this is a frontend sandbox,
     // not an auth system. The real backend rejects unknown users with 401.
-    // An account made here by logging in is like one made with Google: it
-    // gives the health-data consent in the wizard, not at sign-up.
     const user = users.get(email) ?? makeUser(email, body.fullName ?? body.name ?? "Usuario de Prueba");
     if (pathname === "/api/auth/signup" && body.healthDataConsent === true) user.health_data_consent_version = HEALTH_DATA_CONSENT_VERSION;
     log(`200 signed in as ${email}`);
@@ -638,7 +626,6 @@ const server = http.createServer(async (req, res) => {
     const user = currentUser(cookies);
     if (!user) { log("401"); return send(res, 401, { error: "Unauthorized", code: "unauthenticated" }); }
     const owned = (p) => p && p.user_id === user.id;
-    if (method === "POST" && !hasConsent(user)) { log("403 consent_required"); return send(res, 403, { error: "Health data consent required", code: "consent_required" }); }
 
     if (segments.length === 2 && method === "GET") {
       const mine = [...patients.values()].filter(owned).map(toApiPatient);

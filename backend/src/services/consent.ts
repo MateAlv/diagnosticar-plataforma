@@ -1,9 +1,6 @@
 import type { User } from '../repositories/userRepository.js';
 
-/**
- * The wording of the health-data consent in /terminos. A new wording gets a
- * new version, and every account is asked again before its next search.
- */
+/** The wording of the health-data consent in /terminos, recorded with each consent. */
 export const HEALTH_DATA_CONSENT_VERSION = '2026-10-06';
 
 export function hasHealthDataConsent(user: Pick<User, 'health_data_consent_version'> | null | undefined): boolean {

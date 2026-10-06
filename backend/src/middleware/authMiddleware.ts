@@ -2,7 +2,6 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../services/authService.js';
 import { getUserById, type User } from '../repositories/userRepository.js';
 import { internalError, sendError } from '../utils/httpErrors.js';
-import { hasHealthDataConsent } from '../services/consent.js';
 
 export interface AuthRequest extends Request {
     user?: any;
@@ -78,13 +77,3 @@ export function blockUntilPasswordChanged(req: AuthRequest, res: Response, next:
     return next();
 }
 
-/**
- * Clinical data is stored only for an account that gave the express consent
- * for health data and its transfer abroad, in its current wording.
- */
-export function requireHealthDataConsent(req: AuthRequest, res: Response, next: NextFunction) {
-    if (!hasHealthDataConsent(req.userRecord)) {
-        return sendError(res, 403, 'consent_required', 'Health data consent required');
-    }
-    return next();
-}
