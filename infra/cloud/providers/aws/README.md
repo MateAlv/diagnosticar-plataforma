@@ -55,6 +55,43 @@ scripts/remote.sh set-secret CLAUDE_CODE_OAUTH_TOKEN < archivo-con-el-token
 scripts/remote.sh close
 ```
 
+## Administrar desde otra computadora
+
+La clave SSH que cloud-init dejó en la máquina es la de quien la creó, y
+`terraform apply` no la vuelve a escribir (`user_data` se ignora después del
+primer arranque). Desde otra computadora, con un usuario IAM de la cuenta, se
+entra con **EC2 Instance Connect**, que Ubuntu trae instalado: AWS le pasa a la
+máquina una clave pública que vale 60 segundos para el usuario `diagnosticar`.
+
+```bash
+cd infra/cloud/providers/aws
+# El state de la máquina (el bucket lo creó bootstrap/):
+cat > backend.hcl <<'HCL'
+bucket       = "diagnosticar-tfstate-<cuenta>"
+key          = "cloud/aws/terraform.tfstate"
+region       = "us-east-1"
+profile      = "diagnosticar"
+encrypt      = true
+use_lockfile = true
+HCL
+terraform init -backend-config=backend.hcl
+ssh-keygen -t ed25519 -f ~/.ssh/diagnosticar_cloud    # si no existe; terraform lee la .pub
+
+# Abrir el 22 solo para esta IP (revisá que el plan agregue una sola regla):
+terraform plan -var "admin_cidrs=[\"$(curl -4s https://checkip.amazonaws.com)/32\"]" -out=open.tfplan
+terraform apply open.tfplan
+
+# Cada conexión: la clave temporal, y dentro de los 60 s el comando.
+aws ec2-instance-connect send-ssh-public-key --instance-id "$(terraform output -raw instance_id)" \
+  --instance-os-user diagnosticar --ssh-public-key file://$HOME/.ssh/diagnosticar_cloud.pub
+CLOUD_HOST=$(terraform output -raw ssh_host) ../../scripts/remote.sh install-stack
+
+# Cerrar el 22:
+terraform plan -var 'admin_cidrs=[]' -out=close.tfplan && terraform apply close.tfplan
+```
+
+Así se instaló el agente de preguntas el 2026-10-06, sin la clave original.
+
 ## De dónde viene
 
 La copia de https://44-197-71-62.sslip.io se migró a este adaptador el
