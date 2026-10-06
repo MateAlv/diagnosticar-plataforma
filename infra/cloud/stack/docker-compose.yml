@@ -106,7 +106,10 @@ services:
       GENE_PROFILES_DB_PATH: /app/data/genes.db
       # No SMTP and no Google sign-in: no test run can email anyone.
       QUESTION_AGENT_URL: http://question-agent:8010
-      QUESTION_AGENT_TOKEN: ${QUESTION_AGENT_TOKEN:?run diagnosticar init-secrets}
+      # The defaults here and on the agent's image only let a machine still on
+      # the previous diagnosticar.sh validate this file in install-stack;
+      # every deploy of the new one sets both.
+      QUESTION_AGENT_TOKEN: ${QUESTION_AGENT_TOKEN:-}
       # Staging's limits: each round spends from the Claude subscription.
       # Above the agent's round budget (PREGUNTAS_ROUND_BUDGET_S) plus its queue.
       QUESTION_AGENT_TIMEOUT_MS: "100000"
@@ -192,7 +195,7 @@ services:
   # Follow-up questions (MarBL00126/diagnosticar-question-agent), called only
   # by the backend: no route in Caddy.
   question-agent:
-    image: ${QUESTION_AGENT_IMAGE:?run diagnosticar deploy}
+    image: ${QUESTION_AGENT_IMAGE:-ghcr.io/matealv/diagnosticar-cloud-question-agent:cloud}
     restart: unless-stopped
     init: true
     environment:
@@ -203,7 +206,7 @@ services:
       # Each round runs the claude CLI (~260 MB): one at a time, the rest queue.
       PREGUNTAS_MAX_CONCURRENT_ROUNDS: ${QUESTION_AGENT_MAX_CONCURRENT_ROUNDS:-1}
       PREGUNTAS_ROUND_BUDGET_S: "75"
-      PREGUNTAS_SERVICE_TOKEN: ${QUESTION_AGENT_TOKEN}
+      PREGUNTAS_SERVICE_TOKEN: ${QUESTION_AGENT_TOKEN:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     depends_on:
