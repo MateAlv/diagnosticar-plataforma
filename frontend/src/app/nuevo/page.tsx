@@ -1326,9 +1326,9 @@ function NuevoDiagnosticoScreen() {
             <Image
               src="/brand/logo-diagnosticar.svg"
               alt="Diagnostic.ar"
-              width={360}
-              height={88}
-              className="h-8 w-auto min-[400px]:h-10 sm:h-12 md:h-16"
+              width={277}
+              height={50}
+              className="h-6 w-auto min-[400px]:h-7 sm:h-9 md:h-11"
               priority
             />
           </Link>

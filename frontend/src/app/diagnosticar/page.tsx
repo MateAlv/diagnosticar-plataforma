@@ -315,14 +315,14 @@ function DiagnosticarContent() {
       <div className="absolute bottom-[-20%] right-[-10%] w-[40%] h-[40%] rounded-full diagnostic-hero-bg blur-3xl pointer-events-none animate-breathe" style={{ animationDelay: "3s" }} />
 
       <header className="sticky top-0 z-20 w-full backdrop-blur-md bg-[color-mix(in_oklab,var(--lu-bg)_80%,transparent)] border-b border-[var(--lu-border)]">
-        <div className="mx-auto max-w-7xl flex items-center justify-between px-5 py-4">
-          <Link href="/home" className="flex items-center" aria-label="Regresar al home">
-            <Image src="/brand/logo-diagnosticar.svg" alt="Diagnostic.ar" width={360} height={88} className="h-16 w-auto" priority />
+        <div className="mx-auto max-w-7xl flex items-center justify-between gap-3 px-4 md:px-5 py-4">
+          <Link href="/home" className="flex shrink-0 items-center" aria-label="Regresar al home">
+            <Image src="/brand/logo-diagnosticar.svg" alt="Diagnostic.ar" width={277} height={50} className="h-7 w-auto sm:h-11" priority />
           </Link>
-          <nav className="flex items-center gap-5">
-            <Link href="/home" className="text-sm font-medium text-[var(--lu-subtle)] hover:text-[var(--lu-text)] transition-colors">Home</Link>
-            <span className="user-badge truncate">{displayName}</span>
-            <button type="button" onClick={handleLogout} className="nav-link text-sm">Cerrar sesión</button>
+          <nav className="flex items-center gap-3 md:gap-5">
+            <Link href="/home" className="hidden md:inline text-sm font-medium text-[var(--lu-subtle)] hover:text-[var(--lu-text)] transition-colors">Home</Link>
+            <span className="user-badge truncate max-md:sr-only">{displayName}</span>
+            <button type="button" onClick={handleLogout} className="nav-link whitespace-nowrap text-sm">Cerrar sesión</button>
           </nav>
         </div>
       </header>

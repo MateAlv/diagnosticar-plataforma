@@ -22,13 +22,13 @@ export default function HomePage() {
       {/* Header */}
       <header className="sticky top-0 z-20 w-full backdrop-blur-md bg-white/80 border-b border-[var(--lu-border)]">
         <div className="mx-auto max-w-7xl flex items-center justify-between px-5 py-4">
-          <Link href="/" className="flex items-center" aria-label="Ir al inicio">
+          <Link href="/" className="flex shrink-0 items-center" aria-label="Ir al inicio">
             <Image
               src="/brand/logo-diagnosticar.svg"
               alt="Diagnostic.ar"
-              width={360}
-              height={88}
-              className="h-16 w-auto"
+              width={277}
+              height={50}
+              className="h-8 w-auto sm:h-11"
               priority
             />
           </Link>

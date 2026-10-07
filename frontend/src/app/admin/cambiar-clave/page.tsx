@@ -53,9 +53,9 @@ export default function ChangePasswordPage() {
                     <Image
                         src="/brand/logo-diagnosticar.svg"
                         alt="Diagnostic.ar"
-                        width={280}
-                        height={68}
-                        className="h-11 w-auto"
+                        width={222}
+                        height={40}
+                        className="h-10 w-auto"
                         priority
                     />
                 </div>

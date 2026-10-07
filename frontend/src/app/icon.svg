@@ -1,11 +1,23 @@
-<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagnostic.ar">
-  <defs>
-    <linearGradient id="diag-gradient" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#0d9488" />
-      <stop offset="1" stop-color="#10b981" />
-    </linearGradient>
-  </defs>
-  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#diag-gradient)" />
-  <circle cx="32" cy="32" r="14" stroke="#f8fafc" stroke-width="4" />
-  <circle cx="44" cy="20" r="3.5" fill="#f8fafc" />
+<svg xmlns="http://www.w3.org/2000/svg" width="90" height="90" viewBox="6 6 90 90" fill="none" role="img" aria-label="Diagnostic.ar">
+<title>Diagnostic.ar</title>
+<line x1="61.51" y1="61.51" x2="88" y2="88" stroke="#273A48" stroke-width="14" stroke-linecap="round"/>
+<circle cx="41" cy="41" r="29" fill="#FFFFFF"/>
+<path d="M26.06 53.53 L26.55 53.69 L27.03 53.85 L27.51 54 L27.99 54.15 L28.46 54.29 L28.93 54.42 L29.39 54.55 L29.84 54.67 L30.29 54.78 L30.72 54.87 L31.14 54.95 L31.55 55.02 L31.95 55.07 L32.33 55.11 L32.7 55.13 L33.06 55.13 L33.39 55.11 L33.72 55.07 L34.02 55.01 L34.31 54.94 L34.58 54.84 L34.83 54.72 L35.07 54.58 L35.28 54.41" stroke="#14B8A6" stroke-width="4.4" stroke-linecap="round" fill="none"/>
+<path d="M26.8 44.3 L27.25 44 L27.77 43.78 L28.37 43.64 L29.03 43.59 L29.75 43.6 L30.53 43.69 L31.36 43.84 L32.24 44.04 L33.15 44.29 L34.09 44.57 L35.05 44.87 L36.02 45.18 L36.99 45.49 L37.95 45.79 L38.89 46.07 L39.8 46.31 L40.68 46.52 L41.51 46.66 L42.29 46.75 L43.01 46.77 L43.67 46.72 L44.27 46.58 L44.79 46.36 L45.24 46.06" stroke="#0D9488" stroke-width="4.4" stroke-linecap="round" fill="none"/>
+<path d="M36.76 35.94 L37.21 35.64 L37.73 35.42 L38.33 35.28 L38.99 35.23 L39.71 35.25 L40.49 35.34 L41.32 35.48 L42.2 35.69 L43.11 35.93 L44.05 36.21 L45.01 36.51 L45.98 36.82 L46.95 37.13 L47.91 37.43 L48.85 37.71 L49.76 37.96 L50.64 38.16 L51.47 38.31 L52.25 38.4 L52.97 38.41 L53.63 38.36 L54.23 38.22 L54.75 38 L55.2 37.7" stroke="#14B8A6" stroke-width="4.4" stroke-linecap="round" fill="none"/>
+<path d="M46.72 27.59 L46.93 27.42 L47.17 27.28 L47.42 27.16 L47.69 27.06 L47.98 26.99 L48.28 26.93 L48.61 26.89 L48.94 26.87 L49.3 26.87 L49.67 26.89 L50.05 26.93 L50.45 26.98 L50.86 27.05 L51.28 27.13 L51.71 27.22 L52.16 27.33 L52.61 27.45 L53.07 27.58 L53.54 27.71 L54.01 27.85 L54.49 28 L54.97 28.15 L55.45 28.31 L55.94 28.47" stroke="#0D9488" stroke-width="4.4" stroke-linecap="round" fill="none"/>
+<line x1="33.27" y1="55.12" x2="25.75" y2="46.17" stroke="#273A48" stroke-width="2.6" stroke-linecap="round"/>
+<line x1="36.52" y1="51.21" x2="30.16" y2="43.64" stroke="#273A48" stroke-width="2.6" stroke-linecap="round"/>
+<line x1="36.76" y1="35.94" x2="45.24" y2="46.06" stroke="#EF7A5E" stroke-width="2.6" stroke-linecap="round"/>
+<line x1="51.84" y1="38.36" x2="45.48" y2="30.79" stroke="#273A48" stroke-width="2.6" stroke-linecap="round"/>
+<line x1="56.25" y1="35.83" x2="48.73" y2="26.88" stroke="#273A48" stroke-width="2.6" stroke-linecap="round"/>
+<path d="M26.06 53.53 L25.96 52.79 L25.86 52.05 L25.77 51.32 L25.69 50.6 L25.62 49.9 L25.58 49.22 L25.55 48.57 L25.55 47.95" stroke="#FFFFFF" stroke-width="7.2" stroke-linecap="butt" fill="none"/>
+<path d="M26.06 53.53 L25.99 53.03 L25.92 52.53 L25.86 52.03 L25.79 51.53 L25.74 51.04 L25.68 50.56 L25.64 50.08 L25.6 49.61 L25.57 49.16 L25.55 48.72 L25.55 48.29 L25.55 47.87 L25.57 47.47 L25.6 47.09 L25.65 46.72 L25.71 46.37 L25.78 46.04 L25.88 45.73 L25.99 45.44 L26.11 45.17 L26.26 44.92 L26.42 44.69 L26.6 44.49 L26.8 44.3" stroke="#0D9488" stroke-width="4.4" stroke-linecap="round" fill="none"/>
+<path d="M36.53 50.77 L36.51 49.49 L36.39 48.11 L36.22 46.66 L36.02 45.18 L35.82 43.69 L35.65 42.24 L35.53 40.86 L35.51 39.59" stroke="#FFFFFF" stroke-width="7.2" stroke-linecap="butt" fill="none"/>
+<path d="M35.28 54.41 L35.66 54.02 L35.97 53.54 L36.21 52.98 L36.38 52.34 L36.48 51.63 L36.53 50.84 L36.53 50 L36.48 49.1 L36.4 48.16 L36.29 47.18 L36.16 46.19 L36.02 45.18 L35.88 44.17 L35.75 43.17 L35.64 42.2 L35.56 41.26 L35.51 40.36 L35.51 39.51 L35.56 38.73 L35.67 38.01 L35.84 37.37 L36.07 36.81 L36.38 36.34 L36.76 35.94" stroke="#14B8A6" stroke-width="4.4" stroke-linecap="round" fill="none"/>
+<path d="M46.49 42.41 L46.47 41.14 L46.35 39.76 L46.18 38.31 L45.98 36.82 L45.78 35.34 L45.61 33.89 L45.49 32.51 L45.47 31.23" stroke="#FFFFFF" stroke-width="7.2" stroke-linecap="butt" fill="none"/>
+<path d="M45.24 46.06 L45.62 45.66 L45.93 45.19 L46.16 44.63 L46.33 43.99 L46.44 43.27 L46.49 42.49 L46.49 41.64 L46.44 40.74 L46.36 39.8 L46.25 38.83 L46.12 37.83 L45.98 36.82 L45.84 35.81 L45.71 34.82 L45.6 33.84 L45.52 32.9 L45.47 32 L45.47 31.16 L45.52 30.37 L45.62 29.66 L45.79 29.02 L46.03 28.46 L46.34 27.98 L46.72 27.59" stroke="#0D9488" stroke-width="4.4" stroke-linecap="round" fill="none"/>
+<path d="M56.45 34.05 L56.45 33.43 L56.42 32.78 L56.38 32.1 L56.31 31.4 L56.23 30.68 L56.14 29.95 L56.04 29.21 L55.94 28.47" stroke="#FFFFFF" stroke-width="7.2" stroke-linecap="butt" fill="none"/>
+<path d="M55.2 37.7 L55.4 37.51 L55.58 37.31 L55.74 37.08 L55.89 36.83 L56.01 36.56 L56.12 36.27 L56.22 35.96 L56.29 35.63 L56.35 35.28 L56.4 34.91 L56.43 34.53 L56.45 34.13 L56.45 33.71 L56.45 33.28 L56.43 32.84 L56.4 32.39 L56.36 31.92 L56.32 31.44 L56.26 30.96 L56.21 30.47 L56.14 29.97 L56.08 29.47 L56.01 28.97 L55.94 28.47" stroke="#14B8A6" stroke-width="4.4" stroke-linecap="round" fill="none"/>
+<circle cx="41" cy="41" r="29" stroke="#273A48" stroke-width="11" fill="none"/>
 </svg>

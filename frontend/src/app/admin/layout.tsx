@@ -85,9 +85,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                             <Image
                                 src="/brand/logo-diagnosticar.svg"
                                 alt="Diagnostic.ar"
-                                width={240}
-                                height={58}
-                                className="h-9 w-auto"
+                                width={166}
+                                height={30}
+                                className="h-7 w-auto"
                                 priority
                             />
                         </Link>
