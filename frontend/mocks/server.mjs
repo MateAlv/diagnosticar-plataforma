@@ -104,6 +104,16 @@ const DEMO_EMAIL = "demo@diagnosticar.test";
 const demoUser = makeUser(DEMO_EMAIL, "Familia Demo");
 demoUser.health_data_consent_version = HEALTH_DATA_CONSENT_VERSION;
 
+function validBirthDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value).trim());
+  if (!match) return false;
+  const [year, month, day] = match.slice(1).map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return false;
+  const now = new Date();
+  return date.getTime() <= now.getTime() && year >= now.getUTCFullYear() - 120;
+}
+
 function seedPatient(nombre, { fechaNacimiento, sexo, localidad }) {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -637,6 +647,9 @@ const server = http.createServer(async (req, res) => {
       if (FAIL.has("save")) { log("500 (MOCK_FAIL=save)"); return send(res, 500, { error: "Internal server error", code: "internal" }); }
       const body = await readBody(req);
       if (body.nombre != null && typeof body.nombre !== "string") { log("400 bad nombre"); return send(res, 400, { error: "Invalid request", code: "invalid_request" }); }
+      // Same limits as the backend: a real, past birth date and at most 10,000 characters of history.
+      if (body.fechaNacimiento != null && body.fechaNacimiento !== "" && !validBirthDate(body.fechaNacimiento)) { log("400 bad fechaNacimiento"); return send(res, 400, { error: "Invalid request", code: "invalid_request" }); }
+      if (typeof body.historiaClinica === "string" && body.historiaClinica.trim().length > 10_000) { log("400 historia too long"); return send(res, 400, { error: "Invalid request", code: "invalid_request" }); }
       // Same rule as the backend: no name → «Paciente N», one past the highest N in the account.
       let nombre = (body.nombre ?? "").trim();
       if (!nombre) {

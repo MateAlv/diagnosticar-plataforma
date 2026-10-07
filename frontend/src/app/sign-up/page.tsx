@@ -157,8 +157,14 @@ export default function SignUpPage() {
               <li>
                 Podés usar un <strong className="text-[color:var(--lu-text)]">nombre de fantasía</strong> o apodo.
               </li>
-              <li>No compartimos tus datos con terceros ni enviamos spam.</li>
-              <li>La opción de re-contacto es totalmente opcional.</li>
+              <li>No vendemos tus datos ni los usamos con fines comerciales, y no enviamos publicidad.</li>
+              <li>
+                El texto que cargás lo procesa un servicio externo de inteligencia artificial. Los detalles están en los{" "}
+                <Link href="/terminos" className="font-semibold text-[var(--lu-accent-text)] underline underline-offset-2">
+                  términos
+                </Link>
+                .
+              </li>
             </ul>
           </div>
 

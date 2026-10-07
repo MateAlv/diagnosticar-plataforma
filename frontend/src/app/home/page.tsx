@@ -110,7 +110,7 @@ export default function HomePage() {
             Diagnostic.ar: Una nueva forma de acompañar el <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--lu-accent)] to-[var(--lu-green)]">camino hacia el diagnóstico</span>.
           </h1>
           <p className="hero-sub mx-auto max-w-2xl text-xl text-[var(--lu-subtle)] leading-relaxed">
-            diagnostic.ar ayuda a las familias a registrar síntomas y obtener orientación personalizada, basada en ciencia y con privacidad total.
+            diagnostic.ar ayuda a las familias a registrar síntomas y obtener orientación personalizada, basada en ciencia y cuidando tu privacidad.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">

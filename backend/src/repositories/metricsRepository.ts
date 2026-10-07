@@ -93,12 +93,14 @@ export async function getTopSpecialties(limit: number): Promise<Bucket[]> {
     const { rows } = await query(
         `
         WITH exploded AS (
-          SELECT coalesce(
-                   nullif(elem #>> '{}', ''),
-                   elem ->> 'name',
-                   elem ->> 'especialidad',
-                   elem ->> 'specialty'
-                 ) AS label
+          SELECT CASE jsonb_typeof(elem)
+                   WHEN 'string' THEN nullif(elem #>> '{}', '')
+                   WHEN 'object' THEN coalesce(
+                     elem ->> 'name',
+                     elem ->> 'especialidad',
+                     elem ->> 'specialty'
+                   )
+                 END AS label
             FROM diagnoses d
             CROSS JOIN LATERAL jsonb_array_elements(
               CASE WHEN jsonb_typeof(d.genphen_specialties) = 'array'
@@ -117,23 +119,30 @@ export async function getTopSpecialties(limit: number): Promise<Bucket[]> {
     return rows.map((r) => ({ label: String(r.label), count: Number(r.count) }));
 }
 
-/** Most frequent HPO phenotype terms. Same normalisation caveat as above. */
+/**
+ * Most frequent HPO phenotype terms, present ones only. An element is the
+ * extractor's object, which also carries `span_es`/`span_en`: words quoted
+ * from the clinical history. Only the term's own label or id is read, never
+ * the whole object, or the chart would show pieces of people's histories.
+ */
 export async function getTopPhenotypes(limit: number): Promise<Bucket[]> {
     const { rows } = await query(
         `
         WITH exploded AS (
-          SELECT coalesce(
-                   nullif(elem #>> '{}', ''),
-                   elem ->> 'name',
-                   elem ->> 'label',
-                   elem ->> 'hpo_id',
-                   elem ->> 'id'
-                 ) AS label
+          SELECT CASE jsonb_typeof(elem)
+                   WHEN 'string' THEN nullif(elem #>> '{}', '')
+                   WHEN 'object' THEN coalesce(
+                     nullif(elem ->> 'label_es', ''),
+                     nullif(elem ->> 'label', ''),
+                     nullif(elem ->> 'hpo_id', '')
+                   )
+                 END AS label
             FROM diagnoses d
             CROSS JOIN LATERAL jsonb_array_elements(
               CASE WHEN jsonb_typeof(d.phenotypes) = 'array'
                    THEN d.phenotypes ELSE '[]'::jsonb END
             ) AS elem
+           WHERE coalesce(elem ->> 'negated', 'false') <> 'true'
         )
         SELECT label, count(*) AS count
           FROM exploded

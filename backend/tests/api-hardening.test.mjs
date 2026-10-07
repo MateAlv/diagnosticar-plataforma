@@ -133,6 +133,26 @@ test('a field longer than its column is refused with 400, not a database error',
     assert.ok(!/value too long|character varying/i.test(res.text), 'a database error leaked');
 });
 
+test('a clinical history over 10,000 characters is refused, as in the wizard', { skip }, async () => {
+    const res = await client.post('/api/patients', samplePayload({ historiaClinica: 'a'.repeat(10_001) }));
+    assert.equal(res.status, 400);
+    const atLimit = await client.post('/api/patients', samplePayload({ historiaClinica: 'a'.repeat(10_000) }));
+    assert.equal(atLimit.status, 201, atLimit.text);
+});
+
+test('a birth date must be a real, past date', { skip }, async () => {
+    const nextYear = new Date().getUTCFullYear() + 1;
+    for (const fechaNacimiento of ['2015-02-30', '03/04/2015', 'ayer', `${nextYear}-01-01`, '1850-01-01']) {
+        const res = await client.post('/api/patients', samplePayload({ fechaNacimiento }));
+        assert.equal(res.status, 400, `fechaNacimiento=${fechaNacimiento} was accepted`);
+        assert.ok(!/invalid input syntax|date/i.test(res.text), 'a database error leaked');
+    }
+    for (const fechaNacimiento of ['2015-04-03', '', null]) {
+        const res = await client.post('/api/patients', samplePayload({ fechaNacimiento }));
+        assert.equal(res.status, 201, `fechaNacimiento=${JSON.stringify(fechaNacimiento)}: ${res.text}`);
+    }
+});
+
 test('a patient name of the wrong type is refused', { skip }, async () => {
     for (const nombre of [123, { toString: () => 'x' }, ['x']]) {
         const res = await client.post('/api/patients', samplePayload({ nombre }));

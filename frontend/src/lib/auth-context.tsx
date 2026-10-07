@@ -64,6 +64,21 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
+// What the wizard keeps in the browser holds clinical text: the draft history
+// and searches that could not be saved to the account. None of it may outlive
+// the session on what may be a shared computer.
+const LOCAL_CLINICAL_KEYS = ["diagnosticar:hc-draft", "diagnosticar:records"];
+const SESSION_CLINICAL_KEYS = ["diagnosticar:newDiagDraft"];
+
+function forgetLocalClinicalData() {
+  try {
+    for (const key of LOCAL_CLINICAL_KEYS) window.localStorage.removeItem(key);
+    for (const key of SESSION_CLINICAL_KEYS) window.sessionStorage.removeItem(key);
+  } catch {
+    // Storage blocked: nothing was kept.
+  }
+}
+
 function getCookieValue(name: string): string | null {
   if (typeof document === "undefined") {
     return null;
@@ -192,6 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const res = await fetch(`${API_URL}/auth/logout`, buildInit({ method: "POST" }));
         if (res.ok) {
+          forgetLocalClinicalData();
           setUser(null);
           return true;
         }

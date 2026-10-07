@@ -80,7 +80,7 @@ export default function LoginPage() {
 
           <div className="mt-6 rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-accent-light)] p-4 text-sm text-[color:var(--lu-text)]">
             <p className="font-semibold">Tu privacidad es nuestra prioridad</p>
-            <p className="mt-1 text-[color:var(--lu-subtle)]">No compartimos tus datos ni enviamos spam.</p>
+            <p className="mt-1 text-[color:var(--lu-subtle)]">No vendemos tus datos ni enviamos publicidad.</p>
           </div>
 
           <div className="mt-6">

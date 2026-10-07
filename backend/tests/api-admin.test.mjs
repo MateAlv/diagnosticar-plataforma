@@ -123,6 +123,41 @@ test('an admin reaches the backoffice and gets only aggregates', options, async 
     }
 });
 
+test('the phenotype chart counts terms and never quotes a clinical history', options, async (t) => {
+    const server = await startServer();
+    const admin = await seedAdmin();
+    const family = await seedUser();
+    t.after(async () => {
+        await server.close();
+        await deleteUser(admin.id);
+        await deleteUser(family.id);
+    });
+
+    const quote = `convulsiones desde chiquita ${crypto.randomUUID()}`;
+    const familyClient = authenticateClient(createClient(server.baseUrl), family);
+    const created = await familyClient.post('/api/patients', {
+        historiaClinica: `Nena de 7 años. ${quote}.`,
+        symptomsExtracted: [{ description: 'Convulsiones', code: 'HP:0001250' }],
+        phenotypes: [
+            { hpo_id: 'HP:0001250', label: 'Seizure', label_es: 'Convulsiones', span_es: quote, start_es: 17, end_es: 60, negated: false, confidence: 0.93 },
+            { hpo_id: 'HP:0002205', label_es: 'Infecciones respiratorias recurrentes', span_es: quote, negated: true, confidence: 0.8 },
+        ],
+        genphenGenes: [],
+        genphenSpecialties: [],
+        genphenConfidence: 0.5,
+    });
+    assert.equal(created.status, 201, created.text);
+
+    const client = authenticateClient(createClient(server.baseUrl), admin);
+    const insights = await client.get('/api/admin/insights');
+    assert.equal(insights.status, 200);
+    assert.ok(!insights.text.includes(quote), 'the chart quoted the clinical history');
+    assert.ok(!insights.text.includes('span_es'), 'the chart returned a whole extractor object');
+    const labels = insights.json.phenotypes.map((bucket) => bucket.label);
+    assert.ok(labels.includes('Convulsiones'));
+    assert.ok(!labels.includes('Infecciones respiratorias recurrentes'), 'a negated finding was counted');
+});
+
 test('the release endpoint reports the running image', options, async (t) => {
     const server = await startServer();
     const admin = await seedAdmin();

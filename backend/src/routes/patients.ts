@@ -18,6 +18,7 @@ import {
     getDiagnosesByPatient,
     getDiagnosisById,
 } from '../repositories/diagnosisRepository.js';
+import { logError } from '../utils/logError.js';
 import { stripNullBytes } from '../utils/sanitize.js';
 import { internalError, sendError } from '../utils/httpErrors.js';
 
@@ -54,13 +55,34 @@ const historiaClinicaSchema = z
     // Empty when nothing was written. This used to store our own sentence
     // instead, which then read — and was re-submitted on regeneration — as
     // the family's clinical history. The column is NOT NULL, so '' it is.
-    .transform((value) => (typeof value === 'string' ? stripNullBytes(value).trim() : ''));
+    .transform((value) => (typeof value === 'string' ? stripNullBytes(value).trim() : ''))
+    // The wizard caps the text at 10,000 characters; the server holds the same line.
+    .refine((value) => value.length <= 10_000);
+
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** A real calendar date, not in the future and at most 120 years back, or nothing. */
+const birthDateSchema = z
+    .string()
+    .nullable()
+    .optional()
+    .transform((value) => (typeof value === 'string' && value.trim() !== '' ? value.trim() : null))
+    .refine((value) => {
+        if (value === null) return true;
+        const match = ISO_DATE.exec(value);
+        if (!match) return false;
+        const [year, month, day] = match.slice(1).map(Number);
+        const date = new Date(Date.UTC(year, month - 1, day));
+        if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return false;
+        const now = new Date();
+        return date.getTime() <= now.getTime() && year >= now.getUTCFullYear() - 120;
+    });
 
 const createPatientSchema = z.object({
     // Patient demographics
     // Optional: left empty, the patient is numbered «Paciente N» in its account.
     nombre: z.string().trim().max(255).nullable().optional(),
-    fechaNacimiento: z.string().nullable().optional(),
+    fechaNacimiento: birthDateSchema,
     sexo: z.string().max(50).nullable().optional(),
     localidad: z.string().max(255).nullable().optional(),
     pais: z.string().max(100).nullable().optional(),
@@ -120,7 +142,7 @@ router.post(
             );
             return res.status(201).json(result);
         } catch (err) {
-            console.error('POST /api/patients error:', err);
+            logError('POST /api/patients error', err);
             return internalError(res);
         }
     },
@@ -177,7 +199,7 @@ router.post(
 
             return res.status(201).json(result);
         } catch (err) {
-            console.error('POST /api/patients/:id/diagnoses error:', err);
+            logError('POST /api/patients/:id/diagnoses error', err);
             return internalError(res);
         }
     },
@@ -195,7 +217,7 @@ router.get(
             const patients = await getPatientsByUser(req.userRecord!.id);
             return res.json(patients);
         } catch (err) {
-            console.error('GET /api/patients error:', err);
+            logError('GET /api/patients error', err);
             return internalError(res);
         }
     },
@@ -214,7 +236,7 @@ router.get(
             if (!patient) return sendError(res, 404, 'not_found', 'Not found');
             return res.json(patient);
         } catch (err) {
-            console.error('GET /api/patients/:id error:', err);
+            logError('GET /api/patients/:id error', err);
             return internalError(res);
         }
     },
@@ -233,7 +255,7 @@ router.delete(
             if (!deleted) return sendError(res, 404, 'not_found', 'Not found');
             return res.status(204).send();
         } catch (err) {
-            console.error('DELETE /api/patients/:id error:', err);
+            logError('DELETE /api/patients/:id error', err);
             return internalError(res);
         }
     },
@@ -252,7 +274,7 @@ router.get(
         try {
             patient = await getPatientById(req.params.id, req.userRecord!.id);
         } catch (err) {
-            console.error('GET /api/patients/:id/diagnoses ownership check error:', err);
+            logError('GET /api/patients/:id/diagnoses ownership check error', err);
             return internalError(res);
         }
         if (!patient) return sendError(res, 404, 'not_found', 'Not found');
@@ -261,7 +283,7 @@ router.get(
             const diagnoses = await getDiagnosesByPatient(req.params.id, req.userRecord!.id);
             return res.json(diagnoses);
         } catch (err) {
-            console.error('GET /api/patients/:id/diagnoses error:', err);
+            logError('GET /api/patients/:id/diagnoses error', err);
             return internalError(res);
         }
     },
@@ -282,7 +304,7 @@ router.get(
             }
             return res.json(diagnosis);
         } catch (err) {
-            console.error('GET /api/patients/:id/diagnoses/:diagId error:', err);
+            logError('GET /api/patients/:id/diagnoses/:diagId error', err);
             return internalError(res);
         }
     },

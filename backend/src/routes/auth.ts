@@ -27,6 +27,7 @@ import { HEALTH_DATA_CONSENT_VERSION, publicUser } from '../services/consent.js'
 import { CSRF_COOKIE_NAME } from '../middleware/csrfMiddleware.js';
 import { rateLimit, userRateLimit } from '../middleware/rateLimit.js';
 import { hashToken } from '../utils/tokens.js';
+import { logError } from '../utils/logError.js';
 import { stripNullBytes } from '../utils/sanitize.js';
 import { internalError, sendError } from '../utils/httpErrors.js';
 import { GOOGLE_AUTH_ENABLED, GOOGLE_REDIRECT_URL, IS_PRODUCTION } from '../config.js';
@@ -81,6 +82,17 @@ const csrfCookieOptions = {
     secure: IS_PRODUCTION,
     sameSite: 'lax' as const,
     path: '/',
+};
+
+// Ties the Google callback to the browser that started the sign-in, so nobody
+// can log a victim into the attacker's account (login CSRF).
+const OAUTH_STATE_COOKIE = 'oauth_state';
+const oauthStateCookieOptions = {
+    httpOnly: true,
+    secure: IS_PRODUCTION,
+    sameSite: 'lax' as const,
+    path: '/',
+    maxAge: 10 * 60 * 1000,
 };
 
 const signupRateLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 5 });
@@ -146,10 +158,13 @@ router.get('/oauth/google', googleRateLimit, (req, res, next) => {
     if (!GOOGLE_AUTH_ENABLED) {
         return googleAuthUnavailable(res);
     }
+    const state = crypto.randomBytes(32).toString('hex');
+    res.cookie(OAUTH_STATE_COOKIE, state, oauthStateCookieOptions);
     return passport.authenticate('google', {
         scope: ['profile', 'email'],
         session: false,
         prompt: 'select_account',
+        state,
     })(req, res, next);
 });
 
@@ -159,6 +174,17 @@ router.get(
     (req, res, next) => {
         if (!GOOGLE_AUTH_ENABLED) {
             return googleAuthUnavailable(res);
+        }
+        const expected = req.cookies?.[OAUTH_STATE_COOKIE];
+        const received = req.query.state;
+        res.clearCookie(OAUTH_STATE_COOKIE, { ...oauthStateCookieOptions, maxAge: undefined });
+        if (
+            typeof expected !== 'string' ||
+            typeof received !== 'string' ||
+            expected.length !== received.length ||
+            !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received))
+        ) {
+            return res.redirect(`${GOOGLE_REDIRECT_URL}?error=google_auth_failed`);
         }
         return passport.authenticate('google', {
             session: false,
@@ -218,7 +244,7 @@ router.get(
             return res.redirect(GOOGLE_REDIRECT_URL);
         } catch (error) {
             if (!IS_PRODUCTION) {
-                console.error('[auth] google callback failed', error);
+                logError('[auth] google callback failed', error);
             }
             return res.redirect(`${GOOGLE_REDIRECT_URL}?error=google_auth_failed`);
         }
@@ -276,7 +302,7 @@ router.post('/signup', signupRateLimit, async (req, res) => {
 
         res.json({ user: publicUser((await getUserById(newUser.id)) ?? newUser) });
     } catch (error) {
-        console.error(error);
+        logError('[auth] request failed', error);
         internalError(res);
     }
 });
@@ -322,7 +348,7 @@ router.post('/login', loginRateLimit, async (req, res) => {
             },
         });
     } catch (error) {
-        console.error(error);
+        logError('[auth] request failed', error);
         internalError(res);
     }
 });
@@ -398,7 +424,7 @@ router.post('/verify', verifyRateLimit, async (req, res) => {
         await verifyUser(user.id);
         res.json({ message: 'Verified' });
     } catch (error) {
-        console.error(error);
+        logError('[auth] request failed', error);
         internalError(res);
     }
 });
@@ -473,7 +499,7 @@ router.post('/logout', logoutRateLimit, async (req, res) => {
             await updateUserTokenVersion(userId);
         }
     } catch (error) {
-        console.error('[auth] logout token revocation failed', error);
+        logError('[auth] logout token revocation failed', error);
     } finally {
         res.clearCookie('access_token', accessCookieOptions);
         res.clearCookie('refresh_token', refreshCookieOptions);
