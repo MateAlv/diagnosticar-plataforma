@@ -33,7 +33,7 @@ Adaptadores disponibles:
 
 | Adaptador | Estado |
 |---|---|
-| [`providers/aws`](providers/aws/README.md) | En uso: la copia de https://diagnosticar.app (antes https://44-197-71-62.sslip.io, que ahora redirige) |
+| [`providers/aws`](providers/aws/README.md) | En uso: la copia de https://diagnosticar.app, detrás de Cloudflare |
 | [`providers/manual`](providers/manual/main.tf) | Cualquier VM Ubuntu 24.04, creada a mano en cualquier proveedor |
 
 | Parte | ¿Cambia con el proveedor? |
@@ -216,12 +216,37 @@ en modo **Proxied** (la nube naranja). Para cualquier dominio:
    cambio, y después `remote.sh sync-config`. La máquina no relee el cloud-init,
    así que el dominio nuevo le llega por acá. Caddy pide el certificado en menos de
    un minuto (`remote.sh logs caddy`: `certificate obtained successfully`).
-5. Actualizar la variable `CLOUD_URLS` de los repositorios
-   ([`docs/CLOUD_CICD.md`](../../docs/CLOUD_CICD.md)).
+5. Si la variable `CLOUD_URLS` de los repositorios está definida, cambiarla al
+   dominio nuevo ([`docs/CLOUD_CICD.md`](../../docs/CLOUD_CICD.md)).
+6. **Si está en Proxied, cerrar el origen** (ver abajo).
 
-Mientras tanto, el nombre de sslip.io queda como **alias**: tiene su propio
-certificado y redirige (308) al dominio, salvo `/deploy-status.json`, que
-sigue respondiendo para que el CI que todavía lo consulta no falle.
+Con `web_sources = "anywhere"`, el nombre de sslip.io queda como **alias**: tiene
+su propio certificado y redirige (308) al dominio, salvo `/deploy-status.json`,
+que sigue respondiendo para que el CI que todavía lo consulta no falle.
+
+**Cerrar el origen: que solo entre Cloudflare.** Con el registro en Proxied, el
+firewall igual acepta 80 y 443 de cualquiera, y quien conozca la IP puede llegar
+directo a la máquina sin pasar por Cloudflare. La IP no es un secreto: está en el
+DNS de sslip.io y en los registros públicos de certificados (Certificate
+Transparency). Por eso no alcanza con no escribirla en los documentos: lo que
+protege es el firewall. En el adaptador de AWS, `web_sources = "cloudflare"` en
+`terraform.tfvars` deja 80 y 443 solo para los rangos IPv4 de Cloudflare (la
+Elastic IP es solo IPv4), y después `remote.sh open` lo aplica y `remote.sh
+sync-config` saca el alias. Qué cambia:
+
+- Ya no se puede entrar por la IP ni por sslip.io: el alias se quita, porque Let's
+  Encrypt valida conectándose directo y no podría renovarlo.
+- El certificado del dominio se sigue renovando, porque Let's Encrypt lo valida
+  pasando por Cloudflare.
+- **El registro tiene que quedar en Proxied.** En DNS only, los visitantes irían
+  directo a la máquina y el firewall los rechazaría: el sitio dejaría de responder.
+- `remote.sh` no cambia: entra por el 22, que tiene su propia regla.
+
+Los rangos están en dos lugares: `modules/stack/main.tf` (outputs
+`cloudflare_ipv4`/`cloudflare_ipv6`, para el firewall) y `stack/Caddyfile` (en
+qué direcciones creer). El CI falla si difieren. Si Cloudflare publica rangos
+nuevos: actualizar los dos, `remote.sh open` (aplica el firewall) e `install-stack`
+(lleva el Caddyfile).
 
 **Por qué funciona Let's Encrypt detrás del proxy.** Let's Encrypt valida
 pidiendo `http://<dominio>/.well-known/acme-challenge/…` por el puerto 80.
@@ -269,8 +294,9 @@ Además, las propias del proveedor: región, tamaño de la máquina, etc.
 1. Ubuntu **24.04** LTS, **x86-64**: las imágenes se publican para amd64, así
    que una máquina ARM no las corre.
 2. ≥ 2 GB de RAM y ≥ 30 GB de disco.
-3. Firewall: 80 y 443 abiertos a todos; 22 **solo** desde `admin_cidrs` (sin
-   regla si está vacío); nada más.
+3. Firewall: 80 y 443 abiertos a todos, o solo a los rangos de Cloudflare
+   (`module.stack.cloudflare_ipv4`) si el dominio está detrás de su proxy; 22
+   **solo** desde `admin_cidrs` (sin regla si está vacío); nada más.
 4. Una IP fija, separada de la VM si el proveedor lo permite, para que el dominio
    sobreviva a reemplazar la máquina. Con esa IP, el `domain` del módulo es
    `var.domain` o, si es `null`, `"<ip-con-guiones>.sslip.io"`; sin IP fija,

@@ -221,6 +221,19 @@ jobs:
               caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
           done
 
+      # Cloudflare's ranges live in two places: the Caddyfile (whose addresses
+      # are believed) and modules/stack (which the firewall may admit). A range
+      # added to one only would either trust a stranger or lock Cloudflare out.
+      - name: Cloudflare ranges match
+        run: |
+          set -euo pipefail
+          grep -E '^\s*trusted_proxies static ' infra/cloud/stack/Caddyfile \
+            | tr -s ' \t' '\n' | grep / | sort > "$RUNNER_TEMP/caddy.txt"
+          sed -n '/^output "cloudflare_ipv[46]"/,/^}/p' infra/cloud/modules/stack/main.tf \
+            | grep -oE '"[0-9a-f:.]+/[0-9]+"' | tr -d '"' | sort > "$RUNNER_TEMP/module.txt"
+          [ -s "$RUNNER_TEMP/caddy.txt" ] && [ -s "$RUNNER_TEMP/module.txt" ]
+          diff -u "$RUNNER_TEMP/caddy.txt" "$RUNNER_TEMP/module.txt"
+
       # The same document every provider receives, rendered with a throwaway
       # key, then checked by cloud-init itself and against the size limits.
       - name: Rendered cloud-init

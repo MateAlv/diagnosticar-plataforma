@@ -26,6 +26,21 @@ variable "domain" {
   default     = null
 }
 
+variable "web_sources" {
+  description = <<-EOT
+    Who may reach ports 80 and 443. "anywhere" (the default), or "cloudflare":
+    only Cloudflare's ranges, for a `domain` behind its proxy, so nobody who
+    knows the IP can go around it. With "cloudflare" the sslip.io alias is
+    dropped (Let's Encrypt could no longer reach it to renew).
+  EOT
+  type        = string
+  default     = "anywhere"
+  validation {
+    condition     = var.web_sources == "anywhere" || (var.web_sources == "cloudflare" && var.domain != null)
+    error_message = "web_sources must be \"anywhere\" or \"cloudflare\", and \"cloudflare\" needs a domain of your own (the sslip.io name would be unreachable)."
+  }
+}
+
 variable "stack_settings" {
   description = "Passed unchanged to modules/stack (README, \"Ajustes\")."
   type        = any

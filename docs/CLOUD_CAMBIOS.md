@@ -146,7 +146,7 @@ genera el cloud-init para pegarlo al crear la VM a mano.
 
 ## Cómo quedó (2026-10-04)
 
-- La copia de https://44-197-71-62.sslip.io corre sobre `infra/cloud/` con el
+- La copia (entonces en `<ip-con-guiones>.sslip.io`) corre sobre `infra/cloud/` con el
   adaptador de AWS. Se conservó la URL moviendo la Elastic IP al state nuevo, la
   base pasó con un backup y un restore, y la web estuvo caída unos 20 minutos.
 - Lo viejo se destruyó: la instancia anterior, los repositorios de ECR, el rol
@@ -205,6 +205,29 @@ Además: `caddy fmt`, `terraform validate` y `plan` (solo cambian outputs: la
 instancia no se toca), `shellcheck`, y `set-config` en un entorno aislado (dry-run,
 aplicar, sin cambios, línea inválida, sin `DOMAIN`).
 
+## Origen cerrado a todo lo que no sea Cloudflare (2026-10-07)
+
+**El problema.** Con el dominio en Proxied, el firewall seguía aceptando 80 y 443
+de cualquier dirección: quien supiera la IP podía entrar directo y saltearse
+Cloudflare. La IP figuraba en cuatro documentos, pero también es pública por
+otros lados: el certificado de su nombre de sslip.io está en los registros de
+Certificate Transparency.
+
+**La solución.**
+
+- **AWS:** variable `web_sources`: con `"cloudflare"`, el security group acepta
+  80 y 443 solo desde los rangos IPv4 de Cloudflare (30 reglas: 15 rangos × 2
+  puertos). Exige un `domain` propio y quita el alias de sslip.io, que Let's
+  Encrypt ya no podría renovar.
+- **Rangos:** salen de `modules/stack` (outputs `cloudflare_ipv4`/`_ipv6`), y el CI
+  controla que coincidan con los del Caddyfile.
+- **Documentos:** la IP ya no figura en ninguno.
+
+**Lo que no se hizo.** No se reescribió el historial de git para borrar la IP de
+los commits viejos. Habría que forzar un push a `main`, a todo el equipo se le
+romperían los clones, y la IP sigue siendo pública por los certificados. Lo que
+protege es el firewall, no ocultar la dirección.
+
 ## Lo que falta
 
 1. Mergear `chore/remove-aws-native` en los tres repositorios: borra `infra/aws/`
@@ -212,8 +235,8 @@ aplicar, sin cambios, línea inválida, sin `DOMAIN`).
 2. El dueño de los repositorios: borrar el secreto `AWS_DEPLOY_ROLE_ARN` de
    `diagnostic.ar`, `diagnostic.ar-api` y `spanish-symptoms-recognizer`.
 3. Agregar el escaneo de vulnerabilidades (Trivy) a los workflows de publicación.
-4. Cambiar la variable `CLOUD_URLS` de `diagnostic.ar` y `diagnostic.ar-api` a
-   `https://diagnosticar.app` (la URL vieja sigue sirviendo `/deploy-status.json`,
-   así que no es urgente).
+4. Opcional: definir la variable `CLOUD_URLS` (hoy no existe en ningún repositorio)
+   con `https://diagnosticar.app`, para ver en GitHub si cada versión llegó a la
+   máquina.
 5. Probar un segundo proveedor, o `providers/manual` en una VM local, para mostrar
    la portabilidad funcionando y no solo validada.

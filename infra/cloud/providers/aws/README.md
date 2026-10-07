@@ -10,7 +10,7 @@ lo mismo en cualquier proveedor; esto es solo lo propio de AWS.
 |---|---|
 | EC2 `t3.small`, Ubuntu 24.04 x86-64, disco gp3 30 GB cifrado | La máquina. IMDSv2 con un solo salto: los contenedores no pueden pedir las credenciales del rol |
 | Elastic IP | La dirección fija. Separada de la instancia: sobrevive a reemplazarla. El dominio es `domain` (en uso: `diagnosticar.app`, ver ["Dominio propio"](../../README.md#dominio-propio)) o, sin él, `<ip-con-guiones>.sslip.io` |
-| Security group | 80 y 443 para todos; 22 solo mientras `remote.sh open` lo abre para tu IP |
+| Security group | 80 y 443 para todos o, con `web_sources = "cloudflare"` (en uso), solo para Cloudflare; 22 solo mientras `remote.sh open` lo abre para tu IP |
 | Rol IAM con solo `s3:PutObject` en `backups/` | Los backups nocturnos al bucket de artefactos, sin guardar credenciales |
 | Alarma de gasto (opcional, `budget_email`) | AWS Budgets, por mail |
 
@@ -94,7 +94,7 @@ Así se instaló el agente de preguntas el 2026-10-06, sin la clave original.
 
 ## De dónde viene
 
-La copia de https://44-197-71-62.sslip.io se migró a este adaptador el
+La copia (entonces en `<ip-con-guiones>.sslip.io`) se migró a este adaptador el
 2026-10-04 desde `infra/aws/`, que usaba ECR, SSM y OIDC, servicios solo de AWS.
 Se conservó la URL moviendo la Elastic IP al state nuevo (`terraform import`), y la
 base pasó con un backup y un restore. La web estuvo caída unos 20 minutos. Después
