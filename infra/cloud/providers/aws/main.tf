@@ -30,7 +30,8 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 
 locals {
-  domain = "${replace(aws_eip.web.public_ip, ".", "-")}.sslip.io"
+  sslip  = "${replace(aws_eip.web.public_ip, ".", "-")}.sslip.io"
+  domain = coalesce(var.domain, local.sslip)
   # Created by ./bootstrap; its lifecycle keeps dumps 14 days.
   backup_bucket = "diagnosticar-artifacts-${data.aws_caller_identity.current.account_id}"
 }
@@ -41,6 +42,7 @@ module "stack" {
   source          = "../../modules/stack"
   ssh_public_keys = [file(pathexpand(var.ssh_public_key_path))]
   domain          = local.domain
+  domain_aliases  = local.domain == local.sslip ? [] : [local.sslip]
   # Backups to S3 with the instance's own role, so no credential is stored
   # anywhere. stack_settings can still override it.
   settings = merge(

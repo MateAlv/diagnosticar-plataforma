@@ -16,6 +16,16 @@ variable "admin_cidrs" {
   default     = []
 }
 
+variable "domain" {
+  description = <<-EOT
+    A domain of your own, already pointing at the fixed IP (README, "Dominio
+    propio"). Null (the default): <ip-with-dashes>.sslip.io. With a domain,
+    the sslip.io name stays as an alias that redirects to it.
+  EOT
+  type        = string
+  default     = null
+}
+
 variable "stack_settings" {
   description = "Passed unchanged to modules/stack (README, \"Ajustes\")."
   type        = any

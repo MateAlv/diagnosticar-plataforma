@@ -4,6 +4,11 @@ output "url" {
   value = "https://${local.domain}"
 }
 
+output "config" {
+  description = "What the machine should have in /etc/diagnosticar/config.env (remote.sh sync-config)."
+  value       = module.stack.config
+}
+
 output "ssh_host" {
   description = "Where remote.sh connects, as diagnosticar@<this>."
   value       = aws_eip.web.public_ip

@@ -4,9 +4,34 @@
 # what lets one frontend image serve any domain.
 #
 # Caddy gets and renews the certificate itself (Let's Encrypt, HTTP-01 on
-# port 80) and redirects http to https.
+# port 80) and redirects http to https. That works behind Cloudflare's proxy
+# too, as long as Cloudflare's SSL mode is "Full (strict)": it passes port 80
+# through to here (README, "Dominio propio").
+{
+	servers {
+		# Behind Cloudflare's proxy every connection comes from one of its
+		# addresses, and the visitor's is in CF-Connecting-IP, which Cloudflare
+		# always overwrites. Believed only from these ranges, so nobody else can
+		# pick their own address; without Cloudflare nothing comes from them and
+		# this changes nothing. From https://www.cloudflare.com/ips-v4 and
+		# /ips-v6 (2026-10-07); they change rarely.
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		client_ip_headers CF-Connecting-IP
+	}
+}
 
-{$DOMAIN} {
+# The services key their per-address limits on the last X-Forwarded-For hop
+# (the extractor trusts only this container, the backend one proxy). Caddy
+# would append Cloudflare's address after the visitor's, so each service gets
+# exactly one hop: the visitor, or the peer when there is no Cloudflare.
+(upstream) {
+	header_up X-Forwarded-For {client_ip}
+}
+
+# DOMAIN_ALIASES (space separated, may be empty): earlier names of this site,
+# such as its sslip.io address, kept with a certificate of their own so old
+# links redirect instead of failing.
+{$DOMAIN} {$DOMAIN_ALIASES} {
 	# A copy for testing, with synthetic data only: keep it out of search
 	# results, where a family could mistake it for the real service.
 	header X-Robots-Tag "noindex, nofollow"
@@ -19,22 +44,38 @@
 		file_server
 	}
 
+	# Everything else on an alias goes to the domain. The status file stays,
+	# so CI that still polls the old name (CLOUD_URLS) keeps working.
+	@alias {
+		not host {$DOMAIN}
+		not path /deploy-status.json
+	}
+	redir @alias https://{$DOMAIN}{uri} 308
+
 	# handle_path strips the prefix: the services answer at their root.
 	handle_path /hpo-api/* {
-		reverse_proxy hpo-recognizer:8000
+		reverse_proxy hpo-recognizer:8000 {
+			import upstream
+		}
 	}
 
 	handle_path /genphenai/* {
-		reverse_proxy model:18020
+		reverse_proxy model:18020 {
+			import upstream
+		}
 	}
 
 	# The backend's routes include the prefix, so it stays.
 	handle /api/* {
-		reverse_proxy backend:4000
+		reverse_proxy backend:4000 {
+			import upstream
+		}
 	}
 
 	handle {
-		reverse_proxy frontend:3000
+		reverse_proxy frontend:3000 {
+			import upstream
+		}
 	}
 
 	# No access log, deliberately: it would keep every visitor's address next

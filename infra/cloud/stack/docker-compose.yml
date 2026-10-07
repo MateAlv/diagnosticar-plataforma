@@ -51,6 +51,8 @@ services:
       - "443:443"
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN}
+      # Earlier names of the site, redirected to DOMAIN (Caddyfile).
+      DOMAIN_ALIASES: ${DOMAIN_ALIASES:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./status:/srv/status:ro

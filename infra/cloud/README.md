@@ -33,7 +33,7 @@ Adaptadores disponibles:
 
 | Adaptador | Estado |
 |---|---|
-| [`providers/aws`](providers/aws/README.md) | En uso: la copia de https://44-197-71-62.sslip.io |
+| [`providers/aws`](providers/aws/README.md) | En uso: la copia de https://diagnosticar.app (antes https://44-197-71-62.sslip.io, que ahora redirige) |
 | [`providers/manual`](providers/manual/main.tf) | Cualquier VM Ubuntu 24.04, creada a mano en cualquier proveedor |
 
 | Parte | ¿Cambia con el proveedor? |
@@ -56,8 +56,10 @@ Internet ─▶ IP pública ─▶ VM Ubuntu 24.04 (≥ 2 GB + 2 GB de swap, ≥
                               └─ question-agent  solo lo llama el backend, sin ruta pública
 ```
 
-El dominio es `<ip-con-guiones>.sslip.io`: gratis, apunta solo a la IP de la
-máquina, y Let's Encrypt lo acepta. Se puede cambiar por uno propio (`domain`).
+Por defecto el dominio es `<ip-con-guiones>.sslip.io`. [sslip.io](https://sslip.io)
+es un DNS público y gratuito que responde a cada nombre con la IP escrita en él,
+así que no hay nada que configurar y Let's Encrypt lo acepta. Para usar uno
+propio, ver **Dominio propio**.
 
 ## Cómo funciona
 
@@ -149,6 +151,7 @@ Todo con `scripts/remote.sh` (con el 22 abierto: `open` … `close`).
 | Logs | `logs [backend\|frontend\|hpo-recognizer\|model\|caddy\|db]` |
 | Volver a la versión anterior | `rollback` (y el timer no vuelve a traer la que se dejó) |
 | Cambiar el stack (compose, Caddyfile) | Editar `stack/` → `install-stack` (valida antes de reemplazar) |
+| Cambiar un ajuste o el dominio | `terraform.tfvars` → `open` (lo aplica) → `sync-config` (muestra la diferencia y pregunta) |
 | Cambiar `genes.db` | Nuevo release en gene-profiles → `stack/genes.lock` → `install-stack` → `install-genes` |
 | Backups | Automáticos cada noche; a mano: `backup`. Restaurar: `restore archivo.sql.gz` |
 | Rotar sesiones | `rotate JWT_ACCESS_KEYPAIR` y después `deploy` |
@@ -196,6 +199,45 @@ La máquina solo escribe (`rclone rcat`): no necesita permiso para leer ni
 listar lo que ya está, así que alguien con acceso a ella no puede leer ni
 borrar los backups anteriores.
 
+## Dominio propio
+
+La copia de AWS usa `diagnosticar.app`, con el DNS en Cloudflare y el registro
+en modo **Proxied** (la nube naranja). Para cualquier dominio:
+
+1. **DNS.** Un registro `A` del dominio a la IP fija de la máquina
+   (`terraform output ssh_host`). Puede estar en Proxied o en DNS only.
+2. **Cloudflare, si está en Proxied:** SSL/TLS → modo **Full (strict)**. Nunca
+   *Flexible*: Cloudflare hablaría con la máquina por HTTP y Caddy, que redirige a
+   HTTPS, entraría en un bucle. Tampoco hace falta un certificado de Cloudflare
+   (Origin CA): alcanza con el de Let's Encrypt.
+3. **Terraform.** En el `terraform.tfvars` del adaptador, `domain =
+   "diagnosticar.app"`, y después `remote.sh open`, que lo aplica.
+4. **La máquina.** `remote.sh install-stack` si el stack es anterior a este
+   cambio, y después `remote.sh sync-config`. La máquina no relee el cloud-init,
+   así que el dominio nuevo le llega por acá. Caddy pide el certificado en menos de
+   un minuto (`remote.sh logs caddy`: `certificate obtained successfully`).
+5. Actualizar la variable `CLOUD_URLS` de los repositorios
+   ([`docs/CLOUD_CICD.md`](../../docs/CLOUD_CICD.md)).
+
+Mientras tanto, el nombre de sslip.io queda como **alias**: tiene su propio
+certificado y redirige (308) al dominio, salvo `/deploy-status.json`, que
+sigue respondiendo para que el CI que todavía lo consulta no falle.
+
+**Por qué funciona Let's Encrypt detrás del proxy.** Let's Encrypt valida
+pidiendo `http://<dominio>/.well-known/acme-challenge/…` por el puerto 80.
+Cloudflare manda esas peticiones a la máquina tal como llegan, y Caddy las
+contesta. El error **525** que daba el sitio antes de este cambio significa que
+Cloudflare no pudo hacer el *handshake* TLS con la máquina: Caddy todavía no
+tenía `diagnosticar.app` configurado y no tenía certificado para ese nombre.
+
+**La IP real de cada visitante.** Detrás del proxy todas las conexiones vienen
+de direcciones de Cloudflare, y los límites por IP del backend y del extractor
+juntarían a usuarios distintos. Caddy toma la dirección de `CF-Connecting-IP`,
+pero solo si la conexión viene de los rangos publicados por Cloudflare (listados
+en `stack/Caddyfile`, de <https://www.cloudflare.com/ips>), y se la pasa a cada
+servicio como único valor de `X-Forwarded-For`. Sin Cloudflare no cambia nada.
+Si Cloudflare publica rangos nuevos, hay que agregarlos ahí y correr `install-stack`.
+
 ## Cómo agregar un proveedor
 
 Un adaptador es una carpeta `providers/<nombre>/` que crea la máquina y le pasa
@@ -209,6 +251,7 @@ el cloud-init común. No toca nada fuera de su carpeta.
 |---|---|---|
 | `ssh_public_key_path` | `string` | `"~/.ssh/diagnosticar_cloud.pub"` |
 | `admin_cidrs` | `list(string)` | `[]`: el puerto 22 cerrado |
+| `domain` | `string` | `null`: `<ip-con-guiones>.sslip.io`. Con un dominio, el de sslip.io queda como alias (`domain_aliases` del módulo) |
 | `stack_settings` | `any` | `{}`: pasa sin cambios a `modules/stack` |
 
 Además, las propias del proveedor: región, tamaño de la máquina, etc.
@@ -219,6 +262,7 @@ Además, las propias del proveedor: región, tamaño de la máquina, etc.
 |---|---|
 | `url` | `https://<dominio>` |
 | `ssh_host` | La IP o el nombre al que se conecta `remote.sh` |
+| `config` | `module.stack.config`: lo que `remote.sh sync-config` le pasa a la máquina |
 
 **La máquina:**
 
@@ -228,8 +272,9 @@ Además, las propias del proveedor: región, tamaño de la máquina, etc.
 3. Firewall: 80 y 443 abiertos a todos; 22 **solo** desde `admin_cidrs` (sin
    regla si está vacío); nada más.
 4. Una IP fija, separada de la VM si el proveedor lo permite, para que el dominio
-   sobreviva a reemplazar la máquina. Con esa IP, `domain = "<ip-con-guiones>.sslip.io"`;
-   sin IP fija, `domain = "auto"` y la máquina la detecta sola.
+   sobreviva a reemplazar la máquina. Con esa IP, el `domain` del módulo es
+   `var.domain` o, si es `null`, `"<ip-con-guiones>.sslip.io"`; sin IP fija,
+   `domain = "auto"` y la máquina la detecta sola.
 5. *User data* = `module.stack.cloud_init`. Si el proveedor pone un límite de
    16 KB, usar `module.stack.cloud_init_base64gzip`: cloud-init detecta gzip solo.
 6. Ignorar cambios del *user data* y de la imagen (`lifecycle { ignore_changes = [...] }`):
@@ -267,6 +312,10 @@ variable "admin_cidrs" {
   type    = list(string)
   default = []
 }
+variable "domain" {
+  type    = string
+  default = null
+}
 variable "stack_settings" {
   type    = any
   default = {}
@@ -281,10 +330,15 @@ resource "hcloud_primary_ip" "web" {
   auto_delete = false
 }
 
+locals {
+  sslip = "${replace(hcloud_primary_ip.web.ip_address, ".", "-")}.sslip.io"
+}
+
 module "stack" {
   source          = "../../modules/stack"
   ssh_public_keys = [file(pathexpand(var.ssh_public_key_path))]
-  domain          = "${replace(hcloud_primary_ip.web.ip_address, ".", "-")}.sslip.io"
+  domain          = coalesce(var.domain, local.sslip)
+  domain_aliases  = var.domain == null ? [] : [local.sslip]
   settings        = var.stack_settings
 }
 
@@ -327,6 +381,7 @@ resource "hcloud_server" "web" {
 
 output "url" { value = "https://${module.stack.config.DOMAIN}" }
 output "ssh_host" { value = hcloud_primary_ip.web.ip_address }
+output "config" { value = module.stack.config }
 ```
 
 ### Verificación (para cualquier proveedor)

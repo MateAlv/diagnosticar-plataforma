@@ -211,6 +211,16 @@ jobs:
           ENV
           docker compose -f infra/cloud/stack/docker-compose.yml --env-file "$RUNNER_TEMP/ci.env" config -q
 
+      # With and without aliases: an empty DOMAIN_ALIASES must still parse.
+      - name: Caddyfile
+        run: |
+          set -euo pipefail
+          for aliases in '' 'old.ci.example'; do
+            docker run --rm -v "$PWD/infra/cloud/stack/Caddyfile:/etc/caddy/Caddyfile:ro" \
+              -e DOMAIN=ci.example -e DOMAIN_ALIASES="$aliases" \
+              caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          done
+
       # The same document every provider receives, rendered with a throwaway
       # key, then checked by cloud-init itself and against the size limits.
       - name: Rendered cloud-init

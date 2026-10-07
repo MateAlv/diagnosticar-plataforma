@@ -18,6 +18,7 @@
 #   diagnosticar secrets                 which secrets exist (names only)
 #   diagnosticar install-genes           read genes.db from standard input, check it, install it
 #   diagnosticar install-stack           read a new stack (tar.gz) from standard input, then deploy
+#   diagnosticar set-config [--dry-run]  read a whole config.env from standard input, then deploy
 #
 # Never prints a secret: secrets.env and .env are mode 600 and only key names
 # are ever shown.
@@ -531,6 +532,35 @@ cmd_install_stack() {
     exec /usr/local/bin/diagnosticar deploy --force
 }
 
+# config.env is written once by cloud-init, and the providers ignore later
+# changes to user data, so a setting changed in Terraform reaches a running
+# machine only through here (remote.sh sync-config). The whole file is
+# replaced, never merged, so a setting removed in Terraform goes too. It holds
+# nothing secret, which is why the difference can be shown.
+cmd_set_config() {
+    local dry="" tmp line kv="^[A-Z][A-Z0-9_]*='[^']*'$"
+    [ "${1:-}" = --dry-run ] && dry=1
+    tmp=$(mktemp "$CONFIG.XXXXXX")
+    while IFS= read -r line || [ -n "$line" ]; do
+        [ -n "$line" ] || continue
+        [[ "$line" =~ $kv ]] || { rm -f "$tmp"; die "not a KEY='value' line: ${line%%=*}"; }
+        printf '%s\n' "$line" >> "$tmp"
+    done
+    [ -n "$(kv_get "$tmp" DOMAIN)" ] || { rm -f "$tmp"; die "the new config.env has no DOMAIN"; }
+    if cmp -s "$CONFIG" "$tmp"; then
+        rm -f "$tmp"
+        echo "config.env is already this one"
+        return 0
+    fi
+    diff -u --label "config.env now" --label "config.env new" "$CONFIG" "$tmp" || true
+    if [ -n "$dry" ]; then rm -f "$tmp"; return 0; fi
+    chmod 644 "$tmp"
+    cp -p "$CONFIG" "$CONFIG.previous"
+    mv "$tmp" "$CONFIG"
+    log "config.env replaced (the old one is $CONFIG.previous)"
+    exec /usr/local/bin/diagnosticar deploy --force
+}
+
 # ----------------------------------------------------------------------------------
 
 [ "$(id -u)" = 0 ] || die "run as root: sudo diagnosticar $*"
@@ -550,5 +580,6 @@ case "${1:-}" in
     secrets)       cmd_secrets ;;
     install-genes) cmd_install_genes ;;
     install-stack) cmd_install_stack ;;
-    *)             sed -n '2,23p' "$0"; exit 1 ;;
+    set-config)    shift; cmd_set_config "$@" ;;
+    *)             sed -n '2,24p' "$0"; exit 1 ;;
 esac
