@@ -7,6 +7,7 @@
 #   scripts/remote.sh setup                first time: stack, genes.db, registry token
 #   scripts/remote.sh install-stack        push infra/cloud/stack to the machine and deploy it
 #   scripts/remote.sh install-genes        download the release pinned in genes.lock, check it, install it
+#   scripts/remote.sh sync-config          give the machine the settings Terraform has now (asks first)
 #   scripts/remote.sh set-secret NAME [< file]   REGISTRY_USERNAME, REGISTRY_TOKEN,
 #                                                CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY,
 #                                                BACKUP_REMOTE_SECRET
@@ -138,6 +139,25 @@ cmd_set_secret() {
     fi
 }
 
+# config.env as Terraform has it now (the adapter's `config` output), for a
+# machine that was made with older settings: the domain, the limits, backups.
+cmd_sync_config() {
+    local tmp diff answer
+    [ -z "${CLOUD_HOST:-}" ] || die "CLOUD_HOST is a machine made by hand: edit /etc/diagnosticar/config.env there (remote.sh ssh), then diagnosticar deploy --force"
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' RETURN
+    terraform -chdir="$TF_DIR" output -json config 2>/dev/null \
+        | jq -er 'to_entries | sort_by(.key)[] | "\(.key)=\u0027\(.value)\u0027"' > "$tmp" \
+        || die "no config output in providers/$PROVIDER: apply it first (remote.sh open does)"
+    log "What changes in /etc/diagnosticar/config.env on $(host)"
+    diff=$(on_machine set-config --dry-run < "$tmp")
+    printf '%s\n' "$diff"
+    [ "$diff" != "config.env is already this one" ] || return 0
+    read -r -p "Apply it and redeploy? [y/N] " answer
+    [ "$answer" = y ] || die "not applied"
+    on_machine set-config < "$tmp"
+}
+
 cmd_setup() {
     log "1/3 The stack"
     cmd_install_stack
@@ -169,7 +189,7 @@ cmd_ssh() {
 
 # ----------------------------------------------------------------------------------
 
-[ $# -gt 0 ] || { sed -n '2,25p' "$0"; exit 1; }
+[ $# -gt 0 ] || { sed -n '2,26p' "$0"; exit 1; }
 cmd="$1"; shift
 case "$cmd" in
     open)          cmd_open ;;
@@ -178,6 +198,7 @@ case "$cmd" in
     install-stack) cmd_install_stack ;;
     install-genes) cmd_install_genes ;;
     set-secret)    cmd_set_secret "$@" ;;
+    sync-config)   cmd_sync_config ;;
     restore)       cmd_restore "$@" ;;
     ssh)           cmd_ssh ;;
     deploy|rollback|status|logs|stats|backup|secrets|seed-admin|rotate)

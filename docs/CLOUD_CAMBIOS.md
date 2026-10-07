@@ -136,7 +136,7 @@ cada pull request que toca `infra/cloud/`.
 
 En resumen: copiar `providers/aws/`, cambiar los recursos de máquina, IP y
 firewall por los del proveedor nuevo, respetar las entradas (`ssh_public_key_path`,
-`admin_cidrs`, `stack_settings`) y salidas (`url`, `ssh_host`) comunes, y pasarle
+`admin_cidrs`, `domain`, `stack_settings`) y salidas (`url`, `ssh_host`, `config`) comunes, y pasarle
 el cloud-init del módulo común como *user data*. El detalle, un esqueleto de
 ejemplo y la lista de verificación están en
 [`infra/cloud/README.md`, "Cómo agregar un proveedor"](../infra/cloud/README.md#cómo-agregar-un-proveedor).
@@ -155,6 +155,56 @@ genera el cloud-init para pegarlo al crear la VM a mano.
 - Los tres repositorios publican en GHCR al mergear a `main`, y la máquina toma
   cada versión nueva sola.
 
+## Dominio propio: diagnosticar.app detrás de Cloudflare (2026-10-07)
+
+**El problema.** `diagnosticar.app` tiene el DNS en Cloudflare, con el registro
+`A` a la Elastic IP en modo Proxied. Entrar al sitio daba **525**: Cloudflare no
+lograba el *handshake* TLS con la máquina. El adaptador de AWS fijaba el dominio
+en `<ip-con-guiones>.sslip.io`, así que Caddy solo tenía ese sitio y ese
+certificado. Cuando Cloudflare pedía `diagnosticar.app`, Caddy cortaba la
+conexión (`openssl s_client -servername diagnosticar.app` → `tlsv1 alert
+internal error`).
+
+**La solución.**
+
+| Pieza | Cambio |
+|---|---|
+| `providers/aws` | Variable `domain` (en `terraform.tfvars`). Con un dominio propio, el de sslip.io pasa al módulo como alias |
+| `modules/stack` | Variable `domain_aliases` → `DOMAIN_ALIASES` en `config.env` |
+| `stack/Caddyfile` | Sirve el dominio y los alias. Los alias redirigen al dominio, salvo `/deploy-status.json` |
+| `stack/Caddyfile` | Toma la IP real de `CF-Connecting-IP`, solo si la conexión viene de Cloudflare, y la pasa como único `X-Forwarded-For` |
+| `diagnosticar set-config` / `remote.sh sync-config` | Llevan a la máquina el `config.env` que hoy tiene Terraform: muestran la diferencia, preguntan y redespliegan |
+
+**Decisiones.**
+
+- **Let's Encrypt, no Origin CA de Cloudflare.** Caddy saca y renueva el
+  certificado solo, por HTTP-01, porque Cloudflare deja pasar el puerto 80 a la
+  máquina. Así no hay un certificado que generar ni instalar a mano, y el stack
+  sigue siendo el mismo con o sin Cloudflare. Cloudflare va en **Full (strict)**,
+  que verifica ese certificado. *Flexible* no sirve: genera un bucle de
+  redirecciones.
+- **La IP real del visitante.** Sin este cambio, el backend y el extractor
+  verían solo direcciones de Cloudflare, y los límites por IP mezclarían a
+  usuarios distintos. Caddy confía en `CF-Connecting-IP` solo cuando la conexión
+  viene de los rangos de Cloudflare: otra máquina no puede elegir su propia
+  dirección. El backend y el extractor no cambian.
+- **Un comando para la configuración.** Las instancias ignoran los cambios de
+  *user data* para no recrearse (ni perder la base), así que un cambio de
+  Terraform no llegaba a `config.env`. `sync-config` reemplaza el archivo entero,
+  porque no tiene nada secreto, y guarda el anterior en `config.env.previous`.
+- **Sigue con `noindex`.** Es una copia de prueba con datos sintéticos.
+
+**Cómo se probó.** Caddy 2.11 local con el Caddyfile nuevo:
+
+- La IP de `CF-Connecting-IP` se usa si viene de un rango confiable y se ignora
+  si no. Un `X-Forwarded-For` falso no pasa.
+- El alias redirige con 308 y `/deploy-status.json` responde.
+- `noindex` sale también en el alias.
+
+Además: `caddy fmt`, `terraform validate` y `plan` (solo cambian outputs: la
+instancia no se toca), `shellcheck`, y `set-config` en un entorno aislado (dry-run,
+aplicar, sin cambios, línea inválida, sin `DOMAIN`).
+
 ## Lo que falta
 
 1. Mergear `chore/remove-aws-native` en los tres repositorios: borra `infra/aws/`
@@ -162,5 +212,8 @@ genera el cloud-init para pegarlo al crear la VM a mano.
 2. El dueño de los repositorios: borrar el secreto `AWS_DEPLOY_ROLE_ARN` de
    `diagnostic.ar`, `diagnostic.ar-api` y `spanish-symptoms-recognizer`.
 3. Agregar el escaneo de vulnerabilidades (Trivy) a los workflows de publicación.
-4. Probar un segundo proveedor, o `providers/manual` en una VM local, para mostrar
+4. Cambiar la variable `CLOUD_URLS` de `diagnostic.ar` y `diagnostic.ar-api` a
+   `https://diagnosticar.app` (la URL vieja sigue sirviendo `/deploy-status.json`,
+   así que no es urgente).
+5. Probar un segundo proveedor, o `providers/manual` en una VM local, para mostrar
    la portabilidad funcionando y no solo validada.

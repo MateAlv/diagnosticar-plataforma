@@ -26,6 +26,20 @@ variable "domain" {
   default     = "auto"
 }
 
+variable "domain_aliases" {
+  description = <<-EOT
+    Other names of the same machine, usually the sslip.io address it had
+    before a domain of its own. Caddy keeps a certificate for each and
+    redirects them to `domain`, so old links keep working.
+  EOT
+  type        = list(string)
+  default     = []
+  validation {
+    condition     = alltrue([for a in var.domain_aliases : can(regex("^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$", a))])
+    error_message = "Each alias is a bare host name, in lower case (no scheme, port or path)."
+  }
+}
+
 variable "settings" {
   description = <<-EOT
     Everything else, each with a default (README, "Ajustes"). An adapter
@@ -85,6 +99,7 @@ locals {
   # /etc/diagnosticar/config.env on the machine.
   config = {
     DOMAIN                      = var.domain
+    DOMAIN_ALIASES              = join(" ", var.domain_aliases)
     REGISTRY                    = local.s.registry
     IMAGE_PREFIX                = local.s.image_prefix
     CHANNEL                     = local.s.channel

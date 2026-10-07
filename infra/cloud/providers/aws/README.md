@@ -9,7 +9,7 @@ lo mismo en cualquier proveedor; esto es solo lo propio de AWS.
 | Recurso | Para qué |
 |---|---|
 | EC2 `t3.small`, Ubuntu 24.04 x86-64, disco gp3 30 GB cifrado | La máquina. IMDSv2 con un solo salto: los contenedores no pueden pedir las credenciales del rol |
-| Elastic IP | La dirección fija; el dominio es `<ip-con-guiones>.sslip.io`. Separada de la instancia: sobrevive a reemplazarla |
+| Elastic IP | La dirección fija. Separada de la instancia: sobrevive a reemplazarla. El dominio es `domain` (en uso: `diagnosticar.app`, ver ["Dominio propio"](../../README.md#dominio-propio)) o, sin él, `<ip-con-guiones>.sslip.io` |
 | Security group | 80 y 443 para todos; 22 solo mientras `remote.sh open` lo abre para tu IP |
 | Rol IAM con solo `s3:PutObject` en `backups/` | Los backups nocturnos al bucket de artefactos, sin guardar credenciales |
 | Alarma de gasto (opcional, `budget_email`) | AWS Budgets, por mail |
