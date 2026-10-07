@@ -8,6 +8,8 @@
 # A domain of your own, pointing at the Elastic IP (../../README.md, "Dominio
 # propio"). Without it: <ip-con-guiones>.sslip.io.
 # domain = "diagnosticar.app"
+# With the domain behind Cloudflare's proxy: 80/443 only from Cloudflare.
+# web_sources = "cloudflare"
 
 # instance_type      = "t3.small"      # c7i-flex.large for 4 GB
 # monthly_budget_usd = 25

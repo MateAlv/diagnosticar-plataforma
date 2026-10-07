@@ -42,7 +42,8 @@ module "stack" {
   source          = "../../modules/stack"
   ssh_public_keys = [file(pathexpand(var.ssh_public_key_path))]
   domain          = local.domain
-  domain_aliases  = local.domain == local.sslip ? [] : [local.sslip]
+  # Behind Cloudflare only, nothing else could reach the sslip.io name.
+  domain_aliases = local.domain == local.sslip || var.web_sources == "cloudflare" ? [] : [local.sslip]
   # Backups to S3 with the instance's own role, so no credential is stored
   # anywhere. stack_settings can still override it.
   settings = merge(
@@ -93,8 +94,9 @@ locals {
   ])[0]
 }
 
-# 80 (Let's Encrypt and the redirect) and 443 for everyone; 22 only for the
-# addresses in admin_cidrs, which is empty unless `remote.sh open` passes one.
+# 80 (Let's Encrypt and the redirect) and 443 for everyone, or only for
+# Cloudflare (web_sources); 22 only for the addresses in admin_cidrs, which is
+# empty unless `remote.sh open` passes one.
 resource "aws_security_group" "web" {
   name_prefix = "diagnosticar-cloud-"
   description = "HTTP and HTTPS to Caddy; SSH only while administering"
@@ -105,14 +107,24 @@ resource "aws_security_group" "web" {
   }
 }
 
+# The Elastic IP is IPv4 only, so Cloudflare reaches it over IPv4: its v4
+# ranges are enough. With "anywhere" the keys stay "80" and "443", as before.
+locals {
+  cloudflare_only = var.web_sources == "cloudflare"
+  web_rules = {
+    for pair in setproduct(["80", "443"], local.cloudflare_only ? module.stack.cloudflare_ipv4 : ["0.0.0.0/0"]) :
+    (local.cloudflare_only ? "${pair[0]} ${pair[1]}" : pair[0]) => { port = pair[0], cidr = pair[1] }
+  }
+}
+
 resource "aws_vpc_security_group_ingress_rule" "web" {
-  for_each          = toset(["80", "443"])
+  for_each          = local.web_rules
   security_group_id = aws_security_group.web.id
-  description       = "tcp/${each.value} from anywhere"
-  cidr_ipv4         = "0.0.0.0/0"
+  description       = "tcp/${each.value.port} from ${local.cloudflare_only ? "Cloudflare" : "anywhere"}"
+  cidr_ipv4         = each.value.cidr
   ip_protocol       = "tcp"
-  from_port         = tonumber(each.value)
-  to_port           = tonumber(each.value)
+  from_port         = tonumber(each.value.port)
+  to_port           = tonumber(each.value.port)
 }
 
 resource "aws_vpc_security_group_ingress_rule" "ssh" {
