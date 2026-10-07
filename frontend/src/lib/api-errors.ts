@@ -19,6 +19,8 @@ export type ErrorContext =
   | "admin"
   | "admin_invite"
   | "admin_revoke"
+  | "accept_terms"
+  | "delete_account"
   | "patients_list"
   | "save"
   | "rank_genes"
@@ -205,6 +207,19 @@ function byContext(e: ApiError, context: ErrorContext | undefined): string | nul
       if (code === "cannot_revoke_self") return "No podés quitarte a vos mismo el acceso de administración.";
       if (code === "last_admin") return "No se puede quitar al único administrador. Invitá a otra persona primero.";
       if (status === 404) return "Esa persona ya no es administradora. Recargá la página para ver la lista actual.";
+      return null;
+    case "accept_terms":
+      if (code === "terms_version_changed") return "Los términos cambiaron mientras tenías la página abierta. Recargala para ver la versión nueva.";
+      if (status === 429) return `Hubo muchos intentos. Probá de nuevo ${espera}.`;
+      if (status >= 500) return "No pudimos registrar que aceptaste los términos. Probá de nuevo en unos minutos.";
+      return null;
+    case "delete_account":
+      if (code === "confirmation_mismatch") return "El email que escribiste no coincide con el de tu cuenta.";
+      if (code === "last_admin") return "Sos la única persona administradora. Invitá a otra antes de borrar tu cuenta.";
+      if (code === "account_inconsistent")
+        return "No pudimos borrar la cuenta automáticamente. Escribinos y la borramos nosotros.";
+      if (status === 429) return `Hubo muchos intentos. Probá de nuevo ${espera}.`;
+      if (status >= 500) return "No pudimos borrar la cuenta. No se borró nada; probá de nuevo en unos minutos.";
       return null;
     case "save":
       if (status === 404) return "Esta persona ya no está en tu cuenta. Podés empezar una búsqueda nueva para guardarla.";

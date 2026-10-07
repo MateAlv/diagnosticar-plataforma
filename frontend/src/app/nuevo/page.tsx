@@ -112,6 +112,8 @@ import { BirthDateInput } from "./birth-date-input";
 import { HpoLink } from "./hpo-link";
 import { ResultsDownload } from "./results-download";
 import { especialidadesParaConsultar } from "@/lib/especialidades";
+import { TERMS_VERSION } from "@/lib/terms";
+import { TermsAcceptance } from "./terms-acceptance";
 import { isOnsetInformative } from "@/lib/onset-informative";
 import { onsetClass, onsetForSave, onsetPayloadFields, parseOnset, showsPrecisar, type SymptomOnset } from "@/lib/onset";
 import { ADJUSTED_LIST_NOTE, originsIn } from "@/lib/question-insights";
@@ -123,6 +125,7 @@ import {
 } from "@/lib/questions-api";
 
 const TEXTO_OCULTO_KEY = "diagnosticar:texto-oculto";
+const DEMO_TERMS_KEY = "diagnosticar:demo-terminos";
 
 const PROFESSIONAL_VIEW_KEY = "diagnosticar:vista-profesional";
 
@@ -347,7 +350,16 @@ const countries = [
 function NuevoDiagnosticoScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, logout, refreshSession, loading: authLoading } = useAuth();
+  const { user, logout, refreshSession, acceptTerms, loading: authLoading } = useAuth();
+  // The demo has no account to record the acceptance on, so it lasts the tab.
+  const [demoTermsAccepted, setDemoTermsAccepted] = useState(false);
+  useEffect(() => {
+    try {
+      setDemoTermsAccepted(sessionStorage.getItem(DEMO_TERMS_KEY) === TERMS_VERSION);
+    } catch {
+      // Storage blocked: the demo asks again.
+    }
+  }, []);
   const isDemoMode = searchParams.get("demo") === "1";
   const [step, setStep] = useState<Step>(isDemoMode ? 2 : 1);
   const [isLoading, setIsLoading] = useState(false);
@@ -1288,6 +1300,23 @@ function NuevoDiagnosticoScreen() {
     </div>
   );
 
+  // Nothing is loaded until the current /terminos are accepted: they are the
+  // consent for health data. Accounts made with Google from the login page,
+  // older and invited ones get the checkbox here, once per version.
+  const needsTerms = isDemoMode ? !demoTermsAccepted : user?.health_data_consent !== true;
+  const aceptarTerminos = async () => {
+    if (!isDemoMode) {
+      await acceptTerms();
+      return;
+    }
+    try {
+      sessionStorage.setItem(DEMO_TERMS_KEY, TERMS_VERSION);
+    } catch {
+      // Storage blocked: accepted for this page only.
+    }
+    setDemoTermsAccepted(true);
+  };
+
   const handleLogout = async () => {
     if (await logout()) router.replace("/login");
   };
@@ -1357,9 +1386,9 @@ function NuevoDiagnosticoScreen() {
                 </button>
                 {displayName && (
                   <>
-                    <span className="user-badge truncate max-md:sr-only">
+                    <Link href="/cuenta" title="Tu cuenta" className="user-badge truncate max-md:sr-only">
                       {displayName}
-                    </span>
+                    </Link>
                     <button type="button" onClick={handleLogout} className="nav-link whitespace-nowrap text-sm">
                       Cerrar sesión
                     </button>
@@ -1447,6 +1476,17 @@ function NuevoDiagnosticoScreen() {
                 </div>
               )}
 
+              {needsTerms ? (
+                <TermsAcceptance
+                  onAccept={aceptarTerminos}
+                  description={
+                    isDemoMode
+                      ? "Para probar Diagnostic.ar, aceptá los términos y condiciones."
+                      : "Para cargar los datos, aceptá los términos y condiciones. Te lo pedimos una sola vez."
+                  }
+                />
+              ) : (
+              <>
               {step === 1 && (
                 <div className="space-y-6">
                   <p className="text-sm leading-relaxed text-[var(--lu-subtle)]">
@@ -2308,9 +2348,11 @@ function NuevoDiagnosticoScreen() {
                   )}
                   </div>
                 ))}
+              </>
+              )}
             </div>
 
-            {(step < 3 || step > firstStep) && (
+            {!needsTerms && (step < 3 || step > firstStep) && (
               <div className="mt-10 flex flex-wrap items-center justify-between gap-3">
                 {step > firstStep ? (
                   <button

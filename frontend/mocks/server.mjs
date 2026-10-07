@@ -83,8 +83,8 @@ function ownsDiagnosis(user, diagnosisId) {
   return false;
 }
 
-// The wording of the health-data consent, as backend/src/services/consent.ts.
-const HEALTH_DATA_CONSENT_VERSION = "2026-10-06";
+// The version of /terminos, as backend/src/services/consent.ts.
+const HEALTH_DATA_CONSENT_VERSION = "2026-10-07";
 
 function makeUser(email, fullName = "Usuario de Prueba") {
   const user = {
@@ -305,13 +305,40 @@ const server = http.createServer(async (req, res) => {
     const password = String(body.password ?? "");
     if (!email.includes("@")) { log("400 bad email"); return send(res, 400, { error: "Invalid payload", code: "invalid_payload", field: "email" }); }
     if (password.length < 8) { log("400 short password"); return send(res, 400, { error: "Invalid payload", code: "invalid_payload", field: "password" }); }
+    if (pathname === "/api/auth/signup" && body.termsAccepted !== true) { log("400 terms not accepted"); return send(res, 400, { error: "Invalid payload", code: "invalid_payload" }); }
 
     // Any email works and is created on demand — this is a frontend sandbox,
     // not an auth system. The real backend rejects unknown users with 401.
     const user = users.get(email) ?? makeUser(email, body.fullName ?? body.name ?? "Usuario de Prueba");
-    if (pathname === "/api/auth/signup" && body.healthDataConsent === true) user.health_data_consent_version = HEALTH_DATA_CONSENT_VERSION;
+    if (pathname === "/api/auth/signup") user.health_data_consent_version = HEALTH_DATA_CONSENT_VERSION;
     log(`200 signed in as ${email}`);
     return send(res, 200, { user: publicUser(user) }, issueSession(res, user));
+  }
+
+  if (pathname === "/api/auth/consent" && method === "POST") {
+    const user = currentUser(cookies);
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized", code: "unauthenticated" }); }
+    const body = await readBody(req);
+    if (body.version !== HEALTH_DATA_CONSENT_VERSION) { log("409 stale terms"); return send(res, 409, { error: "These terms are no longer current", code: "terms_version_changed" }); }
+    user.health_data_consent_version = HEALTH_DATA_CONSENT_VERSION;
+    log(`200 ${user.email} accepted the terms`);
+    return send(res, 200, { user: publicUser(user) });
+  }
+
+  // Same contract as the backend: the typed email confirms, and only this
+  // account's patients go with it.
+  if (pathname === "/api/auth/account" && method === "DELETE") {
+    const user = currentUser(cookies);
+    if (!user) { log("401 (no session)"); return send(res, 401, { error: "Unauthorized", code: "unauthenticated" }); }
+    const body = await readBody(req);
+    if (typeof body.confirmEmail !== "string" || body.confirmEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
+      log("400 confirmation mismatch");
+      return send(res, 400, { error: "The confirmation does not match", code: "confirmation_mismatch" });
+    }
+    for (const [id, patient] of patients) if (patient.user_id === user.id) patients.delete(id);
+    users.delete(user.email);
+    log(`200 deleted ${user.email}`);
+    return send(res, 200, { deleted: true }, clearSession(cookies));
   }
 
   if (pathname === "/api/auth/logout" && method === "POST") {

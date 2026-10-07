@@ -1,4 +1,5 @@
 import type { Page, Route } from "@playwright/test";
+import { TERMS_VERSION } from "../../src/lib/terms";
 import fixtures from "../../mocks/fixtures.json";
 import { createQuestionsEngine } from "../../mocks/questions-engine.mjs";
 import type { QuestionErrorCode } from "../../src/lib/questions-api";
@@ -89,6 +90,16 @@ export async function mockModelServices(page: Page, overrides: ServiceOverrides 
         await wait();
         await json(route, rankStatus, rankBody);
     });
+}
+
+/**
+ * The demo asks to accept /terminos before showing the wizard and remembers it
+ * for the tab. Tests about the wizard itself start past that card.
+ */
+export async function acceptDemoTerms(page: Page) {
+    await page.addInitScript((version) => {
+        window.sessionStorage.setItem("diagnosticar:demo-terminos", version);
+    }, TERMS_VERSION);
 }
 
 /**

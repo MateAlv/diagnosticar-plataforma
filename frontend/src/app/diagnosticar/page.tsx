@@ -321,7 +321,7 @@ function DiagnosticarContent() {
           </Link>
           <nav className="flex items-center gap-3 md:gap-5">
             <Link href="/home" className="hidden md:inline text-sm font-medium text-[var(--lu-subtle)] hover:text-[var(--lu-text)] transition-colors">Home</Link>
-            <span className="user-badge truncate max-md:sr-only">{displayName}</span>
+            <Link href="/cuenta" title="Tu cuenta" className="user-badge truncate max-md:sr-only">{displayName}</Link>
             <button type="button" onClick={handleLogout} className="nav-link whitespace-nowrap text-sm">Cerrar sesión</button>
           </nav>
         </div>
@@ -594,6 +594,14 @@ function DiagnosticarContent() {
             <h2 className="text-xl font-bold text-[var(--lu-text)] mb-2">Diagnostic.ar</h2>
             <p className="text-[var(--lu-subtle)] max-w-lg">
               Potenciamos tu práctica clínica con orientación diagnóstica basada en evidencia y modelos de fenotipado.
+            </p>
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-[var(--lu-text)] mb-2">Tu cuenta</h2>
+            <p className="text-[var(--lu-subtle)]">
+              <Link href="/cuenta" className="underline underline-offset-2 hover:text-[var(--lu-accent)] transition-colors">
+                Ver tu cuenta o borrarla con todos sus datos
+              </Link>
             </p>
           </div>
           <div>

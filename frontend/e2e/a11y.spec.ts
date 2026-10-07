@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { mockBackend, mockModelServices } from "./fixtures/services";
+import { acceptDemoTerms, mockBackend, mockModelServices } from "./fixtures/services";
 
 /**
  * Accessibility is not decoration here: the audience is families under stress,
@@ -53,6 +53,7 @@ for (const path of ["/home", "/login", "/sign-up", "/terminos", "/no-existe"]) {
 }
 
 test("the wizard has no serious accessibility violations", async ({ page }) => {
+    await acceptDemoTerms(page);
     await page.goto("/nuevo?demo=1", { waitUntil: "networkidle" });
     expect(await scan(page)).toEqual([]);
 });
@@ -77,6 +78,7 @@ test("every image carries alt text", async ({ page }) => {
 });
 
 test("the clinical history field is reachable and labelled", async ({ page }) => {
+    await acceptDemoTerms(page);
     await page.goto("/nuevo?demo=1", { waitUntil: "networkidle" });
     const box = page.getByPlaceholder(/Nena de 7 años/);
     await box.focus();

@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import {
+    acceptDemoTerms,
     mockModelServices,
     mockBackend,
     collectPageErrors,
@@ -28,6 +29,7 @@ const TEST_USER = {
 
 /** Demo mode starts at step 2 and needs no account. */
 async function openDemoWizard(page: import("@playwright/test").Page) {
+    await acceptDemoTerms(page);
     await page.goto("/nuevo?demo=1", { waitUntil: "networkidle" });
 }
 

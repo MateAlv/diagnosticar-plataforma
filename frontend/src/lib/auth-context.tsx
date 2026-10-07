@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { ApiError, errorMessage, readApiError } from "./api-errors";
+import { TERMS_VERSION } from "./terms";
 
 type AuthUser = {
   id: string;
@@ -17,7 +18,7 @@ type AuthUser = {
   permissions?: {
     microin: boolean;
   };
-  /** The express consent for health data and its processing abroad, in /terminos' current wording. */
+  /** Whether the account accepted the current /terminos, which include the consent for health data. */
   health_data_consent?: boolean;
 };
 
@@ -33,8 +34,15 @@ type AuthContextValue = {
     email: string;
     password: string;
     name?: string | null;
-    healthDataConsent?: true;
+    termsAccepted: true;
   }) => Promise<"created" | "ambiguous">;
+  /** Records that the signed-in account accepts the current /terminos. */
+  acceptTerms: () => Promise<void>;
+  /**
+   * Deletes the signed-in account and everything it loaded. `confirmEmail` is
+   * what the person typed to confirm. On success they are signed out.
+   */
+  deleteAccount: (confirmEmail: string) => Promise<void>;
 
   /** Resolves to whether the server signed the person out; on false a notice explains why. */
   logout: () => Promise<boolean>;
@@ -183,7 +191,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const register = useCallback(
-    async (input: { email: string; password: string; name?: string | null; healthDataConsent?: true }) => {
+    async (input: { email: string; password: string; name?: string | null; termsAccepted: true }) => {
       const res = await fetch(`${API_URL}/auth/signup`, buildInit({ method: "POST", body: JSON.stringify(input) }));
       if (!res.ok) throw await readApiError(res);
       const payload = await parseResponse(res);
@@ -193,6 +201,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     []
   );
+
+  const acceptTerms = useCallback(async () => {
+    const res = await fetch(
+      `${API_URL}/auth/consent`,
+      buildInit({ method: "POST", body: JSON.stringify({ version: TERMS_VERSION }) }),
+    );
+    if (!res.ok) throw await readApiError(res);
+    const payload = await parseResponse(res);
+    if (!payload.user) throw new ApiError("bad_response", { status: res.status });
+    setUser(payload.user);
+  }, []);
+
+  const deleteAccount = useCallback(async (confirmEmail: string) => {
+    const res = await fetch(
+      `${API_URL}/auth/account`,
+      buildInit({ method: "DELETE", body: JSON.stringify({ confirmEmail }) }),
+    );
+    if (!res.ok) throw await readApiError(res);
+    forgetLocalClinicalData();
+    setUser(null);
+  }, []);
 
   const [logoutFailure, setLogoutFailure] = useState<unknown>(null);
 
@@ -223,8 +252,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, login, register, logout, refreshSession }),
-    [user, loading, login, register, logout, refreshSession]
+    () => ({ user, loading, login, register, acceptTerms, deleteAccount, logout, refreshSession }),
+    [user, loading, login, register, acceptTerms, deleteAccount, logout, refreshSession]
   );
 
   return (

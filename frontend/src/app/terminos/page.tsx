@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 };
 
 const CONTACTO = "diagnosticar.ar@gmail.com";
-const ACTUALIZADO = "6 de octubre de 2026";
+const ACTUALIZADO = "7 de octubre de 2026";
 const RESPONSABLE = "Grupo de Genómica Clínica, Facultad de Ciencias Exactas y Naturales, Universidad de Buenos Aires";
 const DOMICILIO = "Intendente Güiraldes 2160, Ciudad Universitaria, C1428EGA, Ciudad Autónoma de Buenos Aires";
 
@@ -43,7 +43,7 @@ export default function TerminosPage() {
                         <li><a href="#uso" className="text-[var(--lu-accent-text)] underline underline-offset-2">Uso</a></li>
                         <li><a href="#privacidad" className="text-[var(--lu-accent-text)] underline underline-offset-2">Privacidad</a></li>
                         <li><a href="#datos-de-salud" className="text-[var(--lu-accent-text)] underline underline-offset-2">Datos de salud</a></li>
-                        <li><a href="#conservacion" className="text-[var(--lu-accent-text)] underline underline-offset-2">Conservación</a></li>
+                        <li><a href="#conservacion" className="text-[var(--lu-accent-text)] underline underline-offset-2">Conservación y borrado</a></li>
                         <li><a href="#derechos" className="text-[var(--lu-accent-text)] underline underline-offset-2">Tus derechos</a></li>
                         <li><a href="#ley" className="text-[var(--lu-accent-text)] underline underline-offset-2">Ley aplicable</a></li>
                     </ul>
@@ -94,8 +94,8 @@ export default function TerminosPage() {
                                 ellos.
                             </li>
                             <li>
-                                Podemos modificar estos términos. Si el cambio es importante, lo vamos a avisar en la
-                                plataforma.
+                                Podemos modificar estos términos. Cuando cambian, te pedimos que los aceptes de nuevo
+                                antes de seguir usando la plataforma.
                             </li>
                         </ul>
                     </Seccion>
@@ -135,42 +135,55 @@ export default function TerminosPage() {
                     <Seccion id="datos-de-salud" titulo="4. Datos de salud y su tratamiento fuera del país">
                         <p>
                             Los síntomas, el relato y las respuestas son <strong>datos de salud</strong>, que la Ley
-                            25.326 considera datos sensibles. Solo los tratamos con tu autorización expresa, que te
-                            pedimos al crear la cuenta, y solo para darte la orientación y guardarla en tu cuenta.
+                            25.326 considera datos sensibles. Al aceptar estos términos nos das tu consentimiento para
+                            tratarlos como se explica en esta página: para darte la orientación, guardarla en tu cuenta
+                            y, sin identificar a nadie, medir el uso de la herramienta y mejorarla.
                         </p>
                         <p>
                             Para reconocer los síntomas en el texto y para redactar las preguntas de seguimiento, el
                             texto se envía a un servicio de inteligencia artificial de Anthropic, PBC, que lo procesa
                             en <strong>Estados Unidos</strong>. Esa transferencia internacional también forma parte de
-                            la autorización que das. Por eso te recomendamos no incluir en el texto datos que
-                            identifiquen a la persona.
+                            tu consentimiento. Por eso te recomendamos no incluir en el texto datos que identifiquen a
+                            la persona.
                         </p>
                         <p>
-                            Podés retirar la autorización cuando quieras escribiéndonos; a partir de ese momento no
-                            vas a poder hacer búsquedas nuevas, y podés pedir que borremos las que ya hiciste.
+                            Podés retirar tu consentimiento cuando quieras borrando tu cuenta (ver la sección 5): se
+                            borra todo lo que cargaste.
                         </p>
                     </Seccion>
 
-                    <Seccion id="conservacion" titulo="5. Cuánto tiempo guardamos los datos">
+                    <Seccion id="conservacion" titulo="5. Cuánto tiempo guardamos los datos y cómo borrarlos">
                         <p>
-                            Las búsquedas se guardan por tiempo indefinido, para que puedas volver a verlas. Para
-                            identificar a la persona alcanza con un apodo o un número: no pedimos nombre completo, DNI
-                            ni dirección. Cuando usamos los datos para medir o mejorar la plataforma, lo hacemos
-                            siempre de forma anonimizada.
+                            <strong>Guardamos todo lo que cargás hasta que lo borres:</strong> tu cuenta, las personas,
+                            cada búsqueda con su texto, sus síntomas, sus resultados y tus respuestas, y los datos
+                            técnicos de la sección 3. No vence con el tiempo, así podés volver a tus búsquedas cuando
+                            quieras.
                         </p>
                         <p>
-                            Para borrar tus datos o tu cuenta, escribí al Grupo de Genómica Clínica a{" "}
+                            Para identificar a la persona alcanza con un apodo o un número: no pedimos nombre completo,
+                            DNI ni dirección. Cuando usamos los datos para medir o mejorar la plataforma, lo hacemos
+                            de forma agregada, sin identificar a nadie.
+                        </p>
+                        <p>
+                            Desde{" "}
+                            <Link href="/cuenta" className="font-semibold text-[var(--lu-accent-text)] underline underline-offset-2">
+                                Tu cuenta
+                            </Link>{" "}
+                            podés borrar la cuenta con todo lo que cargaste. Se borra en el momento y no se puede
+                            deshacer. Lo borrado puede seguir un tiempo en las copias de seguridad, hasta que se
+                            reemplazan solas. Si no podés entrar a tu cuenta, escribinos a{" "}
                             <a href={`mailto:${CONTACTO}`} className="font-semibold text-[var(--lu-accent-text)] underline underline-offset-2">
                                 {CONTACTO}
                             </a>{" "}
-                            desde el email de tu cuenta y los borramos.
+                            desde su email y la borramos nosotros.
                         </p>
                     </Seccion>
 
                     <Seccion id="derechos" titulo="6. Tus derechos">
                         <p>
                             Según la Ley 25.326 de Protección de Datos Personales, podés pedir acceso a tus datos,
-                            corregirlos o que los borremos. Escribinos a{" "}
+                            corregirlos o que los borremos. Borrarlos lo podés hacer vos mismo desde Tu cuenta; para lo
+                            demás, escribinos a{" "}
                             <a href={`mailto:${CONTACTO}`} className="font-semibold text-[var(--lu-accent-text)] underline underline-offset-2">
                                 {CONTACTO}
                             </a>{" "}

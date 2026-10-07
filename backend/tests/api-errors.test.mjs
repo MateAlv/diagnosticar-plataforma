@@ -116,7 +116,7 @@ test('signing up over a stuck unverified account needs that account\'s password'
     t.after(() => deleteUser(stuck.id));
 
     const attacker = createClient(server.baseUrl);
-    const takeover = await attacker.post('/api/auth/signup', { email: stuck.email, password: 'attacker-password' });
+    const takeover = await attacker.post('/api/auth/signup', { email: stuck.email, password: 'attacker-password', termsAccepted: true });
     assert.equal(takeover.status, 200);
     assert.equal(takeover.json.code, 'signup_ambiguous');
     assert.equal(takeover.json.user, undefined);
@@ -126,13 +126,13 @@ test('signing up over a stuck unverified account needs that account\'s password'
     assert.equal((await getUserById(stuck.id)).verified, false, 'the account must stay unverified');
 
     const owner = createClient(server.baseUrl);
-    const finished = await owner.post('/api/auth/signup', { email: stuck.email, password: 'the-owners-password' });
+    const finished = await owner.post('/api/auth/signup', { email: stuck.email, password: 'the-owners-password', termsAccepted: true });
     assert.equal(finished.status, 200);
     assert.equal(finished.json.user?.email, stuck.email);
 });
 
 test('signing up with a taken email gives the same answer as any ambiguous signup', { skip }, async () => {
-    const res = await createClient(server.baseUrl).post('/api/auth/signup', { email: owner.email, password: 'whatever-password' });
+    const res = await createClient(server.baseUrl).post('/api/auth/signup', { email: owner.email, password: 'whatever-password', termsAccepted: true });
     assert.equal(res.status, 200);
     assert.equal(res.json.code, 'signup_ambiguous');
     assert.equal(res.json.user, undefined);

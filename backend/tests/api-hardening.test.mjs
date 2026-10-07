@@ -193,6 +193,7 @@ test('signup rejects unknown fields instead of silently ignoring them', { skip }
     const res = await anon.post('/api/auth/signup', {
         email: 'strict@example.test',
         password: 'a-long-enough-password',
+        termsAccepted: true,
         role: 'admin',
         verified: true,
     });

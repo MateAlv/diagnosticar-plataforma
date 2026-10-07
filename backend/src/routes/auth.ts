@@ -28,6 +28,7 @@ import { CSRF_COOKIE_NAME } from '../middleware/csrfMiddleware.js';
 import { rateLimit, userRateLimit } from '../middleware/rateLimit.js';
 import { hashToken } from '../utils/tokens.js';
 import { logError } from '../utils/logError.js';
+import { deleteAccount } from '../repositories/accountRepository.js';
 import { stripNullBytes } from '../utils/sanitize.js';
 import { internalError, sendError } from '../utils/httpErrors.js';
 import { GOOGLE_AUTH_ENABLED, GOOGLE_REDIRECT_URL, IS_PRODUCTION } from '../config.js';
@@ -43,8 +44,8 @@ const signupSchema = z
         fullName: z.string().trim().min(1).max(255).optional().nullable(),
         name: z.string().trim().min(1).max(255).optional().nullable(),
         organization: z.string().trim().min(1).max(255).optional().nullable(),
-        // The sign-up form's own checkbox: recorded with the wording's version.
-        healthDataConsent: z.literal(true).optional(),
+        // The sign-up form's checkbox: accepting /terminos, recorded with its version.
+        termsAccepted: z.literal(true),
     })
     .strict();
 
@@ -94,6 +95,11 @@ const oauthStateCookieOptions = {
     path: '/',
     maxAge: 10 * 60 * 1000,
 };
+
+// Set when the Google sign-in starts from the sign-up form with its checkbox
+// ticked, so the account that comes back from Google is recorded as having
+// accepted /terminos. Carries the version, never anything about the person.
+const TERMS_ACCEPTED_COOKIE = 'terms_accepted';
 
 const signupRateLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 5 });
 const loginRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
@@ -160,6 +166,11 @@ router.get('/oauth/google', googleRateLimit, (req, res, next) => {
     }
     const state = crypto.randomBytes(32).toString('hex');
     res.cookie(OAUTH_STATE_COOKIE, state, oauthStateCookieOptions);
+    if (req.query.acepto === HEALTH_DATA_CONSENT_VERSION) {
+        res.cookie(TERMS_ACCEPTED_COOKIE, HEALTH_DATA_CONSENT_VERSION, oauthStateCookieOptions);
+    } else {
+        res.clearCookie(TERMS_ACCEPTED_COOKIE, { ...oauthStateCookieOptions, maxAge: undefined });
+    }
     return passport.authenticate('google', {
         scope: ['profile', 'email'],
         session: false,
@@ -178,6 +189,8 @@ router.get(
         const expected = req.cookies?.[OAUTH_STATE_COOKIE];
         const received = req.query.state;
         res.clearCookie(OAUTH_STATE_COOKIE, { ...oauthStateCookieOptions, maxAge: undefined });
+        res.locals.termsAccepted = req.cookies?.[TERMS_ACCEPTED_COOKIE] === HEALTH_DATA_CONSENT_VERSION;
+        res.clearCookie(TERMS_ACCEPTED_COOKIE, { ...oauthStateCookieOptions, maxAge: undefined });
         if (
             typeof expected !== 'string' ||
             typeof received !== 'string' ||
@@ -227,6 +240,9 @@ router.get(
             if (!user.verified) {
                 await verifyUser(user.id);
             }
+            if (res.locals.termsAccepted === true) {
+                await recordHealthDataConsent(user.id, HEALTH_DATA_CONSENT_VERSION);
+            }
 
             const accessToken = signAccessToken(user);
             const refreshToken = signRefreshToken(user);
@@ -257,7 +273,7 @@ router.post('/signup', signupRateLimit, async (req, res) => {
         if (!parsed.success) {
             return invalidPayload(res, parsed.error.issues);
         }
-        const { email, password, fullName, name, organization, healthDataConsent } = stripNullBytes(parsed.data);
+        const { email, password, fullName, name, organization } = stripNullBytes(parsed.data);
         const safeFullName = fullName ?? name ?? undefined;
         const safeOrganization = organization ?? undefined;
 
@@ -273,7 +289,7 @@ router.post('/signup', signupRateLimit, async (req, res) => {
                 (await verifyPassword(password, existing.password_hash))
             ) {
                 await verifyUser(existing.id);
-                if (healthDataConsent) await recordHealthDataConsent(existing.id, HEALTH_DATA_CONSENT_VERSION);
+                await recordHealthDataConsent(existing.id, HEALTH_DATA_CONSENT_VERSION);
                 const accessToken = signAccessToken(existing);
                 const refreshToken = signRefreshToken(existing);
                 res.cookie('access_token', accessToken, { ...accessCookieOptions, maxAge: ACCESS_TOKEN_MAX_AGE_MS });
@@ -292,7 +308,7 @@ router.post('/signup', signupRateLimit, async (req, res) => {
 
         // Auto-verify immediately — email verification is handled separately
         await verifyUser(newUser.id);
-        if (healthDataConsent) await recordHealthDataConsent(newUser.id, HEALTH_DATA_CONSENT_VERSION);
+        await recordHealthDataConsent(newUser.id, HEALTH_DATA_CONSENT_VERSION);
 
         const accessToken = signAccessToken(newUser);
         const refreshToken = signRefreshToken(newUser);
@@ -435,6 +451,76 @@ router.get('/me', sessionReadRateLimit, authenticate, requireFreshAccessToken, a
         if (!user) return sendError(res, 401, 'unauthenticated', 'Unauthorized');
         res.json({ user: publicUser(user) });
     } catch {
+        internalError(res);
+    }
+});
+
+const consentSchema = z.object({ version: z.string().max(32) }).strict();
+const consentRateLimit = userRateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
+
+/**
+ * An account that has not accepted the current /terminos (one made with Google
+ * from the login page, an older one, an invited one) accepts them here, once.
+ * Only the version on screen can be accepted, so a stale page cannot record
+ * consent to a wording it never showed.
+ */
+router.post('/consent', consentRateLimit, authenticate, requireFreshAccessToken, async (req: AuthRequest, res) => {
+    try {
+        const parsed = consentSchema.safeParse(req.body);
+        if (!parsed.success) return sendError(res, 400, 'invalid_request', 'Invalid request');
+        if (parsed.data.version !== HEALTH_DATA_CONSENT_VERSION) {
+            return sendError(res, 409, 'terms_version_changed', 'These terms are no longer current');
+        }
+        const userId = req.userRecord?.id ?? req.user?.sub;
+        if (!userId) return sendError(res, 401, 'unauthenticated', 'Unauthorized');
+        await recordHealthDataConsent(userId, HEALTH_DATA_CONSENT_VERSION);
+        const user = await getUserById(userId);
+        if (!user) return sendError(res, 401, 'unauthenticated', 'Unauthorized');
+        res.json({ user: publicUser(user) });
+    } catch (error) {
+        logError('[auth] consent failed', error);
+        internalError(res);
+    }
+});
+
+const deleteAccountSchema = z.object({ confirmEmail: z.string().max(255) }).strict();
+const deleteAccountRateLimit = userRateLimit({ windowMs: 60 * 60 * 1000, max: 10 });
+
+/**
+ * Deletes the signed-in account and everything it loaded. The person types
+ * their email to confirm, so a stray click or a forged request cannot do it.
+ * See accountRepository.deleteAccount for what is and is not removed.
+ */
+router.delete('/account', deleteAccountRateLimit, authenticate, requireFreshAccessToken, async (req: AuthRequest, res) => {
+    try {
+        const parsed = deleteAccountSchema.safeParse(req.body);
+        if (!parsed.success) return sendError(res, 400, 'invalid_request', 'Invalid request');
+        const userId = req.userRecord?.id ?? req.user?.sub;
+        const user = userId ? await getUserById(userId) : null;
+        if (!user) return sendError(res, 401, 'unauthenticated', 'Unauthorized');
+        if (parsed.data.confirmEmail.trim().toLowerCase() !== user.email.trim().toLowerCase()) {
+            return sendError(res, 400, 'confirmation_mismatch', 'The confirmation does not match');
+        }
+
+        const result = await deleteAccount(user.id);
+        if (result.outcome === 'last_admin') {
+            return sendError(res, 409, 'last_admin', 'The last admin cannot delete their account');
+        }
+        if (result.outcome === 'foreign_rows') {
+            console.error('[auth] account deletion refused: another account has diagnoses under its patients', { userId: user.id });
+            return sendError(res, 409, 'account_inconsistent', 'The account cannot be deleted automatically');
+        }
+        if (result.outcome === 'not_found') {
+            return sendError(res, 401, 'unauthenticated', 'Unauthorized');
+        }
+
+        console.warn('[auth] account deleted', { userId: user.id, patients: result.patients, diagnoses: result.diagnoses });
+        res.clearCookie('access_token', accessCookieOptions);
+        res.clearCookie('refresh_token', refreshCookieOptions);
+        res.clearCookie(CSRF_COOKIE_NAME, csrfCookieOptions);
+        res.json({ deleted: true });
+    } catch (error) {
+        logError('[auth] account deletion failed', error);
         internalError(res);
     }
 });

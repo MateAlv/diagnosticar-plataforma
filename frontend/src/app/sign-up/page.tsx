@@ -1,17 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { HealthDataConsentText } from "@/components/ui/HealthDataConsent";
+import { TermsCheckbox } from "@/components/ui/TermsCheckbox";
+import { TERMS_VERSION } from "@/lib/terms";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { errorMessage } from "@/lib/api-errors";
 import { useAuth } from "../../lib/auth-context";
 
+const TERMS_REQUIRED = "Para crear la cuenta, aceptá los términos y condiciones.";
+
 export default function SignUpPage() {
   const router = useRouter();
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-  const googleAuthUrl = `${API_URL}/auth/oauth/google`;
+  const googleAuthUrl = `${API_URL}/auth/oauth/google?acepto=${TERMS_VERSION}`;
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -20,8 +23,8 @@ export default function SignUpPage() {
   const [showMainPass, setShowMainPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [acceptedHealthData, setAcceptedHealthData] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [googleBlocked, setGoogleBlocked] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const { register, user, loading } = useAuth();
 
@@ -52,12 +55,7 @@ export default function SignUpPage() {
     }
 
     if (!acceptedTerms) {
-      setError("Tenés que aceptar los términos y condiciones para continuar.");
-      return;
-    }
-
-    if (!acceptedHealthData) {
-      setError("Tenés que autorizar el tratamiento de los datos de salud para continuar.");
+      setError(TERMS_REQUIRED);
       return;
     }
 
@@ -67,7 +65,7 @@ export default function SignUpPage() {
       email,
       password,
       name: fullName,
-      healthDataConsent: true,
+      termsAccepted: true,
     })
       .then(setOutcome)
       .catch((err) => {
@@ -168,8 +166,26 @@ export default function SignUpPage() {
             </ul>
           </div>
 
+          <TermsCheckbox
+            checked={acceptedTerms}
+            onChange={(checked) => {
+              setAcceptedTerms(checked);
+              if (checked && error === TERMS_REQUIRED) setError(null);
+            }}
+            className="mt-6"
+          />
+          <ErrorNotice className="mt-3" message={googleBlocked && !acceptedTerms ? TERMS_REQUIRED : null} />
+
           <div className="mt-6">
-            <a href={googleAuthUrl} className="btn-google">
+            <a
+              href={googleAuthUrl}
+              className="btn-google"
+              onClick={(event) => {
+                if (acceptedTerms) return;
+                event.preventDefault();
+                setGoogleBlocked(true);
+              }}
+            >
               <svg viewBox="0 0 48 48" aria-hidden="true">
                 <path
                   fill="#FFC107"
@@ -311,36 +327,6 @@ export default function SignUpPage() {
                 )}
               </button>
             </div>
-
-            <label className="flex items-start gap-3 text-sm text-[color:var(--lu-subtle)]">
-              <input
-                type="checkbox"
-                checked={acceptedTerms}
-                onChange={(event) => setAcceptedTerms(event.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-[var(--lu-border)] accent-[var(--lu-accent)]"
-                required
-              />
-              <span>
-                Leí y acepto los{" "}
-                <Link href="/terminos" target="_blank" className="font-semibold text-[var(--lu-accent-text)] underline underline-offset-2">
-                  términos de uso y la política de privacidad
-                </Link>
-                .
-              </span>
-            </label>
-
-            <label className="flex items-start gap-3 text-sm text-[color:var(--lu-subtle)]">
-              <input
-                type="checkbox"
-                checked={acceptedHealthData}
-                onChange={(event) => setAcceptedHealthData(event.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-[var(--lu-border)] accent-[var(--lu-accent)]"
-                required
-              />
-              <span>
-                <HealthDataConsentText />
-              </span>
-            </label>
 
             <ErrorNotice message={error} />
 

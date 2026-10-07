@@ -63,3 +63,17 @@ test('a callback without the matching state is refused before reaching Google', 
         assert.equal(cookieValue(res, 'access_token'), null, 'a session was issued');
     }
 });
+
+test('starting from the sign-up checkbox carries the accepted terms version, and only the current one', async () => {
+    const { HEALTH_DATA_CONSENT_VERSION } = await import('../dist/services/consent.js');
+
+    const accepted = await fetch(`${server.baseUrl}/api/auth/oauth/google?acepto=${HEALTH_DATA_CONSENT_VERSION}`, { redirect: 'manual' });
+    assert.equal(accepted.status, 302);
+    assert.equal(cookieValue(accepted, 'terms_accepted'), HEALTH_DATA_CONSENT_VERSION);
+
+    for (const query of ['', '?acepto=2020-01-01']) {
+        const res = await fetch(`${server.baseUrl}/api/auth/oauth/google${query}`, { redirect: 'manual' });
+        assert.equal(res.status, 302);
+        assert.ok(!cookieValue(res, 'terms_accepted'), `terms_accepted was set for "${query}"`);
+    }
+});
