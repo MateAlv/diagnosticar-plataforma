@@ -140,6 +140,15 @@ export async function migrate() {
         ON diagnoses (user_email_snapshot);
     `);
 
+        // The address and browser of each search were stored without any use,
+        // next to a clinical history about a child (Ley 25.326, art. 4: data
+        // must not be excessive). Nothing writes them any more; the columns
+        // stay so an older image can still insert during a rollback.
+        await client.query(`
+      UPDATE diagnoses SET source_ip = NULL, user_agent = NULL
+       WHERE source_ip IS NOT NULL OR user_agent IS NOT NULL;
+    `);
+
         // Follow-up questions and answers for a diagnosis (routes/questions.ts).
         // Nullable because most diagnoses never start a session.
         await client.query(`

@@ -80,14 +80,33 @@ export async function getUserByGoogleId(googleId: string): Promise<User | null> 
     return res.rows[0];
 }
 
+/**
+ * Links a Google identity to the account that already has its email.
+ *
+ * Emails are not verified at sign-up, so whoever set this account's password
+ * may not own the address: someone can register a victim's email first and
+ * wait for them to sign in with Google. Google has just proven who owns it,
+ * so the password is replaced by `unusableHash` and every open session is
+ * ended. From then on the account is reached through Google. An invited
+ * account's temporary password, known to the inviter, goes the same way.
+ */
 export async function linkGoogleAccount(
     id: string,
     googleId: string,
-    avatarUrl?: string | null
+    avatarUrl: string | null,
+    unusableHash: string,
 ): Promise<User | null> {
     const res = await query(
-        'UPDATE users SET google_id = $1, avatar_url = COALESCE($2, avatar_url), verified = TRUE WHERE id = $3 RETURNING *',
-        [googleId, avatarUrl ?? null, id]
+        `UPDATE users
+            SET google_id = $1,
+                avatar_url = COALESCE($2, avatar_url),
+                verified = TRUE,
+                password_hash = $4,
+                must_change_password = FALSE,
+                token_version = token_version + 1
+          WHERE id = $3
+          RETURNING *`,
+        [googleId, avatarUrl ?? null, id, unusableHash]
     );
     if (res.rows.length === 0) return null;
     return res.rows[0];

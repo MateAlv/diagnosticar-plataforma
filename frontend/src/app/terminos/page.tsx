@@ -105,7 +105,8 @@ export default function TerminosPage() {
                         <ul className="list-disc space-y-2 pl-5">
                             <li>
                                 <strong>Tu cuenta:</strong> email y el nombre o apodo que elijas. Si entrás con Google,
-                                también el nombre y el email de esa cuenta de Google.
+                                también el nombre y el email de esa cuenta de Google. Si tu cuenta tenía contraseña y
+                                entrás con Google, desde ese momento se entra solo con Google.
                             </li>
                             <li>
                                 <strong>Las personas que cargás:</strong> los datos que indiques, todos opcionales:
@@ -115,10 +116,6 @@ export default function TerminosPage() {
                             <li>
                                 <strong>Cada búsqueda:</strong> el texto que pegues, los síntomas, los resultados y, si
                                 las usás, tus respuestas a las preguntas de seguimiento.
-                            </li>
-                            <li>
-                                <strong>Datos técnicos:</strong> la dirección IP y el tipo de navegador desde el que se
-                                hizo cada búsqueda.
                             </li>
                         </ul>
                         <p>
@@ -155,8 +152,8 @@ export default function TerminosPage() {
                     <Seccion id="conservacion" titulo="5. Cuánto tiempo guardamos los datos y cómo borrarlos">
                         <p>
                             <strong>Guardamos todo lo que cargás hasta que lo borres:</strong> tu cuenta, las personas,
-                            cada búsqueda con su texto, sus síntomas, sus resultados y tus respuestas, y los datos
-                            técnicos de la sección 3. No vence con el tiempo, así podés volver a tus búsquedas cuando
+                            cada búsqueda con su texto, sus síntomas, sus resultados y tus respuestas. No vence con el
+                            tiempo, así podés volver a tus búsquedas cuando
                             quieras.
                         </p>
                         <p>

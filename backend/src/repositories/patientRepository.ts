@@ -72,8 +72,6 @@ export async function createPatientWithDiagnosis(
     userEmailSnapshot: string | null,
     patientData: PatientInput,
     diagnosisData: DiagnosisInput,
-    sourceIp: string | null,
-    userAgent: string | null,
 ): Promise<{ patient: Patient; diagnosisId: string }> {
     const client = await getClient();
     try {
@@ -102,8 +100,8 @@ export async function createPatientWithDiagnosis(
             `INSERT INTO diagnoses
                (patient_id, user_id, user_email_snapshot, historia_clinica,
                 symptoms_extracted, phenotypes, genphen_genes,
-                genphen_specialties, genphen_confidence, source_ip, user_agent)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                genphen_specialties, genphen_confidence)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              RETURNING id`,
             [
                 patient.id,
@@ -115,8 +113,6 @@ export async function createPatientWithDiagnosis(
                 JSON.stringify(diagnosisData.genphenGenes),
                 diagnosisData.genphenSpecialties ? JSON.stringify(diagnosisData.genphenSpecialties) : null,
                 diagnosisData.genphenConfidence ?? null,
-                sourceIp,
-                userAgent,
             ],
         );
 

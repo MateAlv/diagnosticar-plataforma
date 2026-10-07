@@ -128,8 +128,6 @@ router.post(
 
         const userId = req.userRecord!.id;
         const userEmail = req.userRecord!.email ?? null;
-        const sourceIp = (req.ip ?? req.socket.remoteAddress) ?? null;
-        const userAgent = req.headers['user-agent'] ?? null;
 
         try {
             const result = await createPatientWithDiagnosis(
@@ -137,8 +135,6 @@ router.post(
                 userEmail,
                 { nombre, fechaNacimiento, sexo, localidad, pais },
                 { historiaClinica, symptomsExtracted, phenotypes, genphenGenes, genphenSpecialties, genphenConfidence },
-                sourceIp,
-                userAgent,
             );
             return res.status(201).json(result);
         } catch (err) {
@@ -163,8 +159,6 @@ router.post(
 
         const userId = req.userRecord!.id;
         const userEmail = req.userRecord!.email ?? null;
-        const sourceIp = (req.ip ?? req.socket.remoteAddress) ?? null;
-        const userAgent = req.headers['user-agent'] ?? null;
 
         try {
             const patient = await getPatientById(req.params.id, userId);
@@ -193,8 +187,6 @@ router.post(
                     genphenSpecialties,
                     genphenConfidence,
                 },
-                sourceIp,
-                userAgent,
             );
 
             return res.status(201).json(result);

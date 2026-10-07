@@ -348,3 +348,21 @@ test('a proxy Authorization: Basic header is not mistaken for a token', { skip }
 
     assert.equal(res.status, 401, 'a Basic header must read as no credentials, not a bad token');
 });
+
+test('a search keeps no IP address or browser, and older ones lose theirs', { skip }, async () => {
+    const created = await client.post('/api/patients', samplePayload(), { headers: { 'User-Agent': 'Navegador de prueba/1.0' } });
+    assert.equal(created.status, 201, created.text);
+    const { pool, migrate } = await import('../dist/database/pool.js');
+    const { rows } = await pool.query('SELECT source_ip, user_agent FROM diagnoses WHERE id = $1', [created.json.diagnosisId]);
+    assert.deepEqual(rows[0], { source_ip: null, user_agent: null });
+
+    const listed = await client.get(`/api/patients/${created.json.patient.id}/diagnoses`);
+    assert.equal(listed.status, 200);
+    assert.ok(!/source_ip|user_agent/.test(listed.text), 'the API still returns the columns');
+
+    // A row written by an older image is cleared on the next boot.
+    await pool.query("UPDATE diagnoses SET source_ip = '203.0.113.9', user_agent = 'viejo' WHERE id = $1", [created.json.diagnosisId]);
+    await migrate();
+    const { rows: after } = await pool.query('SELECT source_ip, user_agent FROM diagnoses WHERE id = $1', [created.json.diagnosisId]);
+    assert.deepEqual(after[0], { source_ip: null, user_agent: null });
+});

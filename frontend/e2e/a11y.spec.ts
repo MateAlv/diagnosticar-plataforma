@@ -83,6 +83,7 @@ test("the clinical history field is reachable and labelled", async ({ page }) =>
     const box = page.getByPlaceholder(/Nena de 7 años/);
     await box.focus();
     await expect(box).toBeFocused();
+    await expect(box).toHaveAccessibleDescription(/evitá poner nombres, DNI u otros datos que identifiquen a la persona/);
 });
 
 test("the page is navigable by keyboard to the primary action", async ({ page }) => {

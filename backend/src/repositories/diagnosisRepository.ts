@@ -11,8 +11,6 @@ export type Diagnosis = {
     genphen_genes: any[];
     genphen_specialties: any | null;
     genphen_confidence: number | null;
-    source_ip: string | null;
-    user_agent: string | null;
     created_at: string;
 };
 
@@ -30,15 +28,13 @@ export async function createDiagnosisForPatient(
     userId: string,
     userEmailSnapshot: string | null,
     diagnosisData: DiagnosisInput,
-    sourceIp: string | null,
-    userAgent: string | null,
 ): Promise<{ diagnosisId: string }> {
     const res = await query(
         `INSERT INTO diagnoses
            (patient_id, user_id, user_email_snapshot, historia_clinica,
             symptoms_extracted, phenotypes, genphen_genes,
-            genphen_specialties, genphen_confidence, source_ip, user_agent)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            genphen_specialties, genphen_confidence)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING id`,
         [
             patientId,
@@ -50,8 +46,6 @@ export async function createDiagnosisForPatient(
             JSON.stringify(diagnosisData.genphenGenes),
             diagnosisData.genphenSpecialties ? JSON.stringify(diagnosisData.genphenSpecialties) : null,
             diagnosisData.genphenConfidence ?? null,
-            sourceIp,
-            userAgent,
         ],
     );
 
@@ -71,7 +65,7 @@ export async function createDiagnosisForPatient(
  */
 const DIAGNOSIS_COLUMNS = `d.id, d.patient_id, d.user_id, d.user_email_snapshot, d.historia_clinica,
     d.symptoms_extracted, d.phenotypes, d.genphen_genes, d.genphen_specialties,
-    d.genphen_confidence, d.source_ip, d.user_agent, d.created_at`;
+    d.genphen_confidence, d.created_at`;
 
 /**
  * Returns all diagnoses for a patient, only if the patient belongs to userId.

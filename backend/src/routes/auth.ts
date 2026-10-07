@@ -224,7 +224,8 @@ router.get(
             if (!user) {
                 const existing = await getUserByEmail(email);
                 if (existing) {
-                    user = await linkGoogleAccount(existing.id, googleId, avatarUrl);
+                    const unusableHash = await hashPassword(crypto.randomBytes(32).toString('hex'));
+                    user = await linkGoogleAccount(existing.id, googleId, avatarUrl, unusableHash);
                 }
             }
 

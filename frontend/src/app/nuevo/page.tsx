@@ -1911,8 +1911,13 @@ function NuevoDiagnosticoScreen() {
                         maxLength={10000}
                         aria-label="Relato clínico"
                         placeholder="Ej. Nena de 7 años. Desde los 2 años tiene tos productiva casi todos los días, con sibilancias y cuadros respiratorios a repetición. Se cansa más que otros chicos al correr. En el último control pesaba menos de lo esperado para su edad."
+                        aria-describedby="relato-datos-personales"
                         className="mt-4 w-full rounded-xl border border-[var(--lu-border)] bg-white px-4 py-3.5 text-base leading-relaxed text-[var(--lu-text)] focus:border-[var(--lu-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--lu-accent-light)] transition-all"
                       />
+                      <p id="relato-datos-personales" className="mt-1.5 text-xs text-[var(--lu-subtle)]">
+                        Si podés, evitá poner nombres, DNI u otros datos que identifiquen a la persona: para buscar
+                        síntomas no hacen falta.
+                      </p>
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                         <span className="text-xs text-[var(--lu-subtle)]">
                           {historiaClinica.length.toLocaleString()} / 10.000
