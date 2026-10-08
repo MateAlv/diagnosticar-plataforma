@@ -145,7 +145,7 @@ function sheet(overrides = {}) {
   return {
     title: 'Para conversar en la consulta',
     summary: 'Resumen de prueba.',
-    finishNote: 'Las preguntas que quedaban ya no cambiaban el orden de la lista.',
+    finishNote: 'El primer gen de la lista ya se destacaba claramente sobre los demás, así que no hacían falta más preguntas.',
     changes: {
       caption: 'Respecto de la lista original',
       result: listChanges(['CFTR', 'DNAH5', 'SCNN1A'], ['CFTR', 'SCNN1A', 'DNAH5']),
@@ -163,7 +163,7 @@ function sheet(overrides = {}) {
 test('the family copy has the summary, the answers by label, the list and the disclaimer word for word', () => {
   const text = buildConsultText(sheet());
   assert.ok(text.startsWith('Para conversar en la consulta\nDiagnostic.ar · 28 de septiembre de 2026'));
-  assert.match(text, /Resumen de prueba\.\nLas preguntas que quedaban/);
+  assert.match(text, /Resumen de prueba\.\nEl primer gen de la lista ya se destacaba/);
   assert.match(text, /Qué cambió con tus respuestas \(respecto de la lista original\):\nEl modelo volvió a ordenar la lista con los síntomas que confirmaste\.\n/);
   assert.match(text, /- SCNN1A subió del puesto 3 al 2\./);
   assert.match(text, /- DNAH5 bajó del puesto 2 al 3\./);

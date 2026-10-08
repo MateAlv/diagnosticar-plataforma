@@ -261,7 +261,7 @@ test("a family answers a round and gets the summary; the grid keeps the model's 
 
     await expect(panel(page).getByRole("heading", { name: "Para conversar en la consulta" })).toBeFocused();
     await expect(panel(page).locator("[data-summary]")).toHaveText(SUMMARIES.refined.paciente);
-    await expect(panel(page)).toContainText("Las preguntas que quedaban ya no cambiaban el orden de la lista.");
+    await expect(panel(page)).toContainText("El primer gen de la lista ya se destacaba claramente sobre los demás, así que no hacían falta más preguntas.");
 
     // The answers, grouped by what was said and named by their label.
     const answers = panel(page).locator("[data-answers]");

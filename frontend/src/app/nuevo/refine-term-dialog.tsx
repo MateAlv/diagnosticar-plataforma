@@ -2,7 +2,7 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useMemo, useState } from "react";
-import { fetchChildren, genesLabel, typesLabel, type HpoTerm, type HpoTermChildren } from "@/lib/hpo-terms";
+import { fetchChildren, genesLabel, subtypesLabel, type HpoTerm, type HpoTermChildren } from "@/lib/hpo-terms";
 import { onsetClass, type SymptomOnset } from "@/lib/onset";
 import { OnsetSelector } from "./onset-selector";
 
@@ -115,7 +115,7 @@ export function RefineTermDialog({ target, onClose, onChoose, onset, onOnsetChan
                                 ) : root ? (
                                     <>
                                         «{rootName}» es un término amplio
-                                        {root.debajo ? <>: abarca {typesLabel(root.debajo)}</> : null}. Si sabés de
+                                        {subtypesLabel(root) ? <>: abarca {subtypesLabel(root)}</> : null}. Si sabés de
                                         qué tipo es, elegilo: cuanto más específico, mejor se ordenan los genes. Si
                                         tenés dudas, dejalo como está.
                                     </>

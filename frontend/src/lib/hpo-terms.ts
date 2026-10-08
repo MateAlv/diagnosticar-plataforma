@@ -65,6 +65,20 @@ export function typesLabel(count: number): string {
     return `${count.toLocaleString("es-AR")} ${count === 1 ? "tipo más específico" : "tipos más específicos"}`;
 }
 
+/**
+ * What the refine dialog will list for a term: its direct subtypes, plus how
+ * many there are counting their own variants when that is more. Counting every
+ * term beneath alone promised a list longer than the one the dialog shows.
+ * "4 tipos más específicos (5 contando sus variantes)". Null without subtypes.
+ */
+export function subtypesLabel(term: Pick<HpoTerm, "hijos" | "debajo"> | undefined | null): string | null {
+    const direct = term?.hijos ?? 0;
+    if (direct === 0) return null;
+    const beneath = term?.debajo ?? 0;
+    const label = typesLabel(direct);
+    return beneath > direct ? `${label} (${beneath.toLocaleString("es-AR")} contando sus variantes)` : label;
+}
+
 /** "1.560 genes", "1 gen". */
 export function genesLabel(genes: number): string {
     return `${genes.toLocaleString("es-AR")} ${genes === 1 ? "gen" : "genes"}`;

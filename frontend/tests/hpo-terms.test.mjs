@@ -12,7 +12,7 @@ import { importTs } from './helpers/ts-module.mjs';
  * failed lookup never turns into an error on screen.
  */
 
-const { canRefine, isBroadTerm, genesLabel, typesLabel, fetchTerms, fetchChildren } =
+const { canRefine, isBroadTerm, genesLabel, typesLabel, subtypesLabel, fetchTerms, fetchChildren } =
   await importTs('lib/hpo-terms.ts');
 
 const t = (nombre, genes, hijos, debajo) => ({ hpo_id: 'HP:0000000', nombre, genes, tiene_hijos: hijos > 0, hijos, debajo });
@@ -65,6 +65,16 @@ test('the fixture tree carries the real counts', () => {
 test('counts read in Spanish', () => {
   assert.equal(typesLabel(14), '14 tipos más específicos');
   assert.equal(typesLabel(1), '1 tipo más específico');
+});
+
+test('the subtype count matches the list the dialog shows', () => {
+  // Hipertensión: 4 direct types, one of them with a variant of its own.
+  assert.equal(subtypesLabel({ hijos: 4, debajo: 5 }), '4 tipos más específicos (5 contando sus variantes)');
+  assert.equal(subtypesLabel({ hijos: 3, debajo: 3 }), '3 tipos más específicos');
+  assert.equal(subtypesLabel({ hijos: 1, debajo: 1 }), '1 tipo más específico');
+  assert.equal(subtypesLabel({ hijos: 12, debajo: 1040 }), '12 tipos más específicos (1.040 contando sus variantes)');
+  assert.equal(subtypesLabel({ hijos: 0, debajo: 0 }), null);
+  assert.equal(subtypesLabel(undefined), null);
 });
 
 test('gene counts read in Spanish', () => {

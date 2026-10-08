@@ -64,14 +64,19 @@ async function rowsOf(userId) {
     return rows[0];
 }
 
-async function totals() {
+/**
+ * Every patient and diagnosis not owned by `userId`, by id. Other test files
+ * run against the same database at the same time and add or delete their own
+ * accounts, so table totals are not comparable; individual rows are.
+ */
+async function rowsNotOwnedBy(userId) {
     const { rows } = await pool.query(
-        `SELECT (SELECT count(*) FROM users)::int AS users,
-                (SELECT count(*) FROM patients)::int AS patients,
-                (SELECT count(*) FROM diagnoses)::int AS diagnoses,
-                (SELECT count(*) FROM question_agent_rounds)::int AS rounds`,
+        `SELECT 'patient' AS kind, id, user_id FROM patients WHERE user_id <> $1
+         UNION ALL
+         SELECT 'diagnosis' AS kind, id, user_id FROM diagnoses WHERE user_id <> $1`,
+        [userId],
     );
-    return rows[0];
+    return rows;
 }
 
 const deleteAccount = (client, confirmEmail, opts = {}) =>
@@ -85,7 +90,7 @@ test('deleting an account removes all of it and nothing of anyone else', { skip 
     const aliceBefore = await rowsOf(alice.id);
     assert.deepEqual(aliceBefore, { users: 1, patients: 2, diagnoses: 3, rounds: 1 });
     const bobBefore = await rowsOf(bob.id);
-    const before = await totals();
+    const others = await rowsNotOwnedBy(alice.id);
 
     const res = await deleteAccount(alice.client, alice.email.toUpperCase());
     assert.equal(res.status, 200, res.text);
@@ -93,17 +98,16 @@ test('deleting an account removes all of it and nothing of anyone else', { skip 
 
     assert.deepEqual(await rowsOf(alice.id), { users: 0, patients: 0, diagnoses: 0, rounds: 0 });
     assert.deepEqual(await rowsOf(bob.id), bobBefore, "another account's rows changed");
-    const afterwards = await totals();
-    assert.deepEqual(
-        afterwards,
-        {
-            users: before.users - 1,
-            patients: before.patients - aliceBefore.patients,
-            diagnoses: before.diagnoses - aliceBefore.diagnoses,
-            rounds: before.rounds - aliceBefore.rounds,
-        },
-        'more rows were deleted than the account had',
+    // A row of another account may only be gone if that whole account is
+    // gone too, which another test file does on its own.
+    const { rows: still } = await pool.query(
+        `SELECT id FROM patients UNION ALL SELECT id FROM diagnoses`,
     );
+    const present = new Set(still.map((row) => row.id));
+    const { rows: liveUsers } = await pool.query('SELECT id FROM users');
+    const live = new Set(liveUsers.map((row) => row.id));
+    const lost = others.filter((row) => !present.has(row.id) && live.has(row.user_id));
+    assert.deepEqual(lost, [], "rows of another account were deleted with this one");
 
     const bobPatients = await bob.client.get('/api/patients');
     assert.equal(bobPatients.status, 200);
@@ -155,43 +159,53 @@ test('it needs a session and the CSRF token', { skip }, async (t) => {
     assert.deepEqual(await rowsOf(erin.id), before);
 });
 
-test('the last admin cannot delete their account; with another admin they can', { skip }, async (t) => {
-    const { setUserRole, getUserById } = await import('../dist/repositories/userRepository.js');
-    const { signAccessToken, signRefreshToken } = await import('../dist/services/authService.js');
+test('the last admin cannot delete their account; with another admin they can', { skip }, async () => {
+    // "Last" is about the whole database, which other test files fill with
+    // admins of their own at the same time. A database of its own, in a
+    // process of its own, is the only place the answer is deterministic.
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const path = await import('node:path');
+    const { fileURLToPath, pathToFileURL } = await import('node:url');
+    const run = promisify(execFile);
 
-    // Any admins already in the database would make this one not the last.
-    const { rows: others } = await pool.query("SELECT id FROM users WHERE role = 'admin'");
-    await pool.query("UPDATE users SET role = 'user' WHERE role = 'admin'");
-    t.after(async () => {
-        for (const { id } of others) await pool.query("UPDATE users SET role = 'admin' WHERE id = $1", [id]);
-    });
+    const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+    const dist = (file) => pathToFileURL(path.join(backendRoot, 'dist', file)).href;
+    const scratchName = `diagnosticar_lastadmin_${Date.now()}`;
+    const scratchUrl = new URL(process.env.DATABASE_URL);
+    scratchUrl.pathname = `/${scratchName}`;
+    await pool.query(`CREATE DATABASE ${scratchName}`);
 
-    const promote = async (seeded) => {
-        await setUserRole(seeded.id, 'admin');
-        const fresh = await getUserById(seeded.id);
-        return authenticateClient(createClient(server.baseUrl), {
-            ...seeded,
-            accessToken: signAccessToken(fresh),
-            refreshToken: signRefreshToken(fresh),
+    try {
+        const script = `
+          const { migrate, pool } = await import(${JSON.stringify(dist('database/pool.js'))});
+          const users = await import(${JSON.stringify(dist('repositories/userRepository.js'))});
+          const { deleteAccount } = await import(${JSON.stringify(dist('repositories/accountRepository.js'))});
+          await migrate();
+          const admin = async (name) => {
+            const user = await users.createUser(name + '@example.test', 'x', null, name, null);
+            await users.setUserRole(user.id, 'admin');
+            return user;
+          };
+          const frank = await admin('frank');
+          const alone = await deleteAccount(frank.id);
+          const grace = await admin('grace');
+          const withAnother = await deleteAccount(frank.id);
+          const left = await pool.query('SELECT email, role FROM users ORDER BY email');
+          console.log(JSON.stringify({ alone: alone.outcome, withAnother: withAnother.outcome, left: left.rows, graceId: grace.id }));
+          await pool.end();
+        `;
+        const { stdout } = await run(process.execPath, ['--input-type=module', '-e', script], {
+            cwd: backendRoot,
+            env: { ...process.env, DATABASE_URL: scratchUrl.toString(), TEST_DATABASE_URL: scratchUrl.toString() },
         });
-    };
-
-    const frank = await seedUser();
-    const frankClient = await promote(frank);
-    t.after(() => deleteUser(frank.id));
-
-    const refused = await deleteAccount(frankClient, frank.email);
-    assert.equal(refused.status, 409);
-    assert.equal(refused.json.code, 'last_admin');
-    assert.equal((await rowsOf(frank.id)).users, 1);
-
-    const grace = await seedUser();
-    t.after(() => deleteUser(grace.id));
-    await promote(grace);
-
-    const res = await deleteAccount(frankClient, frank.email);
-    assert.equal(res.status, 200, res.text);
-    assert.equal((await rowsOf(frank.id)).users, 0);
+        const result = JSON.parse(stdout.trim().split('\n').pop());
+        assert.equal(result.alone, 'last_admin');
+        assert.equal(result.withAnother, 'deleted');
+        assert.deepEqual(result.left, [{ email: 'grace@example.test', role: 'admin' }]);
+    } finally {
+        await pool.query(`DROP DATABASE IF EXISTS ${scratchName} WITH (FORCE)`).catch(() => {});
+    }
 });
 
 test("an account whose patient holds another account's diagnosis is not deleted", { skip }, async (t) => {

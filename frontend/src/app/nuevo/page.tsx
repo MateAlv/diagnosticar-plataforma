@@ -106,7 +106,7 @@ import { OnsetInline, OnsetSummary } from "@/components/ui/OnsetReport";
 import { fetchGeneProfiles, formatScore, type GeneProfile } from "@/lib/genes-api";
 import { errorMessage, isSessionError, jsonOrThrow } from "@/lib/api-errors";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { BROAD_NOTICE_MAX_SYMPTOMS, canRefine as canRefineTerm, fetchTerms, isBroadTerm, typesLabel, type HpoTerm } from "@/lib/hpo-terms";
+import { BROAD_NOTICE_MAX_SYMPTOMS, canRefine as canRefineTerm, fetchTerms, isBroadTerm, subtypesLabel, type HpoTerm } from "@/lib/hpo-terms";
 import { RefineTermDialog, type RefineTarget } from "./refine-term-dialog";
 import { BirthDateInput } from "./birth-date-input";
 import { HpoLink } from "./hpo-link";
@@ -424,6 +424,7 @@ function NuevoDiagnosticoScreen() {
   const [extractError, setExtractError] = useState<string | null>(null);
   const [extractFailure, setExtractFailure] = useState<unknown>(undefined);
   const [extractInfo, setExtractInfo] = useState<string | null>(null);
+  const [textoAviso, setTextoAviso] = useState<string | null>(null);
   const [genphenResults, setGenphenResults] = useState<GenPhenResult[]>([]);
   const [genphenSpecialties, setGenphenSpecialties] = useState<GenPhenSpecialties | null>(null);
   const [genphenConfidence, setGenphenConfidence] = useState<number | null>(null);
@@ -452,8 +453,15 @@ function NuevoDiagnosticoScreen() {
   const [hpoSuggestLoading, setHpoSuggestLoading] = useState(false);
 
   const canGoStep2 = symptoms.length > 0;
-  const puedeAnalizarTexto =
-    historiaClinica.trim().length > 12 && historiaClinica.trim() !== lastAnalyzedHC;
+  // Why the text cannot be analyzed yet, said on the click instead of a
+  // disabled button that gives no reason.
+  const motivoSinAnalizar = (): string | null => {
+    const texto = historiaClinica.trim();
+    if (!texto) return "Escribí o pegá un texto para buscar síntomas.";
+    if (texto.length <= 12) return "El texto es muy corto. Contá un poco más para que podamos encontrar síntomas.";
+    if (texto === lastAnalyzedHC) return "Ya analizaste este texto. Si lo cambiás, podés analizarlo de nuevo.";
+    return null;
+  };
   const isLowConfidenceResult =
     genphenConfidence !== null && genphenConfidence < GENPHENAI_LOW_CONFIDENCE_THRESHOLD;
   // Offered where the specialities are: on a saved result worth refining.
@@ -956,8 +964,10 @@ function NuevoDiagnosticoScreen() {
   }, [newSymptom.description]);
 
   const extraerSintomasDelTexto = async () => {
+    const aviso = motivoSinAnalizar();
+    setTextoAviso(aviso);
+    if (aviso) return;
     const texto = historiaClinica.trim();
-    if (!texto) return;
     setIsLoading(true);
     setLoadingMessage("Buscando síntomas en el texto...");
     setExtractError(null);
@@ -1768,8 +1778,8 @@ function NuevoDiagnosticoScreen() {
                                   >
                                     <span className="min-w-0 flex-1 text-sm text-[var(--lu-text)]">
                                       <span className="font-semibold">{symptom.description}</span>
-                                      {info?.debajo ? (
-                                        <span className="text-[var(--lu-subtle)]"> · {typesLabel(info.debajo)}</span>
+                                      {subtypesLabel(info) ? (
+                                        <span className="text-[var(--lu-subtle)]"> · {subtypesLabel(info)}</span>
                                       ) : null}
                                     </span>
                                     <span className="flex gap-1.5">
@@ -1906,7 +1916,10 @@ function NuevoDiagnosticoScreen() {
                       </p>
                       <textarea
                         value={historiaClinica}
-                        onChange={(event) => setHistoriaClinica(event.target.value)}
+                        onChange={(event) => {
+                          setHistoriaClinica(event.target.value);
+                          setTextoAviso(null);
+                        }}
                         rows={6}
                         maxLength={10000}
                         aria-label="Relato clínico"
@@ -1925,7 +1938,7 @@ function NuevoDiagnosticoScreen() {
                         <button
                           type="button"
                           onClick={extraerSintomasDelTexto}
-                          disabled={!puedeAnalizarTexto || isLoading}
+                          disabled={isLoading}
                           className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[var(--lu-accent)] text-white text-sm font-semibold hover:bg-[color-mix(in_oklab,var(--lu-accent)_88%,#000)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1935,6 +1948,11 @@ function NuevoDiagnosticoScreen() {
                           {lastAnalyzedHC ? "Analizar de nuevo" : "Buscar síntomas en el texto"}
                         </button>
                       </div>
+                      {textoAviso && (
+                        <p role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+                          {textoAviso}
+                        </p>
+                      )}
                       <ErrorNotice className="mt-3" message={extractError} error={extractFailure} />
                       {extractInfo && !extractError && (
                         <div role="status" className="mt-3 flex items-start gap-2 rounded-xl border border-[var(--lu-accent-light)] bg-[color-mix(in_oklab,var(--lu-accent-light)_45%,white)] px-4 py-2.5 text-sm text-[var(--lu-text)]">

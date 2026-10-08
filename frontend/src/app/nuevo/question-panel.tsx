@@ -45,7 +45,7 @@ import type { QuestionSessionState } from "./use-question-session";
 const FINISH_COPY: Record<FinishReason, string> = {
     max_rounds: "Ya se hicieron todas las rondas de preguntas previstas para esta búsqueda.",
     user_finished: "Terminaste las preguntas antes de completar las rondas.",
-    confident: "Las preguntas que quedaban ya no cambiaban el orden de la lista.",
+    confident: "El primer gen de la lista ya se destacaba claramente sobre los demás, así que no hacían falta más preguntas.",
     no_useful_questions: "No encontramos más preguntas que ayuden a ordenar la lista.",
 };
 

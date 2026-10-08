@@ -50,8 +50,8 @@ test("broad symptoms are pointed out with how many forms they have, a negated on
     await toSymptoms(page);
 
     await expect(notice(page)).toContainText("Hay 2 síntomas muy amplios");
-    await expect(notice(page)).toContainText("Infecciones respiratorias recurrentes · 16 tipos más específicos");
-    await expect(notice(page)).toContainText("Talla baja · 20 tipos más específicos");
+    await expect(notice(page)).toContainText("Infecciones respiratorias recurrentes · 7 tipos más específicos (16 contando sus variantes)");
+    await expect(notice(page)).toContainText("Talla baja · 4 tipos más específicos (20 contando sus variantes)");
     await expect(notice(page)).not.toContainText("Convulsiones");
 });
 
@@ -119,6 +119,11 @@ test("the chip itself offers to refine a broad symptom", async ({ page }) => {
 
     await page.getByRole("button", { name: "Precisar Talla baja: tiene tipos más específicos" }).click();
     await expect(dialog(page).getByRole("heading")).toHaveText("¿Qué tipo de «Talla baja»?");
+    // The count promised up top is the list below, with deeper variants apart.
+    await expect(dialog(page)).toContainText("abarca 4 tipos más específicos (20 contando sus variantes)");
+    for (const name of ["Talla baja desproporcionada", "Talla baja proporcional", "Talla al nacer menor del percentil 3", "Enanismo hipofisario"]) {
+        await expect(dialog(page).getByText(name, { exact: true })).toBeVisible();
+    }
 });
 
 test("a failed load keeps the symptom and offers to retry", async ({ page }) => {

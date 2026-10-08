@@ -204,16 +204,37 @@ test("a slow extraction says it can take up to a minute", async ({ page }) => {
     await expect(page.getByText(/Puede tardar hasta un minuto/)).toHaveCount(0);
 });
 
-test("re-analysing unchanged text is blocked, avoiding a redundant model call", async ({ page }) => {
-    // brainy runs the LLM; re-sending identical text would burn GPU time for
-    // nothing, so the button stays disabled until the text actually changes.
+test("re-analysing unchanged text is refused with a reason, avoiding a redundant model call", async ({ page }) => {
+    // The recognizer runs an LLM; re-sending identical text would spend it for
+    // nothing, so the click explains why instead of calling it again.
     await openDemoWizard(page);
+    let extractCalls = 0;
+    page.on("request", (req) => {
+        if (req.url().includes("/extract-hpo")) extractCalls += 1;
+    });
 
     await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
     await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
     await expect(page.getByText("Infecciones respiratorias recurrentes")).toBeVisible();
+    expect(extractCalls).toBe(1);
 
-    await expect(page.getByRole("button", { name: /Analizar de nuevo/ })).toBeDisabled();
+    await page.getByRole("button", { name: /Analizar de nuevo/ }).click();
+    await expect(page.getByText("Ya analizaste este texto. Si lo cambiás, podés analizarlo de nuevo.")).toBeVisible();
+    expect(extractCalls).toBe(1);
+});
+
+test("an empty or too short text says so on the click", async ({ page }) => {
+    await openDemoWizard(page);
+    const box = page.getByPlaceholder(/Nena de 7 años/);
+    const button = page.getByRole("button", { name: /Buscar síntomas en el texto/ });
+
+    await button.click();
+    await expect(page.getByText("Escribí o pegá un texto para buscar síntomas.")).toBeVisible();
+
+    await box.fill("tos");
+    await expect(page.getByText("Escribí o pegá un texto para buscar síntomas.")).toHaveCount(0);
+    await button.click();
+    await expect(page.getByText(/El texto es muy corto/)).toBeVisible();
 });
 
 test("re-analysing after an edit does not duplicate already-found symptoms", async ({ page }) => {
@@ -227,7 +248,6 @@ test("re-analysing after an edit does not duplicate already-found symptoms", asy
     await page.getByPlaceholder(/Nena de 7 años/).fill(`${HISTORIA} Sin fiebre.`);
     await page.getByRole("button", { name: /Analizar de nuevo/ }).click();
 
-    await expect(page.getByRole("button", { name: /Analizar de nuevo/ })).toBeDisabled();
     await expect(page.getByText(/ya estaban en la lista/i)).toHaveCount(0);
     await expect(page.getByText("Infecciones respiratorias recurrentes")).toHaveCount(1);
 });
