@@ -80,6 +80,55 @@ type RegenerationDraft = {
   sintomas?: Array<{ description?: string; code?: string; onset?: unknown }>;
 };
 
+/** The symptoms of a saved search, as the wizard holds them; unusable entries are dropped. */
+function symptomsFromSaved(raw: unknown): Symptom[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      const code = typeof item?.code === "string" ? item.code.trim().toUpperCase() : "";
+      const description =
+        typeof item?.description === "string" && item.description.trim() ? item.description.trim() : code;
+      if (!description) return null;
+      const onset = parseOnset(item?.onset);
+      const symptom: Symptom = onset ? { description, code, onset } : { description, code };
+      return symptom;
+    })
+    .filter((item): item is Symptom => item !== null);
+}
+
+type WizardSnapshot = {
+  step: Step;
+  datosBasicos: { nombre: string; fechaNacimiento: string; sexo: string; localidad: string; pais: string };
+  symptoms: Symptom[];
+  lastAnalyzedHC: string;
+  extractedPhenotypes: PhenotypeItem[];
+  genphenResults: GenPhenResult[];
+  genphenSpecialties: GenPhenSpecialties | null;
+  genphenConfidence: number | null;
+  diagnosisId: string | null;
+  regenerationPatientId: string | null;
+};
+
+/** GET /api/patients/:id, the fields the wizard uses. */
+type SavedPatient = {
+  id: string;
+  nombre: string | null;
+  fecha_nacimiento: string | null;
+  sexo: string | null;
+  localidad: string | null;
+  pais: string | null;
+};
+
+/** GET /api/patients/:id/diagnoses/:diagId, the fields the wizard uses. */
+type SavedDiagnosis = {
+  id: string;
+  symptoms_extracted: unknown;
+  phenotypes: PhenotypeItem[] | null;
+  genphen_genes: GenPhenResult[] | null;
+  genphen_specialties: GenPhenSpecialties | null;
+  genphen_confidence: number | null;
+};
+
 const stepsMeta: Array<{ id: Step; title: string }> = [
   { id: 1, title: "Datos básicos" },
   { id: 2, title: "Síntomas del paciente" },
@@ -109,6 +158,8 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { BROAD_NOTICE_MAX_SYMPTOMS, canRefine as canRefineTerm, fetchTerms, isBroadTerm, subtypesLabel, type HpoTerm } from "@/lib/hpo-terms";
 import { RefineTermDialog, type RefineTarget } from "./refine-term-dialog";
 import { BirthDateInput } from "./birth-date-input";
+import { WizardDialog } from "./wizard-dialog";
+import { cameBackTo, clearWizardSnapshot, readWizardSnapshot, writeWizardSnapshot } from "@/lib/wizard-snapshot";
 import { HpoLink } from "./hpo-link";
 import { ResultsDownload } from "./results-download";
 import { especialidadesParaConsultar } from "@/lib/especialidades";
@@ -370,6 +421,11 @@ function NuevoDiagnosticoScreen() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // The ranking's failure is shown with the list, which on a phone is screens
+  // above the button that asked for it; it is brought into view when it comes.
+  const genphenErrorRef = useRef<HTMLDivElement | null>(null);
+  const revisarRef = useRef<HTMLButtonElement | null>(null);
+  const cancelarRef = useRef<HTMLButtonElement | null>(null);
   const sintomaInputRef = useRef<HTMLInputElement | null>(null);
 
   // Every field is optional. País starts on Argentina, where most families
@@ -381,6 +437,9 @@ function NuevoDiagnosticoScreen() {
     localidad: "",
     pais: "Argentina",
   });
+  const [fechaPendiente, setFechaPendiente] = useState(false);
+  const [mostrarErrorFecha, setMostrarErrorFecha] = useState(false);
+  const fechaInputRef = useRef<HTMLInputElement | null>(null);
 
   const HC_DRAFT_KEY = "diagnosticar:hc-draft";
   const LOCAL_RECORDS_KEY = "diagnosticar:records";
@@ -453,6 +512,13 @@ function NuevoDiagnosticoScreen() {
   const [hpoSuggestLoading, setHpoSuggestLoading] = useState(false);
 
   const canGoStep2 = symptoms.length > 0;
+  useEffect(() => {
+    if (!genphenError || step !== 2) return;
+    const aviso = genphenErrorRef.current;
+    if (!aviso) return;
+    aviso.scrollIntoView({ block: "center", behavior: scrollBehavior() });
+    aviso.focus({ preventScroll: true });
+  }, [genphenError, step]);
   // Why the text cannot be analyzed yet, said on the click instead of a
   // disabled button that gives no reason.
   const motivoSinAnalizar = (): string | null => {
@@ -845,9 +911,15 @@ function NuevoDiagnosticoScreen() {
     }
   }, [isDemoMode, step]);
 
+  // Read once: going back and forth between steps hands the page its search
+  // params again, and the draft is gone by then.
+  const regeneracionLeida = useRef(false);
+  const regeneracionConBorrador = useRef(false);
   useEffect(() => {
     const targetStep = searchParams.get("step");
+    if (regeneracionLeida.current) return;
     if (targetStep === "3" || targetStep === "2") {
+      regeneracionLeida.current = true;
       setStep(2);
       if (typeof window !== "undefined") {
         const stored = window.sessionStorage.getItem("diagnosticar:newDiagDraft");
@@ -857,21 +929,8 @@ function NuevoDiagnosticoScreen() {
             const isRegenerateDraft = parsed?.mode === "regenerate" && typeof parsed?.patientId === "string";
             setRegenerationPatientId(isRegenerateDraft ? parsed.patientId ?? null : null);
 
-            const parsedSymptoms = Array.isArray(parsed?.sintomas)
-              ? parsed.sintomas
-                  .map((item) => {
-                    const code = typeof item?.code === "string" ? item.code.trim().toUpperCase() : "";
-                    const description =
-                      typeof item?.description === "string" && item.description.trim()
-                        ? item.description.trim()
-                        : code;
-                    if (!description) return null;
-                    const onset = parseOnset(item?.onset);
-                    const symptom: Symptom = onset ? { description, code, onset } : { description, code };
-                    return symptom;
-                  })
-                  .filter((item): item is Symptom => item !== null)
-              : [];
+            const parsedSymptoms = symptomsFromSaved(parsed?.sintomas);
+            regeneracionConBorrador.current = true;
 
             // A saved search with no usable symptoms starts empty: anything
             // else would put symptoms the patient never reported into the
@@ -1017,12 +1076,14 @@ function NuevoDiagnosticoScreen() {
         (a, b) => (b.confidence ?? 0) - (a.confidence ?? 0)
       );
 
-      let agregados = 0;
+      // Counted against the list as it stood before this analysis: an updater
+      // passed to setSymptoms runs later, so a count taken inside it is still
+      // 0 when the message below is written.
+      const existentes = new Set(symptoms.map((item) => item.code.trim().toUpperCase()));
+      const agregados = detectados.filter((item) => !existentes.has(item.code.trim().toUpperCase())).length;
       setSymptoms((prev) => {
-        const existentes = new Set(prev.map((item) => item.code.trim().toUpperCase()));
-        const nuevos = detectados.filter((item) => !existentes.has(item.code.trim().toUpperCase()));
-        agregados = nuevos.length;
-        return [...prev, ...nuevos];
+        const actuales = new Set(prev.map((item) => item.code.trim().toUpperCase()));
+        return [...prev, ...detectados.filter((item) => !actuales.has(item.code.trim().toUpperCase()))];
       });
 
       setLastAnalyzedHC(texto);
@@ -1202,6 +1263,13 @@ function NuevoDiagnosticoScreen() {
 
   const handleContinue = async () => {
     if (step === 1) {
+      // Going on would drop a half-typed date without a word, and the age it
+      // gives is what bounds when each symptom could have started.
+      if (fechaPendiente) {
+        setMostrarErrorFecha(true);
+        fechaInputRef.current?.focus();
+        return;
+      }
       setStep(2);
       return;
     }
@@ -1213,12 +1281,168 @@ function NuevoDiagnosticoScreen() {
   // Skipping means giving none of it, so the país default goes too.
   const omitirDatosBasicos = () => {
     setDatosBasicos({ nombre: "", fechaNacimiento: "", sexo: "", localidad: "", pais: "" });
+    setFechaPendiente(false);
     setStep(2);
   };
 
   const firstStep: Step = isDemoMode ? 2 : 1;
 
   const maxReachableStep: Step = genphenResults.length > 0 ? 3 : symptoms.length > 0 ? 2 : firstStep;
+
+  // The search in progress survives a reload: restored once the session is
+  // known, and only when the page was reloaded or came back through the
+  // browser's history; saved on every change after that; dropped when the
+  // person leaves for another page. A regeneration and a saved search opened from the
+  // history bring their own state, so neither restores.
+  const snapshotOwner = isDemoMode ? "demo" : (user?.id ?? null);
+  const [wizardListo, setWizardListo] = useState(false);
+  useEffect(() => {
+    if (wizardListo || !snapshotOwner) return;
+    const traeSuEstado = regeneracionConBorrador.current || searchParams.get("diagnostico") !== null;
+    const guardado = traeSuEstado || !cameBackTo("/nuevo") ? null : readWizardSnapshot<WizardSnapshot>(snapshotOwner);
+    if (guardado) {
+      // A reload after "Volver a buscar" finds the draft gone; this is it.
+      setDraftLost(false);
+      setDatosBasicos(guardado.datosBasicos);
+      setSymptoms(guardado.symptoms);
+      setLastAnalyzedHC(guardado.lastAnalyzedHC);
+      setExtractedPhenotypes(guardado.extractedPhenotypes);
+      setGenphenResults(guardado.genphenResults);
+      setGenphenSpecialties(guardado.genphenSpecialties);
+      setGenphenConfidence(guardado.genphenConfidence);
+      setDiagnosisId(guardado.diagnosisId);
+      setRegenerationPatientId(guardado.regenerationPatientId);
+      const pasoMaximo: Step = guardado.genphenResults.length > 0 ? 3 : 2;
+      setStep(Math.max(firstStep, Math.min(guardado.step, pasoMaximo)) as Step);
+    }
+    setWizardListo(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restored once, when the owner is first known
+  }, [snapshotOwner]);
+
+  useEffect(() => {
+    if (!wizardListo || !snapshotOwner) return;
+    writeWizardSnapshot<WizardSnapshot>(snapshotOwner, {
+      step,
+      datosBasicos,
+      symptoms,
+      lastAnalyzedHC,
+      extractedPhenotypes,
+      genphenResults,
+      genphenSpecialties,
+      genphenConfidence,
+      diagnosisId,
+      regenerationPatientId,
+    });
+  }, [
+    wizardListo,
+    snapshotOwner,
+    step,
+    datosBasicos,
+    symptoms,
+    lastAnalyzedHC,
+    extractedPhenotypes,
+    genphenResults,
+    genphenSpecialties,
+    genphenConfidence,
+    diagnosisId,
+    regenerationPatientId,
+  ]);
+
+  // Unmounting is leaving /nuevo inside the app; a reload never unmounts.
+  useEffect(() => () => clearWizardSnapshot(), []);
+
+  // Each step is an entry in the browser's history, so its back button goes
+  // to the previous step instead of out of the search. The entries carry no
+  // URL of their own: the step is in the entry's state.
+  const pasoDesdeHistorial = useRef(false);
+  // The symptom step is always open from the first; results need a ranking.
+  const pasoMaximoRef = useRef<Step>(2);
+  pasoMaximoRef.current = genphenResults.length > 0 ? 3 : 2;
+  useEffect(() => {
+    if (!wizardListo) return;
+    if (pasoDesdeHistorial.current) {
+      pasoDesdeHistorial.current = false;
+      return;
+    }
+    const enHistorial = window.history.state?.diagnosticarPaso;
+    if (enHistorial === step) return;
+    if (typeof enHistorial !== "number" || step < enHistorial) {
+      window.history.replaceState({ ...window.history.state, diagnosticarPaso: step }, "");
+    } else {
+      window.history.pushState({ diagnosticarPaso: step }, "");
+    }
+  }, [step, wizardListo]);
+  useEffect(() => {
+    const alVolver = (event: PopStateEvent) => {
+      const paso = event.state?.diagnosticarPaso;
+      if (typeof paso !== "number") return;
+      pasoDesdeHistorial.current = true;
+      setShowConfirmModal(false);
+      setShowCancelModal(false);
+      setStep(Math.max(firstStep, Math.min(paso, pasoMaximoRef.current)) as Step);
+    };
+    window.addEventListener("popstate", alVolver);
+    return () => window.removeEventListener("popstate", alVolver);
+  }, [firstStep]);
+
+  // A saved search opened from the history: its result, its symptoms and
+  // the person's data, so the PDF and the questions work as on the day it
+  // was made. Searching again from here adds to the same person.
+  const pacienteGuardado = searchParams.get("paciente");
+  const diagnosticoGuardado = searchParams.get("diagnostico");
+  const [guardadaError, setGuardadaError] = useState<unknown>(null);
+  useEffect(() => {
+    if (isDemoMode || !user || !pacienteGuardado || !diagnosticoGuardado) return;
+    const controller = new AbortController();
+    const base = `${BACKEND_API_URL}/patients/${encodeURIComponent(pacienteGuardado)}`;
+    const leer = <T,>(url: string) =>
+      fetch(url, { credentials: "include", signal: controller.signal }).then((r) => jsonOrThrow<T>(r));
+    const leerTodo = () =>
+      Promise.all([
+        leer<SavedPatient>(base),
+        leer<SavedDiagnosis>(`${base}/diagnoses/${encodeURIComponent(diagnosticoGuardado)}`),
+      ]);
+    setGuardadaError(null);
+    setIsLoading(true);
+    setLoadingMessage("Abriendo la búsqueda guardada…");
+    leerTodo()
+      .catch(async (error) => {
+        if (isSessionError(error) && (await refreshSession())) return leerTodo();
+        throw error;
+      })
+      .then(([paciente, diagnostico]) => {
+        if (controller.signal.aborted) return;
+        setDatosBasicos({
+          nombre: paciente.nombre ?? "",
+          fechaNacimiento: paciente.fecha_nacimiento?.slice(0, 10) ?? "",
+          sexo: paciente.sexo ?? "",
+          localidad: paciente.localidad ?? "",
+          pais: paciente.pais ?? "",
+        });
+        setSymptoms(symptomsFromSaved(diagnostico.symptoms_extracted));
+        setExtractedPhenotypes(Array.isArray(diagnostico.phenotypes) ? diagnostico.phenotypes : []);
+        setGenphenResults(Array.isArray(diagnostico.genphen_genes) ? diagnostico.genphen_genes : []);
+        setGenphenSpecialties(diagnostico.genphen_specialties ?? null);
+        setGenphenConfidence(typeof diagnostico.genphen_confidence === "number" ? diagnostico.genphen_confidence : null);
+        setDiagnosisId(diagnostico.id);
+        setRegenerationPatientId(paciente.id);
+        // Opening it is not a step forward: back goes to the history it came from.
+        pasoDesdeHistorial.current = true;
+        setStep(Array.isArray(diagnostico.genphen_genes) && diagnostico.genphen_genes.length > 0 ? 3 : 2);
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        console.error("[nuevo] saved search failed", error);
+        setGuardadaError(error);
+      })
+      .finally(() => {
+        if (controller.signal.aborted) return;
+        setIsLoading(false);
+        setLoadingMessage("");
+      });
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a renewed session must not reload it
+  }, [isDemoMode, user?.id, pacienteGuardado, diagnosticoGuardado]);
 
   const irAlPaso = (destino: Step) => {
     if (destino < firstStep || destino > maxReachableStep || destino === step) return;
@@ -1389,6 +1613,7 @@ function NuevoDiagnosticoScreen() {
               <>
                 <button
                   type="button"
+                  ref={cancelarRef}
                   className="inline-flex items-center gap-2 px-2 md:px-4 h-9 text-sm font-medium text-red-500 hover:text-red-700 transition-colors"
                   onClick={() => setShowCancelModal(true)}
                 >
@@ -1470,8 +1695,11 @@ function NuevoDiagnosticoScreen() {
 
             <div className="relative pt-8">
               {isLoading && (
-                <div className="absolute inset-0 z-10 grid place-items-center rounded-[24px] bg-white/80 backdrop-blur-sm">
-                  <div className="flex flex-col items-center gap-4 text-center">
+                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[24px] bg-white/80 backdrop-blur-sm">
+                  {/* Sticky both ways: on a phone this step is several screens
+                      tall, and a spinner centred on all of it sat above or
+                      below the part on show, which read as a hang. */}
+                  <div className="sticky top-[20vh] bottom-[20vh] flex flex-col items-center gap-4 py-6 text-center">
                     <div className="h-12 w-12 animate-spin rounded-full border-4 border-[var(--lu-border)] border-t-[var(--lu-accent)]" aria-hidden />
                     <p role="status" className="text-sm font-semibold text-[var(--lu-subtle)]">
                       {loadingMessage}
@@ -1483,6 +1711,18 @@ function NuevoDiagnosticoScreen() {
                       </p>
                     )}
                   </div>
+                </div>
+              )}
+
+              {guardadaError !== null && (
+                <div className="mb-6">
+                  <ErrorNotice message={errorMessage(guardadaError, "patients_list")} error={guardadaError} />
+                  <Link
+                    href="/diagnosticar?tab=integrantes"
+                    className="mt-2 inline-block text-sm font-semibold text-[var(--lu-accent-text)] underline underline-offset-2"
+                  >
+                    Volver a mis búsquedas
+                  </Link>
                 </div>
               )}
 
@@ -1525,6 +1765,9 @@ function NuevoDiagnosticoScreen() {
                     <BirthDateInput
                       value={datosBasicos.fechaNacimiento}
                       onChange={(iso) => setDatosBasicos((prev) => ({ ...prev, fechaNacimiento: iso }))}
+                      onPendingChange={setFechaPendiente}
+                      showErrors={mostrarErrorFecha}
+                      inputRef={fechaInputRef}
                     />
 
                     <label className="block text-sm font-bold text-[var(--lu-text)]">
@@ -1846,7 +2089,9 @@ function NuevoDiagnosticoScreen() {
                         )}
                       </div>
 
-                      <ErrorNotice className="mt-3" message={genphenError} error={genphenFailure} />
+                      <div ref={genphenErrorRef} tabIndex={-1} className="scroll-mt-24 outline-none">
+                        <ErrorNotice className="mt-3" message={genphenError} error={genphenFailure} />
+                      </div>
                     </div>
                   </div>
 
@@ -1909,6 +2154,19 @@ function NuevoDiagnosticoScreen() {
                     )}
 
                     <div id="extraer-texto-panel" hidden={!textoAbierto} className="border-t border-[var(--lu-border)] p-5">
+                      {isDemoMode ? (
+                        // The recognizer refuses anyone without a session, since
+                        // every analysis is paid for; the demo says so up front
+                        // instead of failing on the click as an expired session.
+                        <p className="text-base leading-relaxed text-[var(--lu-subtle)]">
+                          Buscar los síntomas en un relato escrito está disponible con una cuenta gratuita. En la
+                          prueba rápida, cargalos con el buscador de arriba.{" "}
+                          <Link href="/sign-up" className="font-semibold text-[var(--lu-accent-text)] underline underline-offset-2">
+                            Crear una cuenta
+                          </Link>
+                        </p>
+                      ) : (
+                      <>
                       <p className="text-base leading-relaxed text-[var(--lu-subtle)]">
                         ¿Tenés un resumen médico o un relato escrito? Pegalo y buscamos los síntomas
                         para sumarlos a la lista. Podés analizar varias veces: nunca borramos lo que ya
@@ -1961,6 +2219,8 @@ function NuevoDiagnosticoScreen() {
                           </svg>
                           <span>{extractInfo}</span>
                         </div>
+                      )}
+                      </>
                       )}
                     </div>
                   </section>
@@ -2418,6 +2678,7 @@ function NuevoDiagnosticoScreen() {
                   <button
                     type="button"
                     className="inline-flex items-center justify-center h-11 px-8 rounded-xl bg-[var(--lu-green)] text-white font-bold hover:bg-[color-mix(in_oklab,var(--lu-green)_90%,#000)] shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                    ref={revisarRef}
                     onClick={handleContinue}
                     disabled={
                       (step === 2 && !canGoStep2) ||
@@ -2450,87 +2711,90 @@ function NuevoDiagnosticoScreen() {
 
       {refineEntries && <QuestionLauncher control={questionPanel} />}
 
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm px-5 animate-in fade-in duration-200">
-          <div className="max-w-lg w-full rounded-[28px] border border-[var(--lu-border)] bg-white p-8 shadow-2xl">
-            <h2 className="text-xl font-bold text-[var(--lu-text)]">Confirmá los síntomas</h2>
-            <p className="mt-2 text-sm leading-relaxed text-[var(--lu-subtle)]">
-              Vamos a buscar genes candidatos a partir de{" "}
-              <strong className="font-semibold text-[var(--lu-text)]">
-                {symptoms.length} {symptoms.length === 1 ? "síntoma" : "síntomas"}
-              </strong>
-              . Revisá que la lista esté completa: cuantos más síntomas específicos incluyas, mejor
-              es el resultado.
-            </p>
+      <WizardDialog
+        open={showConfirmModal}
+        onOpenChange={setShowConfirmModal}
+        returnFocusTo={revisarRef}
+        title="Confirmá los síntomas"
+        description={
+          <>
+            Vamos a buscar genes candidatos a partir de{" "}
+            <strong className="font-semibold text-[var(--lu-text)]">
+              {symptoms.length} {symptoms.length === 1 ? "síntoma" : "síntomas"}
+            </strong>
+            . Revisá que la lista esté completa: cuantos más síntomas específicos incluyas, mejor
+            es el resultado.
+          </>
+        }
+        actions={
+          <>
+            <button
+              type="button"
+              className="inline-flex items-center justify-center min-h-11 px-5 rounded-xl border border-[var(--lu-border)] text-[var(--lu-text)] font-medium hover:bg-[var(--lu-surface)] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--lu-accent)]"
+              onClick={() => setShowConfirmModal(false)}
+            >
+              Seguir editando
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center justify-center min-h-11 px-5 rounded-xl bg-[var(--lu-green)] text-white font-bold hover:bg-[color-mix(in_oklab,var(--lu-green)_90%,#000)] shadow-md transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--lu-accent)]"
+              onClick={consultarGenPhen}
+            >
+              Buscar genes candidatos
+            </button>
+          </>
+        }
+      >
+        {negatedFindings.length > 0 && (
+          <p className="mt-3 text-sm leading-relaxed text-[var(--lu-subtle)]">
+            <span className="font-semibold text-[var(--lu-text)]">No presenta</span>, según el
+            texto, y no se usa en la búsqueda:{" "}
+            {negatedFindings.map((finding) => finding.label).join(", ")}.
+          </p>
+        )}
 
-            {negatedFindings.length > 0 && (
-              <p className="mt-3 text-sm leading-relaxed text-[var(--lu-subtle)]">
-                <span className="font-semibold text-[var(--lu-text)]">No presenta</span>, según el
-                texto, y no se usa en la búsqueda:{" "}
-                {negatedFindings.map((finding) => finding.label).join(", ")}.
-              </p>
-            )}
+        <ul className="mt-5 flex flex-wrap gap-2">
+          {symptoms.map((symptom) => (
+            <li
+              key={symptom.code}
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--lu-border)] bg-[var(--lu-surface)] px-3 py-1.5 text-sm text-[var(--lu-text)]"
+            >
+              <span className="font-semibold">{symptom.description}</span>
+              <span className="text-sm text-[var(--lu-subtle)]">{symptom.code}</span>
+            </li>
+          ))}
+        </ul>
+      </WizardDialog>
 
-            <ul className="mt-5 flex max-h-64 flex-wrap gap-2 overflow-y-auto">
-              {symptoms.map((symptom) => (
-                <li
-                  key={symptom.code}
-                  className="inline-flex items-center gap-2 rounded-full border border-[var(--lu-border)] bg-[var(--lu-surface)] px-3 py-1.5 text-sm text-[var(--lu-text)]"
-                >
-                  <span className="font-semibold">{symptom.description}</span>
-                  <span className="text-sm text-[var(--lu-subtle)]">{symptom.code}</span>
-                </li>
-              ))}
-            </ul>
-
-            <div className="mt-8 flex flex-wrap gap-3 justify-end">
-              <button
-                type="button"
-                className="inline-flex items-center justify-center h-10 px-5 rounded-xl border border-[var(--lu-border)] text-[var(--lu-text)] font-medium hover:bg-[var(--lu-surface)] transition-colors"
-                onClick={() => setShowConfirmModal(false)}
-              >
-                Seguir editando
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center justify-center h-10 px-5 rounded-xl bg-[var(--lu-green)] text-white font-bold hover:bg-[color-mix(in_oklab,var(--lu-green)_90%,#000)] shadow-md transition-all"
-                onClick={consultarGenPhen}
-              >
-                Buscar genes candidatos
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showCancelModal && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm px-5 animate-in fade-in duration-200">
-          <div className="max-w-md w-full rounded-[28px] border border-[var(--lu-border)] bg-white p-8 shadow-2xl">
-            <h2 className="text-xl font-bold text-[var(--lu-text)]">¿Salir de esta búsqueda?</h2>
-            <p className="mt-3 text-sm text-[var(--lu-subtle)]">
-              {step === 3
-                ? "Los resultados ya quedaron guardados en tu cuenta."
-                : "Se va a perder lo que cargaste en esta búsqueda."}
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3 justify-end">
-              <button
-                type="button"
-                className="inline-flex items-center justify-center h-10 px-5 rounded-xl border border-[var(--lu-border)] text-[var(--lu-text)] font-medium hover:bg-[var(--lu-surface)] transition-colors"
-                onClick={() => setShowCancelModal(false)}
-              >
-                Seguir editando
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center justify-center h-10 px-5 rounded-xl bg-red-50 text-red-600 font-medium hover:bg-red-100 transition-colors"
-                onClick={handleCancelFlow}
-              >
-                Salir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <WizardDialog
+        open={showCancelModal}
+        onOpenChange={setShowCancelModal}
+        returnFocusTo={cancelarRef}
+        title="¿Salir de esta búsqueda?"
+        description={
+          step === 3
+            ? "Los resultados ya quedaron guardados en tu cuenta."
+            : "Se va a perder lo que cargaste en esta búsqueda."
+        }
+        actions={
+          <>
+            <button
+              type="button"
+              className="inline-flex items-center justify-center min-h-11 px-5 rounded-xl border border-[var(--lu-border)] text-[var(--lu-text)] font-medium hover:bg-[var(--lu-surface)] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--lu-accent)]"
+              onClick={() => setShowCancelModal(false)}
+            >
+              Seguir editando
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center justify-center min-h-11 px-5 rounded-xl bg-red-50 text-red-600 font-medium hover:bg-red-100 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
+              onClick={handleCancelFlow}
+            >
+              Salir
+            </button>
+          </>
+        }
+      />
     </main>
   );
 }

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { acceptDemoTerms, mockBackend, mockModelServices } from "./fixtures/services";
+import { acceptDemoTerms, mockBackend, mockModelServices, openTextStep } from "./fixtures/services";
 
 /**
  * Accessibility is not decoration here: the audience is families under stress,
@@ -78,8 +78,7 @@ test("every image carries alt text", async ({ page }) => {
 });
 
 test("the clinical history field is reachable and labelled", async ({ page }) => {
-    await acceptDemoTerms(page);
-    await page.goto("/nuevo?demo=1", { waitUntil: "networkidle" });
+    await openTextStep(page);
     const box = page.getByPlaceholder(/Nena de 7 años/);
     await box.focus();
     await expect(box).toBeFocused();

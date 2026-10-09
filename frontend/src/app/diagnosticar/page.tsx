@@ -33,6 +33,8 @@ type Member = {
   historiaClinica: string;
   sintomas: Symptom[];
   diagnostico: string;
+  /** The model's first genes, in its order. */
+  genes: string[];
   latestDiagnosisId: string | null;
 };
 
@@ -138,6 +140,13 @@ function orientacion(topSpecialties: string[]): string {
     : "Con estos síntomas no pudimos sugerir una especialidad en particular.";
 }
 
+function geneSymbols(raw: Array<{ gene_symbol?: unknown }> | undefined): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((gene) => (typeof gene?.gene_symbol === "string" ? gene.gene_symbol.trim() : ""))
+    .filter((symbol) => symbol !== "");
+}
+
 function apiPatientToMember(p: ApiPatient): Member {
   const diag = p.latest_diagnosis;
   const topSpecialties = diag?.genphen_specialties?.top_specialties ?? [];
@@ -155,6 +164,7 @@ function apiPatientToMember(p: ApiPatient): Member {
     historiaClinica,
     sintomas: mapSymptoms(diag?.symptoms_extracted ?? [], p.id),
     diagnostico,
+    genes: geneSymbols(diag?.genphen_genes_top5),
     latestDiagnosisId: diag?.id ?? null,
   };
 }
@@ -177,6 +187,7 @@ function savedToMember(record: SavedDiagnostic): Member {
       codigo: s.code,
     })),
     diagnostico: diag,
+    genes: geneSymbols(record.topGenes?.map((gene_symbol) => ({ gene_symbol }))),
     latestDiagnosisId: null,
   };
 }
@@ -558,6 +569,25 @@ function DiagnosticarContent() {
                           </div>
 
                           <div>
+                            <p className="mb-2 text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Genes que el modelo puso primero</p>
+                            {activeMember.genes.length === 0 ? (
+                              <p className="text-xs text-[var(--lu-subtle)]">Esta búsqueda no tiene genes guardados.</p>
+                            ) : (
+                              <ol className="flex min-w-0 flex-wrap gap-2">
+                                {activeMember.genes.map((gene, index) => (
+                                  <li
+                                    key={gene}
+                                    className="flex items-center gap-1.5 rounded-full border border-[var(--lu-border)] bg-[var(--lu-surface)] px-3 py-1 text-xs text-[var(--lu-text)]"
+                                  >
+                                    <span className="text-[var(--lu-subtle)]">{index + 1}.</span>
+                                    <span className="font-semibold">{gene}</span>
+                                  </li>
+                                ))}
+                              </ol>
+                            )}
+                          </div>
+
+                          <div>
                             <p className="mb-2 text-xs uppercase tracking-widest text-[var(--lu-subtle)]">Especialidades sugeridas</p>
                             <p className="rounded-2xl border border-[var(--lu-border)] bg-[var(--lu-surface)] p-4 text-sm leading-relaxed text-[var(--lu-text)] break-words">
                               {activeMember.diagnostico}
@@ -565,6 +595,14 @@ function DiagnosticarContent() {
                             <ConsultaGenetica className="mt-3" />
                             <p className="mt-3 text-xs leading-relaxed text-[var(--lu-subtle)]">{RESULTS_DISCLAIMER}</p>
                             <div className="mt-4 flex flex-wrap gap-3">
+                              {activeMember.latestDiagnosisId && (
+                                <Link
+                                  href={`/nuevo?paciente=${encodeURIComponent(activeMember.id)}&diagnostico=${encodeURIComponent(activeMember.latestDiagnosisId)}`}
+                                  className="inline-flex items-center justify-center min-h-10 px-4 rounded-xl bg-[var(--lu-accent)] text-white font-semibold hover:bg-[color-mix(in_oklab,var(--lu-accent)_88%,#000)] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--lu-accent)]"
+                                >
+                                  Ver el resultado completo
+                                </Link>
+                              )}
                               <button
                                 type="button"
                                 className="inline-flex items-center justify-center h-10 px-4 rounded-xl border border-[var(--lu-accent)] text-[var(--lu-accent)] font-medium hover:bg-[var(--lu-accent)] hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -574,6 +612,11 @@ function DiagnosticarContent() {
                                 Volver a buscar
                               </button>
                             </div>
+                            {activeMember.latestDiagnosisId && (
+                              <p className="mt-2 text-xs leading-relaxed text-[var(--lu-subtle)]">
+                                En el resultado completo podés descargar el resumen en PDF y responder las preguntas.
+                              </p>
+                            )}
                           </div>
                         </div>
                       </div>

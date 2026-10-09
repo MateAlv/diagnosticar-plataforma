@@ -7,6 +7,7 @@ import {
     EXTRACT_FIXTURE,
     RANK_FIXTURE,
     fillBirthDate,
+    openTextStep,
 } from "./fixtures/services";
 
 /**
@@ -133,7 +134,7 @@ test("a typed birth date is saved as the date itself", async ({ page }) => {
 });
 
 test("extracting symptoms from clinical text populates the HPO list", async ({ page }) => {
-    await openDemoWizard(page);
+    await openTextStep(page);
 
     await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
     await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
@@ -145,7 +146,7 @@ test("extracting symptoms from clinical text populates the HPO list", async ({ p
 
 test("a negated finding is not added as a present symptom", async ({ page }) => {
     // "sin convulsiones" must never become a symptom the model then ranks on.
-    await openDemoWizard(page);
+    await openTextStep(page);
 
     await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
     await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
@@ -163,7 +164,7 @@ test("a negated finding is not added as a present symptom", async ({ page }) => 
 test("a negated finding is shown as not present, and can be moved back", async ({ page }) => {
     // Showing it is how a reader sees the negation was understood; moving it
     // back is how they fix an extractor that misread one.
-    await openDemoWizard(page);
+    await openTextStep(page);
     await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
     await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
 
@@ -176,7 +177,7 @@ test("a negated finding is shown as not present, and can be moved back", async (
 });
 
 test("a negated finding never reaches the model", async ({ page }) => {
-    await openDemoWizard(page);
+    await openTextStep(page);
     await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
     await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
     await expect(page.getByText("No presenta, según el texto")).toBeVisible();
@@ -195,7 +196,7 @@ test("a slow extraction says it can take up to a minute", async ({ page }) => {
     // The Spanish symptom recognizer takes 20-40s on a long history; a bare
     // spinner that long reads as a hang, and people reload.
     await mockModelServices(page, { latencyMs: 10_000 });
-    await openDemoWizard(page);
+    await openTextStep(page);
     await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
     await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
 
@@ -207,7 +208,7 @@ test("a slow extraction says it can take up to a minute", async ({ page }) => {
 test("re-analysing unchanged text is refused with a reason, avoiding a redundant model call", async ({ page }) => {
     // The recognizer runs an LLM; re-sending identical text would spend it for
     // nothing, so the click explains why instead of calling it again.
-    await openDemoWizard(page);
+    await openTextStep(page);
     let extractCalls = 0;
     page.on("request", (req) => {
         if (req.url().includes("/extract-hpo")) extractCalls += 1;
@@ -224,7 +225,7 @@ test("re-analysing unchanged text is refused with a reason, avoiding a redundant
 });
 
 test("an empty or too short text says so on the click", async ({ page }) => {
-    await openDemoWizard(page);
+    await openTextStep(page);
     const box = page.getByPlaceholder(/Nena de 7 años/);
     const button = page.getByRole("button", { name: /Buscar síntomas en el texto/ });
 
@@ -238,7 +239,7 @@ test("an empty or too short text says so on the click", async ({ page }) => {
 });
 
 test("re-analysing after an edit does not duplicate already-found symptoms", async ({ page }) => {
-    await openDemoWizard(page);
+    await openTextStep(page);
 
     await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
     await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
@@ -298,7 +299,7 @@ test("no English specialty name leaks into the results screen", async ({ page })
 });
 
 test("gene results are rendered from the GenPhenAI response", async ({ page }) => {
-    await openDemoWizard(page);
+    await openTextStep(page);
     await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
     await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
     await expect(page.getByText("Infecciones respiratorias recurrentes")).toBeVisible();
@@ -313,7 +314,7 @@ test("gene results are rendered from the GenPhenAI response", async ({ page }) =
 test("an HPO gateway outage shows a message instead of a blank screen", async ({ page }) => {
     // brainy is reached over a reverse SSH tunnel; it going away is routine.
     await mockModelServices(page, { extractStatus: 502, extractBody: { detail: "extraction-failed" } });
-    await openDemoWizard(page);
+    await openTextStep(page);
 
     await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
     await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
@@ -325,7 +326,7 @@ test("an HPO gateway outage shows a message instead of a blank screen", async ({
 
 test("a GenPhenAI outage surfaces an error and keeps the entered symptoms", async ({ page }) => {
     await mockModelServices(page, { rankStatus: 503, rankBody: { detail: "genphenia-inference-unreachable" } });
-    await openDemoWizard(page);
+    await openTextStep(page);
 
     await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
     await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
@@ -344,7 +345,7 @@ test("a structured model error is explained, never shown as [object Object]", as
         rankStatus: 422,
         rankBody: { detail: { error: "no-known-hpo-ids", unknown_hpo_ids: ["HP:0002205"] } },
     });
-    await openDemoWizard(page);
+    await openTextStep(page);
 
     await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
     await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
@@ -359,7 +360,7 @@ test("a structured model error is explained, never shown as [object Object]", as
 test("the clinical history box enforces the gateway's 10k character limit", async ({ page }) => {
     // services/api-gateway rejects text_es over 10000 chars with a 422, so the
     // textarea must cap input rather than let the request fail.
-    await openDemoWizard(page);
+    await openTextStep(page);
 
     const box = page.getByPlaceholder(/Nena de 7 años/);
     await box.fill("a".repeat(10_500));
@@ -375,6 +376,93 @@ test("a run cannot be submitted with no valid HPO code", async ({ page }) => {
     }
     await expect(removeButtons).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Revisar y continuar/ })).toBeDisabled();
+});
+
+test("analysing a text says how many symptoms it added", async ({ page }) => {
+    await openTextStep(page);
+    await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
+    await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
+
+    const present = EXTRACT_FIXTURE.phenotypes.filter((p) => !p.negated).length;
+    await expect(page.getByRole("status").filter({ hasText: `Agregamos ${present} síntomas a la lista.` })).toBeVisible();
+});
+
+test("a half-typed birth date stops Continuar and says why, instead of being dropped", async ({ page }) => {
+    await mockBackend(page, { user: TEST_USER });
+    await page.goto("/nuevo", { waitUntil: "networkidle" });
+    const field = page.getByLabel(/^Fecha de nacimiento/);
+    await field.fill("12/3");
+
+    await page.getByRole("button", { name: /^Continuar$/ }).click();
+    await expect(page.getByText("Completá la fecha: DD/MM/AAAA.")).toBeVisible();
+    await expect(field).toBeFocused();
+    await expect(page.getByPlaceholder(/Nena de 7 años/)).toHaveCount(0);
+
+    await field.fill("12/03/2018");
+    await page.getByRole("button", { name: /^Continuar$/ }).click();
+    await expect(page.getByPlaceholder(/Nena de 7 años/)).toBeVisible();
+});
+
+test("a reload keeps the search in progress, results included", async ({ page }) => {
+    await openTextStep(page);
+    await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
+    await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
+    await expect(page.getByRole("button", { name: "Eliminar Talla baja" })).toBeVisible();
+
+    await page.reload({ waitUntil: "networkidle" });
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Síntomas del paciente");
+    await expect(page.getByRole("button", { name: "Eliminar Talla baja" })).toBeVisible();
+
+    await page.getByRole("button", { name: /Revisar y continuar/ }).click();
+    await page.getByRole("button", { name: /Buscar genes candidatos/ }).click();
+    await expect(page.getByText(RANK_FIXTURE.results[0].gene_symbol).first()).toBeVisible({ timeout: 20_000 });
+
+    await page.reload({ waitUntil: "networkidle" });
+    await expect(page.getByText(RANK_FIXTURE.results[0].gene_symbol).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /Descargar resumen \(PDF\)/ })).toBeVisible();
+});
+
+test("the browser's back and forward buttons move between the steps", async ({ page }) => {
+    await mockBackend(page, { user: TEST_USER });
+    await page.goto("/nuevo", { waitUntil: "networkidle" });
+    await page.getByLabel(/^Apodo/).fill("Juli");
+    await page.getByRole("button", { name: /^Continuar$/ }).click();
+    await expect(page.getByPlaceholder(/Nena de 7 años/)).toBeVisible();
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/nuevo$/);
+    await expect(page.getByLabel(/^Apodo/)).toHaveValue("Juli");
+
+    await page.goForward();
+    await expect(page.getByPlaceholder(/Nena de 7 años/)).toBeVisible();
+});
+
+test("the confirmation is a dialog: Escape closes it and focus goes back", async ({ page }) => {
+    await openTextStep(page);
+    await page.getByPlaceholder(/Nena de 7 años/).fill(HISTORIA);
+    await page.getByRole("button", { name: /Buscar síntomas en el texto/ }).click();
+    const review = page.getByRole("button", { name: /Revisar y continuar/ });
+    await review.click();
+
+    const dialog = page.getByRole("dialog", { name: "Confirmá los síntomas" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Seguir editando" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(review).toBeFocused();
+});
+
+test("the demo says text analysis needs an account instead of failing on the click", async ({ page }) => {
+    let extractCalls = 0;
+    page.on("request", (req) => {
+        if (req.url().includes("/extract-hpo")) extractCalls += 1;
+    });
+    await openDemoWizard(page);
+
+    await expect(page.getByText(/Buscar los síntomas en un relato escrito está disponible con una cuenta gratuita/)).toBeVisible();
+    await expect(page.getByRole("link", { name: "Crear una cuenta" })).toHaveAttribute("href", "/sign-up");
+    await expect(page.getByPlaceholder(/Nena de 7 años/)).toHaveCount(0);
+    expect(extractCalls).toBe(0);
 });
 
 test("demo mode does not offer to save the session", async ({ page }) => {

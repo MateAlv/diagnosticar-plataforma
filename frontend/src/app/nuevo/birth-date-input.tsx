@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type Ref } from "react";
 import { ageText, formatDmy, maskDmy, readDmy } from "@/lib/patient-age";
 
 /**
@@ -10,8 +10,23 @@ import { ageText, formatDmy, maskDmy, readDmy } from "@/lib/patient-age";
  * typo in the year shows at once.
  *
  * `value` is `YYYY-MM-DD`, or empty while the date is missing or incomplete.
+ * `onPendingChange` says whether something is typed that is not a date yet,
+ * which `value` alone cannot tell apart from an empty field; `showErrors`
+ * shows what is wrong with it before the field is left.
  */
-export function BirthDateInput({ value, onChange }: { value: string; onChange: (iso: string) => void }) {
+export function BirthDateInput({
+    value,
+    onChange,
+    onPendingChange,
+    showErrors = false,
+    inputRef,
+}: {
+    value: string;
+    onChange: (iso: string) => void;
+    onPendingChange?: (pending: boolean) => void;
+    showErrors?: boolean;
+    inputRef?: Ref<HTMLInputElement>;
+}) {
     const id = useId();
     const hintId = `${id}-hint`;
     const [text, setText] = useState(() => formatDmy(value));
@@ -25,11 +40,17 @@ export function BirthDateInput({ value, onChange }: { value: string; onChange: (
         if (value === shownIso) return;
         if (value) setText(formatDmy(value));
         else if (shownIso) setText("");
+        onPendingChange?.(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value]);
 
     const check = readDmy(text);
-    const error = "error" in check ? check.error : touched && text && "incomplete" in check ? "Completá la fecha: DD/MM/AAAA." : null;
+    const error =
+        "error" in check
+            ? check.error
+            : (touched || showErrors) && text && "incomplete" in check
+              ? "Completá la fecha: DD/MM/AAAA."
+              : null;
     const age = "iso" in check ? ageText(check.iso) : null;
 
     const type = (raw: string) => {
@@ -37,6 +58,7 @@ export function BirthDateInput({ value, onChange }: { value: string; onChange: (
         setText(next);
         const read = readDmy(next);
         onChange("iso" in read ? read.iso : "");
+        onPendingChange?.(next !== "" && !("iso" in read));
     };
 
     return (
@@ -45,6 +67,7 @@ export function BirthDateInput({ value, onChange }: { value: string; onChange: (
                 Fecha de nacimiento <span className="font-normal text-[var(--lu-subtle)]">(opcional)</span>
             </label>
             <input
+                ref={inputRef}
                 id={id}
                 type="text"
                 inputMode="numeric"

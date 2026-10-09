@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { ApiError, errorMessage, readApiError } from "./api-errors";
 import { TERMS_VERSION } from "./terms";
+import { WIZARD_SNAPSHOT_KEY } from "./wizard-snapshot";
 
 type AuthUser = {
   id: string;
@@ -76,7 +77,7 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 // and searches that could not be saved to the account. None of it may outlive
 // the session on what may be a shared computer.
 const LOCAL_CLINICAL_KEYS = ["diagnosticar:hc-draft", "diagnosticar:records"];
-const SESSION_CLINICAL_KEYS = ["diagnosticar:newDiagDraft"];
+const SESSION_CLINICAL_KEYS = ["diagnosticar:newDiagDraft", WIZARD_SNAPSHOT_KEY];
 
 function forgetLocalClinicalData() {
   try {

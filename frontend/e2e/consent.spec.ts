@@ -93,7 +93,7 @@ test("the demo asks too, and remembers it for the tab", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Antes de empezar" })).toBeVisible();
     await page.getByRole("checkbox", { name: /Leí y acepto/ }).check();
     await page.getByRole("button", { name: "Continuar" }).click();
-    await expect(page.getByPlaceholder(/Nena de 7 años/)).toBeAttached();
+    await expect(page.getByRole("heading", { name: "Lista de síntomas" })).toBeVisible();
 
     await page.reload({ waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Antes de empezar" })).toHaveCount(0);

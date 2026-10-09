@@ -224,3 +224,36 @@ test("a logout the server did not confirm keeps the session and says so", async 
     await notice.getByRole("button", { name: "Cerrar sesión de nuevo" }).click();
     await page.waitForURL(/\/login/);
 });
+
+test("on a phone the landing's menu reaches every section, and closes on the way", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "the menu is the phone's navigation");
+    await page.setViewportSize({ width: 360, height: 740 });
+    await page.goto("/home", { waitUntil: "networkidle" });
+
+    await page.getByRole("button", { name: "Abrir el menú" }).click();
+    const menu = page.locator("#menu-movil");
+    for (const item of ["Nuestra metodología", "Quiénes somos", "Ayuda", "Las EPoFs", "Crear cuenta"]) {
+        await expect(menu.getByRole("link", { name: item })).toBeVisible();
+    }
+    await menu.getByRole("link", { name: "Ayuda" }).click();
+    await expect(page).toHaveURL(/#ayuda$/);
+    await expect(menu).toBeHidden();
+});
+
+test("signed in on a narrow phone, the landing's header fits and sign-out is in reach", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "phone widths");
+    await mockBackend(page, { user: { id: "44444444-4444-4444-8444-444444444444", email: "una.familia.con.mail.largo@example.test", role: "admin" } });
+    for (const width of [320, 360]) {
+        await page.setViewportSize({ width, height: 700 });
+        await page.goto("/home", { waitUntil: "networkidle" });
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+        expect(overflow, `sideways scroll at ${width}px`).toBeLessThanOrEqual(0);
+
+        await page.getByRole("button", { name: "Abrir el menú" }).click();
+        const signOut = page.locator("#menu-movil").getByRole("button", { name: "Cerrar sesión" });
+        await expect(signOut).toBeInViewport();
+        await expect(page.locator("#menu-movil").getByRole("link", { name: "Administración" })).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(page.locator("#menu-movil")).toBeHidden();
+    }
+});

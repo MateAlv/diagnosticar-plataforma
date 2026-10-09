@@ -103,6 +103,19 @@ export async function acceptDemoTerms(page: Page) {
 }
 
 /**
+ * The signed-in wizard at its symptom step. Analysing a clinical text needs an
+ * account (the recognizer refuses anyone without a session), so every test of
+ * that tool starts here rather than in the demo.
+ */
+export async function openTextStep(page: Page) {
+    await mockBackend(page, {
+        user: { id: "44444444-4444-4444-8444-444444444444", email: "familia@example.test", full_name: "Familia de Prueba", role: "user" },
+    });
+    await page.goto("/nuevo", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Omitir este paso" }).click();
+}
+
+/**
  * Intercepts the Express API. `user` null keeps the browser anonymous, which is
  * what the demo path expects.
  */

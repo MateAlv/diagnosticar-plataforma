@@ -184,7 +184,7 @@ body {
   border-radius: 12px;
   border: 2px solid var(--lu-accent);
   background: transparent;
-  color: var(--lu-accent);
+  color: var(--lu-accent-text, var(--lu-accent));
   font: inherit;
   font-weight: 600;
   cursor: pointer;
@@ -252,7 +252,8 @@ body {
   border-radius: 12px;
   border: 2px solid color-mix(in oklab, var(--lu-green) 80%, #1c311f);
   background: color-mix(in oklab, var(--lu-green) 18%, transparent);
-  color: var(--lu-green);
+  /* The green itself is about 2:1 on its own tint; this shade reads at rest. */
+  color: color-mix(in oklab, var(--lu-green) 45%, #000);
   font: inherit;
   font-weight: 700;
   cursor: pointer;
@@ -266,6 +267,14 @@ body {
 
 #lucai-app .btn-success:active {
   transform: translateY(1px);
+}
+
+/* `all: unset` drops the browser's focus ring along with everything else. */
+#lucai-app .btn-success:focus-visible,
+#lucai-app .btn-outline:focus-visible,
+.lu-modal-close:focus-visible {
+  outline: 2px solid var(--lu-accent-text, var(--lu-accent));
+  outline-offset: 2px;
 }
 
 #lucai-app .btn-success[disabled] {

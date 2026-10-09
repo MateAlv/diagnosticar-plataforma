@@ -3,7 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useAuth } from "../../lib/auth-context";
+
+const SECCIONES = [
+  { href: "#metodologia", label: "Nuestra metodología" },
+  { href: "#quienes-somos", label: "Quiénes somos" },
+  { href: "#ayuda", label: "Ayuda" },
+  { href: "#epofs", label: "Las EPoFs" },
+];
 
 export default function HomePage() {
   const { user, loading, logout } = useAuth();
@@ -13,7 +21,18 @@ export default function HomePage() {
     ? { href: "/diagnosticar", label: "Ir a la App" }
     : { href: "/demo", label: "Comenzar ahora" };
 
+  const [menuAbierto, setMenuAbierto] = useState(false);
+  useEffect(() => {
+    if (!menuAbierto) return;
+    const cerrar = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuAbierto(false);
+    };
+    window.addEventListener("keydown", cerrar);
+    return () => window.removeEventListener("keydown", cerrar);
+  }, [menuAbierto]);
+
   const handleLogout = async () => {
+    setMenuAbierto(false);
     await logout();
   };
 
@@ -21,58 +40,51 @@ export default function HomePage() {
     <main className="page-root relative min-h-screen bg-[var(--lu-surface)] text-[var(--lu-text)]">
       {/* Header */}
       <header className="sticky top-0 z-20 w-full backdrop-blur-md bg-white/80 border-b border-[var(--lu-border)]">
-        <div className="mx-auto max-w-7xl flex items-center justify-between px-5 py-4">
+        <div className="mx-auto max-w-7xl flex items-center justify-between gap-2 px-3 py-4 sm:px-5">
           <Link href="/" className="flex shrink-0 items-center" aria-label="Ir al inicio">
             <Image
               src="/brand/logo-diagnosticar.svg"
               alt="Diagnostic.ar"
               width={277}
               height={50}
-              className="h-8 w-auto sm:h-11"
+              className="h-6 w-auto min-[400px]:h-8 sm:h-11"
               priority
             />
           </Link>
 
-          <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-[var(--lu-subtle)]">
-            <Link href="#metodologia" className="hover:text-[var(--lu-accent)] transition-colors">
-              Nuestra metodología
-            </Link>
-            <Link href="#quienes-somos" className="hover:text-[var(--lu-accent)] transition-colors">
-              Quiénes somos
-            </Link>
-            <Link href="#ayuda" className="hover:text-[var(--lu-accent)] transition-colors">
-              Ayuda
-            </Link>
-            <Link href="#epofs" className="hover:text-[var(--lu-accent)] transition-colors">
-              Las EPoFs
-            </Link>
+          <nav aria-label="Secciones" className="hidden md:flex items-center gap-6 text-sm font-medium text-[var(--lu-subtle)]">
+            {SECCIONES.map((seccion) => (
+              <Link key={seccion.href} href={seccion.href} className="hover:text-[var(--lu-accent)] transition-colors">
+                {seccion.label}
+              </Link>
+            ))}
           </nav>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1 sm:gap-2 md:gap-4">
             {!user ? (
               <>
                 <Link
                   href="/login"
-                  className="inline-flex items-center justify-center h-9 px-4 rounded-md text-sm font-medium text-[var(--lu-text)] hover:text-[var(--lu-accent)] transition-colors"
+                  className="inline-flex items-center justify-center h-11 px-2 sm:px-4 rounded-md whitespace-nowrap text-sm font-medium text-[var(--lu-text)] hover:text-[var(--lu-accent)] transition-colors md:h-9"
                 >
                   Iniciar sesión
                 </Link>
                 <Link
                   href="/sign-up"
-                  className="btn-primary inline-flex items-center justify-center h-9 px-4 rounded-md text-sm"
+                  className="btn-primary hidden md:inline-flex items-center justify-center h-9 px-4 rounded-md whitespace-nowrap text-sm"
                 >
                   Crear cuenta
                 </Link>
               </>
             ) : (
               <>
-                <Link href="/diagnosticar" className="btn-primary inline-flex items-center justify-center h-9 px-4 rounded-md text-sm">
+                <Link href="/diagnosticar" className="btn-primary inline-flex items-center justify-center h-9 px-4 rounded-md whitespace-nowrap text-sm">
                   Ir a la App
                 </Link>
                 {user.role === "admin" && (
                   <Link
                     href="/admin"
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-[var(--lu-accent)] px-3 text-sm font-medium text-[var(--lu-accent)] transition hover:bg-[color-mix(in_oklab,var(--lu-accent)_8%,white)]"
+                    className="hidden md:inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-[var(--lu-accent)] px-3 text-sm font-medium text-[var(--lu-accent)] transition hover:bg-[color-mix(in_oklab,var(--lu-accent)_8%,white)]"
                   >
                     <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" aria-hidden>
                       <path
@@ -85,12 +97,75 @@ export default function HomePage() {
                     Administración
                   </Link>
                 )}
+                {/* On the wrapper: `#lucai-app .user-badge` sets its own display, which beats a utility. */}
+                <div className="hidden md:flex items-center gap-4">
+                  {displayName && (
+                    <span className="user-badge truncate">
+                      {displayName}
+                    </span>
+                  )}
+                  <button type="button" onClick={handleLogout} className="nav-link whitespace-nowrap text-sm">
+                    Cerrar sesión
+                  </button>
+                </div>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => setMenuAbierto((abierto) => !abierto)}
+              aria-expanded={menuAbierto}
+              aria-controls="menu-movil"
+              aria-label={menuAbierto ? "Cerrar el menú" : "Abrir el menú"}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-[var(--lu-text)] hover:bg-[var(--lu-surface)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--lu-accent)] md:hidden"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                {menuAbierto ? <path d="M6 6l12 12M18 6 6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Below md the sections and the account's actions live here, so the
+            row above keeps to the logo, one action and this menu's button. */}
+        <div id="menu-movil" hidden={!menuAbierto} className="border-t border-[var(--lu-border)] bg-white md:hidden">
+          <nav aria-label="Secciones" className="mx-auto flex max-w-7xl flex-col px-3 py-2 sm:px-5">
+            {SECCIONES.map((seccion) => (
+              <Link
+                key={seccion.href}
+                href={seccion.href}
+                onClick={() => setMenuAbierto(false)}
+                className="flex min-h-[44px] items-center rounded-lg px-3 text-base font-medium text-[var(--lu-text)] hover:bg-[var(--lu-surface)]"
+              >
+                {seccion.label}
+              </Link>
+            ))}
+          </nav>
+          <div className="mx-auto flex max-w-7xl flex-col border-t border-[var(--lu-border)] px-3 py-2 sm:px-5">
+            {!user ? (
+              <Link
+                href="/sign-up"
+                className="flex min-h-[44px] items-center rounded-lg px-3 text-base font-semibold text-[var(--lu-accent-text)] hover:bg-[var(--lu-surface)]"
+              >
+                Crear cuenta
+              </Link>
+            ) : (
+              <>
                 {displayName && (
-                  <span className="user-badge truncate">
-                    {displayName}
-                  </span>
+                  <p className="truncate px-3 py-2 text-sm text-[var(--lu-subtle)]">{displayName}</p>
                 )}
-                <button type="button" onClick={handleLogout} className="nav-link text-sm">
+                {user.role === "admin" && (
+                  <Link
+                    href="/admin"
+                    className="flex min-h-[44px] items-center rounded-lg px-3 text-base font-medium text-[var(--lu-text)] hover:bg-[var(--lu-surface)]"
+                  >
+                    Administración
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex min-h-[44px] items-center rounded-lg px-3 text-left text-base font-medium text-[var(--lu-text)] hover:bg-[var(--lu-surface)]"
+                >
                   Cerrar sesión
                 </button>
               </>
