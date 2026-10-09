@@ -220,6 +220,9 @@ services:
     init: true
     environment:
       CORS_ORIGINS: https://${STAGING_HOST}
+      # ft-v1.1 (diagnostic.ar-model ft-v1.1.0), on in staging only. Rollback
+      # without a new image: FT_V11_ENABLED=false and recreate this container.
+      FT_V11_ENABLED: ${FT_V11_ENABLED:-true}
     labels:
       - "traefik.enable=${MODEL_ROUTED:-false}"
       - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"

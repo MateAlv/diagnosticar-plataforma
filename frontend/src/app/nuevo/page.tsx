@@ -152,6 +152,7 @@ import { useFlipReorder } from "./use-flip-reorder";
 import { useQuestionSession } from "./use-question-session";
 import { RESULTS_DISCLAIMER } from "@/lib/disclaimer";
 import { OnsetInline, OnsetSummary } from "@/components/ui/OnsetReport";
+import { modelCaseFields } from "@/lib/model-inputs";
 import { fetchGeneProfiles, formatScore, type GeneProfile } from "@/lib/genes-api";
 import { errorMessage, isSessionError, jsonOrThrow } from "@/lib/api-errors";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -1217,7 +1218,12 @@ function NuevoDiagnosticoScreen() {
       const response = await fetch(GENPHENAI_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hpo_ids: hpoIds, top_k: isDemoMode ? 1 : 50, ...onsetPayloadFields(symptoms) }),
+        body: JSON.stringify({
+          hpo_ids: hpoIds,
+          top_k: isDemoMode ? 1 : 50,
+          ...onsetPayloadFields(symptoms),
+          ...modelCaseFields(datosBasicos, symptoms),
+        }),
       });
       const payload = await jsonOrThrow<{ results?: unknown; specialties?: GenPhenSpecialties; confidence?: unknown }>(response);
       const results = Array.isArray(payload?.results) ? payload.results : [];

@@ -129,7 +129,7 @@ test("a refinable symptom gets the onset question too, folded, with its value on
     await expect(radio).toBeHidden();
 });
 
-test("without onset the request is as before; with it, the optional fields are added", async ({ page }) => {
+test("without onset no onset field is sent; sex and age from the first step are", async ({ page }) => {
     const bodies: Record<string, unknown>[] = [];
     await page.route("**/rank-genes", async (route) => {
         bodies.push(route.request().postDataJSON());
@@ -139,7 +139,9 @@ test("without onset the request is as before; with it, the optional fields are a
     await toSymptoms(page);
     await search(page);
     await expect.poll(() => bodies.length).toBe(1);
-    expect(Object.keys(bodies[0]).sort()).toEqual(["hpo_ids", "top_k"]);
+    expect(Object.keys(bodies[0]).sort()).toEqual(["age_years", "hpo_ids", "sex", "top_k"]);
+    expect(bodies[0]).toMatchObject({ sex: "female" });
+    expect(bodies[0].age_years).toBeGreaterThan(8);
 });
 
 test("the onset is sent with the search and saved with the symptom", async ({ page }) => {
@@ -165,6 +167,7 @@ test("the onset is sent with the search and saved with the symptom", async ({ pa
         onset_hpo_id: "HP:0011463",
         onset_age_years: 3,
         symptom_onsets: [{ hpo_id: "HP:0001250", onset_hpo_id: "HP:0011463", onset_age_years: 3 }],
+        onset_years: 3,
     });
     await expect.poll(() => saved.length).toBe(1);
     const seizure = saved[0].symptomsExtracted.find((s) => s.code === "HP:0001250");
