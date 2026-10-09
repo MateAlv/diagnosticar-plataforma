@@ -52,8 +52,8 @@ export function ResultsDownload({ input }: { input: () => ReportInput }) {
                 </h4>
                 <p className="mt-0.5 max-w-xl text-xs leading-relaxed text-[var(--lu-subtle)]">
                     Trae lo que contaste con sus términos HPO, los genes sugeridos con una breve descripción y su ficha,
-                    qué son las enfermedades genéticas y dónde informarte, y el aviso. Se arma en tu navegador: los datos
-                    no se envían a ningún lado.
+                    qué son las enfermedades genéticas y dónde informarte, y el aviso. Con «Ver detalle médico» activado
+                    suma el detalle médico de cada gen. Se arma en tu navegador: los datos no se envían a ningún lado.
                 </p>
             </div>
             <div className="flex shrink-0 flex-col gap-2 sm:flex-row">

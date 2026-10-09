@@ -3,8 +3,7 @@
  * reader takes to the consultation, as pure functions.
  *
  * Every sentence here talks about a gene's place in a list, never about how
- * likely it is: the refined score is a posterior the screen never shows, and
- * "subió" must not read as "closer to the answer".
+ * likely it is: "subió" must not read as "closer to the answer".
  */
 
 import { onsetReportLines, type ReportedSymptom } from "./onset";
@@ -44,19 +43,6 @@ export function describeMove(from: number | null, to: number): { text: string; l
         label: `${direction === "up" ? "Subió" : "Bajó"} del puesto ${from} al ${to} con tus respuestas.`,
         direction,
     };
-}
-
-/** The tooltip on a card's movement in the list with the answers. */
-export const MOVE_TITLE =
-    "Lugar que tenía en la lista que viste antes de las preguntas. Estar más arriba no quiere decir que sea la respuesta.";
-
-/** The tooltip on a card that the list with the answers brought in. */
-export const NEW_TITLE =
-    "No estaba en la lista que viste antes de las preguntas: entra cuando el modelo la vuelve a ordenar con los síntomas que confirmaste.";
-
-/** A card's movement from its place in the list shown before the questions. */
-export function rankMovement(rank: number, from: number | null) {
-    return { ...describeMove(from, rank), title: from === null ? NEW_TITLE : MOVE_TITLE };
 }
 
 /** 1-based place of each symbol in a list, by upper-cased symbol. */

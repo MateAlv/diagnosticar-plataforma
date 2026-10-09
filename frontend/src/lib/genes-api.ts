@@ -195,8 +195,24 @@ export function formatScore(score: number): string {
     return score < 0.01 ? "bajo" : score.toFixed(3);
 }
 
-/** The label of the model's own score, on the original ranking only. */
+/** The label of the model's own score, on the original ranking. */
 export const MODEL_SCORE_TITLE = "Puntaje del modelo: ordena la lista, no es una probabilidad";
+
+/** The label of the score in the list re-ranked with the follow-up answers. */
+export const ANSWERS_SCORE_TITLE = "Puntaje con tus respuestas: ordena la lista, no es una probabilidad";
+
+export type ScoreBand = "alto" | "medio" | "bajo";
+
+/** At or above it a gene is marked on screen and called «alto» in the summary. */
+export const HIGH_SCORE = 0.8;
+/** Under it the summary calls a score «bajo». */
+export const LOW_SCORE = 0.05;
+
+export function scoreBand(score: number): ScoreBand {
+    if (score >= HIGH_SCORE) return "alto";
+    if (score >= LOW_SCORE) return "medio";
+    return "bajo";
+}
 
 /** "muy frecuente (95%)" — the words first, the number as support. */
 export function describeFrequency(symptom: Symptom): string | null {

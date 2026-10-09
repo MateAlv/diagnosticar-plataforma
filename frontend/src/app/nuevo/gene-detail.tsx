@@ -1,19 +1,21 @@
 "use client";
 
 import {
+    ANSWERS_SCORE_TITLE,
     describeFrequency,
     MODEL_SCORE_TITLE,
     formatScore,
+    scoreBand,
     omimUrl,
     stripProvenance,
     type GeneProfile,
     type MatchedReport,
 } from "@/lib/genes-api";
 import { researchLinks } from "@/lib/reference-links";
-import { ENTERED_NOTE, MOVED_NOTE, rankMovement } from "@/lib/question-insights";
+import { ENTERED_NOTE, MOVED_NOTE } from "@/lib/question-insights";
+import { HighScoreBadge } from "./gene-overview-card";
 import { ConditionRow, GeneReferenceLinks } from "./gene-links";
 import { MeterCaption } from "./match-meter";
-import { MovePill } from "./move-pill";
 
 /**
  * Everything we hold about one gene, shown in the modal over the results grid.
@@ -166,25 +168,12 @@ export function GeneDetail({
                 <span className="flex-grow" />
                 <span className="flex shrink-0 items-center gap-2 whitespace-nowrap">
                     <span className="font-mono text-[11px] text-[var(--lu-subtle)]">
-                        Gen #{rank} de {total}
-                        {!listOrigin && (
-                            <>
-                                {" "}
-                                ·{" "}
-                                <span title={MODEL_SCORE_TITLE} data-rank-note>
-                                    puntaje {formatScore(score)}
-                                </span>
-                            </>
-                        )}
+                        Gen #{rank} de {total} ·{" "}
+                        <span title={listOrigin ? ANSWERS_SCORE_TITLE : MODEL_SCORE_TITLE} data-rank-note>
+                            puntaje {formatScore(score)}
+                        </span>
                     </span>
-                    {listOrigin ? (
-                        <MovePill
-                            from={listOrigin.from}
-                            to={rank}
-                            title={rankMovement(rank, listOrigin.from).title}
-                            rankNote
-                        />
-                    ) : null}
+                    {scoreBand(score) === "alto" && <HighScoreBadge />}
                 </span>
                 <MeterCaption
                     covered={covered}

@@ -1,9 +1,7 @@
 "use client";
 
-import { MODEL_SCORE_TITLE, formatScore, type GeneProfile } from "@/lib/genes-api";
-import { rankMovement } from "@/lib/question-insights";
+import { ANSWERS_SCORE_TITLE, MODEL_SCORE_TITLE, formatScore, scoreBand, type GeneProfile } from "@/lib/genes-api";
 import { MatchMeter, MeterCaption, meterState } from "./match-meter";
-import { MovePill } from "./move-pill";
 
 /**
  * One gene in the results grid: the overview, and the way into its detail.
@@ -26,12 +24,8 @@ export type GeneOverviewCardProps = {
     rank: number;
     total: number;
     score: number;
-    /**
-     * Where the list shown before the questions had this gene (`from` null:
-     * it did not), when the list on screen is the one with the answers. The
-     * card then shows the movement instead of a score.
-     */
-    listOrigin?: { from: number | null } | null;
+    /** The list on screen is the one re-ranked with the answers, and `score` is its own. */
+    refined?: boolean;
     profile: GeneProfile | null;
     professional: boolean;
     reportedWords: Map<string, string>;
@@ -63,7 +57,7 @@ export function GeneOverviewCard({
     rank,
     total,
     score,
-    listOrigin = null,
+    refined = false,
     profile,
     professional,
     reportedWords,
@@ -77,6 +71,7 @@ export function GeneOverviewCard({
     const chips = matchedChips(profile, reportedWords);
     const shown = chips.slice(0, MAX_CHIPS);
     const hidden = chips.length - shown.length;
+    const high = scoreBand(score) === "alto";
 
     return (
         <li className="flex" data-flip-key={symbol}>
@@ -85,11 +80,14 @@ export function GeneOverviewCard({
                 onClick={onOpen}
                 aria-haspopup="dialog"
                 data-gene-card={symbol}
+                data-high-score={high || undefined}
                 // The lift, the shadow and the accent border arrive together so
                 // the card reads as something that opens. Motion is dropped for
                 // anyone who asked for less of it; the colour change stays.
                 className={`group flex w-full flex-col gap-3.5 rounded-3xl border p-5 text-left transition-all duration-200 ease-out hover:border-[var(--lu-accent)] hover:bg-white hover:shadow-[0_18px_40px_-18px_rgba(13,148,136,0.45)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--lu-accent)] motion-safe:hover:-translate-y-1 ${
-                    state === "match"
+                    high
+                        ? "border-[var(--lu-accent-text)] bg-white shadow-sm ring-2 ring-[var(--lu-accent-text)] ring-offset-2"
+                        : state === "match"
                         ? "border-[var(--lu-accent-light)] bg-white shadow-sm"
                         : state === "nodata"
                           ? "border-dashed border-[var(--lu-border-strong)] bg-white"
@@ -101,25 +99,16 @@ export function GeneOverviewCard({
                         Gen #{rank} de {total}
                     </span>
                     <span className="flex-grow" />
-                    {/* The model's score is shown because it is what orders
-                        the original list, labelled so it is not read as a
-                        probability. A refined list shows movement instead. */}
-                    {listOrigin ? (
-                        <MovePill
-                            from={listOrigin.from}
-                            to={rank}
-                            title={rankMovement(rank, listOrigin.from).title}
-                            rankNote
-                        />
-                    ) : (
-                        <span
-                            title={MODEL_SCORE_TITLE}
-                            data-rank-note
-                            className="whitespace-nowrap rounded-full bg-[var(--lu-surface)] px-2.5 py-0.5 font-mono text-[11px] text-[var(--lu-text)] ring-1 ring-[var(--lu-border)]"
-                        >
-                            puntaje {formatScore(score)}
-                        </span>
-                    )}
+                    {high && <HighScoreBadge />}
+                    {/* The score of the list on screen, labelled so it is not
+                        read as a probability. */}
+                    <span
+                        title={refined ? ANSWERS_SCORE_TITLE : MODEL_SCORE_TITLE}
+                        data-rank-note
+                        className="whitespace-nowrap rounded-full bg-[var(--lu-surface)] px-2.5 py-0.5 font-mono text-[11px] text-[var(--lu-text)] ring-1 ring-[var(--lu-border)]"
+                    >
+                        puntaje {formatScore(score)}
+                    </span>
                 </span>
 
                 <span className="flex items-baseline gap-2.5">
@@ -183,5 +172,17 @@ export function GeneOverviewCard({
                 </span>
             </button>
         </li>
+    );
+}
+
+/** Beside a score of 0.8 or more, so the mark does not rest on the outline's colour alone. */
+export function HighScoreBadge() {
+    return (
+        <span
+            data-high-score-badge
+            className="whitespace-nowrap rounded-full bg-[var(--lu-accent-text)] px-2.5 py-0.5 text-[11px] font-semibold text-white"
+        >
+            Puntaje alto
+        </span>
     );
 }

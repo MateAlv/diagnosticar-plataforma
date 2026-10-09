@@ -390,7 +390,7 @@ function PanelSurface({
                 data-panel-scroll
                 className="@container flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain print:overflow-visible"
             >
-                {listFresh && <ListUpdated onSeeList={onSeeList} />}
+                {listFresh && <ListUpdated applied={state.phase === "finished"} onSeeList={onSeeList} />}
                 <QuestionPanelBody
                     {...body}
                     state={state}
@@ -406,10 +406,10 @@ function PanelSurface({
 /**
  * Over a drawer or a sheet the list is out of sight, so a round that
  * produced an order with the answers says so first thing, with the way to
- * see it. It says there is one, not that the list changed: the grid keeps
- * the model's own order unless the reader asks for the other.
+ * see it. While the questions go on the grid keeps the model's own order, so
+ * it says there is one; once they end the grid has taken it on by itself.
  */
-function ListUpdated({ onSeeList }: { onSeeList: () => void }) {
+function ListUpdated({ applied, onSeeList }: { applied: boolean; onSeeList: () => void }) {
     return (
         <div
             data-list-updated
@@ -417,7 +417,7 @@ function ListUpdated({ onSeeList }: { onSeeList: () => void }) {
         >
             <RefreshIcon className="h-4 w-4 shrink-0 text-[var(--lu-accent-text)]" />
             <p className="min-w-0 flex-1 text-sm font-semibold text-[var(--lu-accent-text)]">
-                Hay una lista con tus respuestas
+                {applied ? "La lista ya está ordenada con tus respuestas" : "Hay una lista con tus respuestas"}
             </p>
             <button type="button" onClick={onSeeList} className={TEXT_LINK}>
                 Verla

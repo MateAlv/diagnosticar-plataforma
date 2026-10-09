@@ -118,8 +118,9 @@ export async function reportToPdfBlob(report: Report): Promise<Blob> {
         y += 1;
     };
 
-    // One gene: rank and symbol, what it does, and its links on their own
-    // line. Kept on one page, so a gene is never split from its description.
+    // One gene: rank, symbol and score band, what it does, its links, and the
+    // medical detail when asked for. The head is kept on one page with its
+    // description; a long detail flows on.
     const geneEntry = (g: ReportGene) => {
         const indent = 24;
         doc.setFontSize(9.5);
@@ -135,8 +136,26 @@ export async function reportToPdfBlob(report: Report): Promise<Blob> {
         doc.text(`${g.rank}.`, margin, y + 11);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(...TEXT);
-        doc.text(pdfSafe(g.symbol), margin + indent, y + 11);
-        y += 16;
+        const symbol = pdfSafe(g.symbol);
+        doc.text(symbol, margin + indent, y + 11);
+        const scoreX = margin + indent + doc.getTextWidth(symbol) + 12;
+        doc.setFontSize(9);
+        const score = pdfSafe(g.score);
+        if (g.high) {
+            // Outlined, as the card is on screen, and bold, so it survives a
+            // black-and-white print.
+            doc.setFont("helvetica", "bold");
+            const w = doc.getTextWidth(score) + 10;
+            doc.setDrawColor(...TEAL);
+            doc.setLineWidth(1);
+            doc.roundedRect(scoreX - 5, y + 1, w, 13, 3, 3, "S");
+            doc.setTextColor(...TEAL);
+        } else {
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(...SUBTLE);
+        }
+        doc.text(score, scoreX, y + 10.5);
+        y += 18;
 
         doc.setFontSize(9.5);
         doc.setFont("helvetica", "normal");
@@ -153,6 +172,12 @@ export async function reportToPdfBlob(report: Report): Promise<Blob> {
             const url = pdfSafe(l.url);
             doc.textWithLink(url, margin + indent + doc.getTextWidth(label), y + 9.5, { url: l.url });
             y += 13;
+        }
+        for (const detail of g.details) {
+            ensure(26);
+            write(detail.heading, 9, { bold: true, indent, gap: 0 });
+            for (const line of detail.lines) write(`•  ${line}`, 8.5, { indent: indent + 8, gap: 0 });
+            y += 2;
         }
         y += 8;
     };

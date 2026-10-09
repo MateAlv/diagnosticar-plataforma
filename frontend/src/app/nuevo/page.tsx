@@ -499,10 +499,10 @@ function NuevoDiagnosticoScreen() {
   // saved to the account, which is also when the refine loop is not offered.
   const [diagnosisId, setDiagnosisId] = useState<string | null>(null);
   const [questionsEnabled, setQuestionsEnabled] = useState(false);
-  // The model's own list is what the grid shows. The order adjusted by the
-  // answers is a second view the reader has to ask for: on 501 published
-  // patients it ranked no better than the model alone. The choice holds for
-  // the rest of this page, rounds included, and not beyond it.
+  // While the questions go on the grid keeps the model's own list, and the
+  // order adjusted by the answers is there when the reader asks for it. Once
+  // the questions end it is applied by itself, with the way back beside it.
+  // The choice holds for the rest of this page, and not beyond it.
   const [preferAnswersList, setPreferAnswersList] = useState(false);
   // Said to a screen reader when the reader switches lists, not on load.
   const [listAnnouncement, setListAnnouncement] = useState("");
@@ -781,6 +781,22 @@ function NuevoDiagnosticoScreen() {
       refined ? "Mostrando la lista con tus respuestas." : "Mostrando la lista original del modelo.",
     );
   };
+
+  // Once per finished session, so going back to the model's list sticks.
+  const finishedRound =
+    questionSession.state.phase === "finished" && questionSession.state.refined
+      ? questionSession.state.refined.round
+      : null;
+  const appliedFinish = useRef<number | null>(null);
+  useEffect(() => {
+    if (finishedRound === null || appliedFinish.current === finishedRound) return;
+    appliedFinish.current = finishedRound;
+    if (!preferAnswersList) {
+      flipArmed.current = true;
+      setPreferAnswersList(true);
+      setListAnnouncement("Terminaron las preguntas: mostrando la lista con tus respuestas.");
+    }
+  }, [finishedRound, preferAnswersList]);
 
   /** From the question panel: the list with the answers, in the grid, with focus on its title. */
   const showUpdatedList = () => {
@@ -2476,16 +2492,22 @@ function NuevoDiagnosticoScreen() {
                                 source: symptom.source,
                               })),
                               negated: negatedFindings,
-                              answers: {
-                                yes: questionSession.state.history.filter((item) => item.effectiveAnswer === "si").map((item) => item.question.label),
-                                no: questionSession.state.history.filter((item) => item.effectiveAnswer === "no").map((item) => item.question.label),
-                                unsure: questionSession.state.history.filter((item) => item.effectiveAnswer === "no_se").map((item) => item.question.label),
-                              },
+                              answers: (() => {
+                                const said = (answer: string) =>
+                                  questionSession.state.history
+                                    .filter((item) => item.effectiveAnswer === answer)
+                                    .map((item) =>
+                                      professionalView ? `${item.question.label} (${item.question.hpoId})` : item.question.label,
+                                    );
+                                return { yes: said("si"), no: said("no"), unsure: said("no_se") };
+                              })(),
                               genes: visibleGeneResults.map((gene) => {
                                 const symbol = gene.gene_symbol || gene.gene_id;
-                                return { symbol, summary: geneProfiles.get(symbol.toUpperCase())?.resumen_es ?? null };
+                                const profile = geneProfiles.get(symbol.toUpperCase()) ?? null;
+                                return { symbol, score: Number(gene.score), summary: profile?.resumen_es ?? null, profile };
                               }),
                               adjustedByAnswers: showingRefined,
+                              medicalDetail: professionalView,
                               specialties: especialidadesParaConsultar(visibleSpecialties?.top_specialties ?? []),
                             })}
                           />
@@ -2529,9 +2551,7 @@ function NuevoDiagnosticoScreen() {
                                 rank={rank}
                                 total={visibleGeneResults.length}
                                 score={Number(gene.score)}
-                                listOrigin={
-                                  refinedOrigins ? { from: refinedOrigins.get(symbol.toUpperCase()) ?? null } : null
-                                }
+                                refined={showingRefined}
                                 profile={geneProfiles.get(symbol.toUpperCase()) ?? null}
                                 professional={professionalView}
                                 reportedWords={matchedWords}

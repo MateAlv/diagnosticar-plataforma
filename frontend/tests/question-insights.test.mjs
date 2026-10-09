@@ -14,7 +14,6 @@ import { importTs } from './helpers/ts-module.mjs';
 
 const {
   describeMove,
-  rankMovement,
   originsIn,
   listChanges,
   droppedSentence,
@@ -54,16 +53,6 @@ test('a gene the earlier list did not have reads as new, entering at its place',
   assert.deepEqual(describeMove(null, 4), {
     text: 'nuevo', label: 'Entra en la lista con tus respuestas, en el puesto 4.', direction: 'new',
   });
-});
-
-test('a card moves from its place in the list shown before the questions, and says rank 1 is not an answer', () => {
-  const movement = rankMovement(2, 5);
-  assert.equal(movement.text, '↑ 5.º → 2.º');
-  assert.match(movement.title, /lista que viste antes de las preguntas/);
-  assert.match(movement.title, /no quiere decir que sea la respuesta/);
-  assert.equal(rankMovement(1, 1).text, '= 1.º');
-  assert.equal(rankMovement(3, null).text, 'nuevo');
-  assert.match(rankMovement(3, null).title, /No estaba en la lista/);
 });
 
 test('each gene of the new list is placed in the old one by symbol, or not at all', () => {

@@ -120,11 +120,10 @@ Por pregunta, debajo del texto:
 - **Con el panel lateral (sección 5).** Esta tarjeta es lo que muestra el panel al abrirse antes de empezar, con «Empezar las preguntas» fijo al pie. La línea de invitación abre el panel en vez de desplazar la página.
 
 ### 2.9 Grilla de genes refinada
-- **Movimiento.** La píldora pasa a `↑ 3.º → 2.º` / `↓ 2.º → 3.º` / `= 1.º`, o «nuevo», en `nowrap`. Se mide siempre contra la lista que la página mostró antes de las preguntas (5.10).
-  - Sube en `accent-text`; baja en `subtle`; nunca rojo.
-  - La etiqueta accesible conserva la frase completa.
-- **Alternar listas.** El enlace de "volver al original" pasa a ser un **control segmentado** `[Original | Con tus respuestas]` en la banda de encabezado de la grilla, junto a «Ver detalle médico».
-  - **«Original» es la vista por defecto, siempre**, también justo después de una ronda (ver 5.8).
+- **Puntaje.** Cada tarjeta de la lista con las respuestas muestra el puntaje de esa lista («puntaje 0.810»), con el título «Puntaje con tus respuestas: ordena la lista, no es una probabilidad». Los movimientos quedan en «Qué cambió con tus respuestas» (2.6).
+- **Puntaje alto.** En cualquiera de las dos listas, una tarjeta con puntaje de 0,8 o más lleva borde marcado y la etiqueta «Puntaje alto», también en el modal del gen.
+- **Alternar listas.** Un botón en la banda de encabezado de la grilla, junto a «Ver detalle médico»: «← Volver a la lista inicial» sobre la lista con las respuestas, y «Ver la lista con tus respuestas» sobre la del modelo.
+  - Mientras siguen las preguntas, la vista por defecto es la del modelo. **Cuando terminan, la lista con las respuestas se aplica sola**, una vez por sesión terminada; si quien lee vuelve a la inicial, queda ahí. Una sesión ya terminada que se recupera al cargar abre en la lista con las respuestas.
   - Cuando existe la lista con las respuestas, debajo del control va la línea «La lista con tus respuestas es orientativa: todavía estamos evaluando si mejora el orden.»
   - La elección se recuerda mientras dura la página, rondas incluidas, y no entre cargas.
 - **Reordenamiento.** Animación FLIP de las tarjetas, `motion-safe`, 250 ms, **solo cuando quien lee cambia de lista**. Una ronda que reordena la lista con respuestas en pantalla no anima.
@@ -209,9 +208,9 @@ Debajo, la tira del aviso regulatorio, siempre visible mientras el panel está
 abierto. El aviso del pie de la página queda siempre en su lugar.
 
 ### 5.5 Qué pasa con la lista mientras tanto
-- **La grilla no cambia sola.** Después de una ronda sigue mostrando la lista del modelo; el orden con las respuestas queda disponible en el control «Original | Con tus respuestas» (5.8). Si quien lee eligió esa vista, la grilla la sigue ronda a ronda, sin animación.
+- **La grilla no cambia sola mientras hay preguntas.** Después de una ronda sigue mostrando la lista del modelo; el orden con las respuestas queda disponible en el botón de la banda (2.9). Si quien lee eligió esa vista, la grilla la sigue ronda a ronda, sin animación. Al terminar las preguntas se aplica sola (2.9).
 - **Escritorio.** La lista queda al lado del panel; el enlace del recibo «Ver la lista con tus respuestas» cambia la vista.
-- **Celular y tableta.** Al llegar una ronda, el panel muestra arriba «Hay una lista con tus respuestas · Verla». Ese aviso oculta la hoja o el cajón, pone esa vista y lleva a la grilla. El lanzador queda en «Seguir con las preguntas». En tableta el cajón también tapa la lista, así que lleva el mismo aviso.
+- **Celular y tableta.** Al llegar una ronda, el panel muestra arriba «Hay una lista con tus respuestas · Verla» («La lista ya está ordenada con tus respuestas · Verla» si con esa ronda terminaron las preguntas). Ese aviso oculta la hoja o el cajón, pone esa vista y lleva a la grilla. El lanzador queda en «Seguir con las preguntas». En tableta el cajón también tapa la lista, así que lleva el mismo aviso.
 - **En celular**, el botón «Afinar con preguntas» de la banda del panel de genes no se muestra: el lanzador está abajo y los controles de la banda quedarían apilados de a tres. Desde `md` vuelve.
 
 ### 5.6 Lo que se va
@@ -231,6 +230,7 @@ los casos queda igual. El producto no puede presentarlo como una mejora.
 - **Opcional.** El orden con las respuestas es una segunda vista que hay que pedir, con la aclaración de 2.9 a la vista.
 - **Lenguaje.** Los avisos dicen que **hay** otra lista, no que la lista «se actualizó».
 - **Qué no cambia.** El recibo «Qué cambió con tus respuestas» sigue en el panel, porque describe esa segunda vista.
+- **Cambiado por Mate el 2026-10-09.** Cuando terminan las preguntas, la lista con las respuestas se aplica sola en la grilla, con el botón «Volver a la lista inicial» al lado, y sus tarjetas muestran el puntaje de esa lista en vez del movimiento (2.9). Mientras hay preguntas, sigue valiendo lo de arriba. La aclaración de que es orientativa queda a la vista.
 
 ### 5.9 Solo los «Sí» llegan al modelo
 Decidido por Mate el 2026-09-28, a partir de la auditoría sobre pacientes reales.

@@ -8,10 +8,10 @@
  */
 
 import { RESULTS_DISCLAIMER } from "./disclaimer";
-import { stripProvenance } from "./genes-api";
+import { HIGH_SCORE, LOW_SCORE, describeFrequency, omimUrl, scoreBand, stripProvenance, type GeneProfile } from "./genes-api";
 import { onsetClass, onsetPhrase, type SymptomOnset } from "./onset";
 import { ageText } from "./patient-age";
-import { geneCardsUrl, hpoTermUrl } from "./reference-links";
+import { geneCardsUrl, hpoTermUrl, researchLinks } from "./reference-links";
 
 /** The public site, named in every summary that leaves the page. */
 export const SITE_URL = "https://diagnosticar.infra.cluster.qb.fcen.uba.ar";
@@ -29,7 +29,20 @@ export type ReportLink = { label: string; url: string };
 
 export type ReportTerm = { label: string; code: string; detail: string; url: string | null };
 
-export type ReportGene = { rank: number; symbol: string; description: string | null; links: ReportLink[] };
+/** One part of a gene's medical detail: a heading and its lines. */
+export type ReportDetail = { heading: string; lines: string[] };
+
+export type ReportGene = {
+    rank: number;
+    symbol: string;
+    /** "Puntaje del modelo: alto", and the number too in the medical detail. */
+    score: string;
+    high: boolean;
+    description: string | null;
+    links: ReportLink[];
+    /** What «Ver detalle médico» shows for the gene; empty without it. */
+    details: ReportDetail[];
+};
 
 export type ReportBlock =
     | { kind: "paragraph"; text: string; emphasis?: boolean }
@@ -50,10 +63,15 @@ export type ReportInput = {
     symptoms: { label: string; code: string; onset?: SymptomOnset | null; source?: "texto" | "manual" }[];
     negated: { label: string; code: string }[];
     answers: { yes: string[]; no: string[]; unsure: string[] };
-    /** The list on screen, in its order, with the gene's curated summary when there is one. */
-    genes: { symbol: string; summary: string | null }[];
+    /**
+     * The list on screen, in its order, with its score there, the gene's
+     * curated summary when there is one, and its profile for the medical detail.
+     */
+    genes: { symbol: string; score: number; summary: string | null; profile?: GeneProfile | null }[];
     /** The list on screen is the one re-ranked with the follow-up answers. */
     adjustedByAnswers?: boolean;
+    /** «Ver detalle médico» was on: each gene carries what that view shows. */
+    medicalDetail?: boolean;
     specialties: string[];
 };
 
@@ -105,6 +123,90 @@ function howItWasLoaded(input: ReportInput): string {
         "Cada síntoma se traduce a un término de la Human Phenotype Ontology (HPO), el vocabulario internacional con el que " +
         "profesionales y bases de datos de genética describen signos clínicos; al lado de cada uno va su código HPO, con un link a su ficha."
     );
+}
+
+const decimal = (n: number) => String(n).replace(".", ",");
+
+function scoreLegend(input: ReportInput): string {
+    const whose = input.adjustedByAnswers ? "el puntaje de la lista con las respuestas" : "el puntaje que el modelo le dio";
+    return (
+        `Al lado de cada gen va ${whose}: alto (${decimal(HIGH_SCORE)} o más), medio (de ${decimal(LOW_SCORE)} a ${decimal(HIGH_SCORE)}) ` +
+        `o bajo (menos de ${decimal(LOW_SCORE)}). El puntaje ordena la lista; no es la probabilidad de que el gen sea la causa.`
+    );
+}
+
+export const MEDICAL_DETAIL_NOTE =
+    "Incluye el detalle médico de cada gen, como en la vista «Ver detalle médico»: locus e identificadores, qué coincide " +
+    "con lo informado y con qué término HPO, las condiciones asociadas con su código OMIM (sin orden de relevancia para " +
+    "este caso, y la lista puede estar incompleta), los síntomas frecuentes en esas condiciones que no se informaron y la " +
+    "función de la proteína.";
+
+const withCode = (label: string, code: string | null | undefined) => (code ? `${label} (${code})` : label);
+
+/** What «Ver detalle médico» shows for one gene, in the order the detail shows it. */
+export function medicalDetail(profile: GeneProfile | null, said: Map<string, string>): ReportDetail[] {
+    if (!profile) return [{ heading: "Detalle", lines: ["Sin descripción disponible para este gen."] }];
+    const details: ReportDetail[] = [];
+
+    const identity = [
+        profile.nombre_completo,
+        profile.ubicacion && `Locus ${profile.ubicacion}`,
+        profile.tecnico?.aliases && `Alias: ${profile.tecnico.aliases}`,
+        profile.tecnico?.ncbi_id && `NCBI:${profile.tecnico.ncbi_id}`,
+        omimUrl(profile.omim_gen) && `OMIM del gen: ${omimUrl(profile.omim_gen)}`,
+    ].filter((line): line is string => Boolean(line));
+    if (identity.length) details.push({ heading: "Gen", lines: identity });
+
+    const reports = profile.coincidencias_por_reporte ?? [];
+    if ((profile.coincidencias ?? []).length > 0 && reports.length > 0) {
+        details.push({
+            heading: "Qué coincide",
+            lines: reports.map((report) => {
+                const reported = said.get(report.reportado_hpo_id.toUpperCase()) ?? report.reportado_hpo_id;
+                if (report.exacta) {
+                    const frequency = describeFrequency(report.exacta);
+                    return `Informado «${reported}»: coincidencia directa con ${withCode(report.exacta.nombre, report.exacta.hpo_id)}${frequency ? ` · ${frequency}` : ""}`;
+                }
+                const specific = report.especificas.map((symptom) => withCode(symptom.nombre, symptom.hpo_id)).join("; ");
+                return `Informado «${reported}»: coincidencia parcial; las condiciones describen formas más específicas: ${specific}`;
+            }),
+        });
+    } else {
+        details.push({
+            heading: "Qué coincide",
+            lines: [
+                profile.total_esperados === 0
+                    ? "Todavía no hay síntomas descritos para este gen, así que no hay nada que comparar."
+                    : `Ninguno de los ${profile.total_esperados} síntomas descritos para este gen coincide con lo informado. El modelo lo incluyó igual.`,
+            ],
+        });
+    }
+
+    if (profile.enfermedades.length > 0) {
+        details.push({
+            heading: `Condiciones asociadas (${profile.enfermedades.length})`,
+            lines: profile.enfermedades.map((disease) => (disease.omim ? `${disease.nombre} (OMIM ${disease.omim})` : disease.nombre)),
+        });
+    }
+
+    const toAsk = profile.frecuentes_no_reportados ?? [];
+    if (toAsk.length > 0) {
+        details.push({
+            heading: "Síntomas frecuentes en estas condiciones que no se informaron",
+            lines: toAsk.map((symptom) =>
+                symptom.frecuencia_pct !== null ? `${symptom.nombre} (${Math.round(symptom.frecuencia_pct)}%)` : symptom.nombre,
+            ),
+        });
+    }
+
+    const proteinFunction = profile.tecnico?.funcion_proteina_es ? stripProvenance(profile.tecnico.funcion_proteina_es) : "";
+    if (proteinFunction) details.push({ heading: "Función de la proteína", lines: [proteinFunction] });
+
+    const reading = researchLinks(profile);
+    if (reading.length > 0) {
+        details.push({ heading: "Para leer más", lines: reading.map((link) => `${link.label}: ${link.url}`) });
+    }
+    return details;
 }
 
 export function buildResultsReport(input: ReportInput): Report {
@@ -199,14 +301,21 @@ export function buildResultsReport(input: ReportInput): Report {
     if (input.adjustedByAnswers) {
         model.push({ kind: "paragraph", text: "Es la lista ajustada con las respuestas a las preguntas de seguimiento." });
     }
+    model.push({ kind: "paragraph", text: scoreLegend(input) });
+    if (input.medicalDetail) model.push({ kind: "paragraph", text: MEDICAL_DETAIL_NOTE });
+    const said = new Map(input.symptoms.map((s) => [s.code.toUpperCase(), s.label]));
+    const scoreName = input.adjustedByAnswers ? "Puntaje con las respuestas" : "Puntaje del modelo";
     model.push({
         kind: "genes",
-        title: `Genes sugeridos (${input.genes.length}), en el orden del modelo:`,
+        title: `Genes sugeridos (${input.genes.length}), en el orden ${input.adjustedByAnswers ? "con las respuestas" : "del modelo"}:`,
         genes: input.genes.map((gene, index) => ({
             rank: index + 1,
             symbol: gene.symbol,
+            score: `${scoreName}: ${scoreBand(gene.score)}${input.medicalDetail ? ` (${gene.score.toFixed(3)})` : ""}`,
+            high: scoreBand(gene.score) === "alto",
             description: briefGeneSummary(gene.summary),
             links: [{ label: "Ficha en GeneCards", url: geneCardsUrl(gene.symbol) }],
+            details: input.medicalDetail ? medicalDetail(gene.profile ?? null, said) : [],
         })),
     });
     if (input.specialties.length) {
@@ -234,7 +343,12 @@ export function reportToText(report: Report): string {
                 out.push(block.title);
                 for (const gene of block.genes) {
                     out.push(`${gene.rank}. ${gene.symbol}${gene.description ? ` — ${gene.description}` : ""}`);
+                    out.push(`   ${gene.score}`);
                     out.push(...gene.links.map((l) => `   ${l.label}: ${l.url}`));
+                    for (const detail of gene.details) {
+                        out.push(`   ${detail.heading}:`);
+                        out.push(...detail.lines.map((line) => `     - ${line}`));
+                    }
                 }
             }
             else out.push(...block.links.map((l) => `- ${l.label}${l.note ? ` (${l.note})` : ""}: ${l.url}`));

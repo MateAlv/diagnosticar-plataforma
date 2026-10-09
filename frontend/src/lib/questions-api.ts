@@ -38,7 +38,7 @@ export type Question = {
 export type RankedGeneRow = {
     geneId: string;
     geneSymbol: string;
-    /** The refined score: a normalised posterior, never shown as a number. */
+    /** The refined score: a normalised posterior, shown on the cards of the list with the answers. */
     score: number;
     /**
      * The gene's place in this ranking itself, 1-based: the agent re-runs the

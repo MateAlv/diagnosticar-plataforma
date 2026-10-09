@@ -36,9 +36,9 @@ const input = (over = {}) => ({
   negated: [{ label: 'Convulsiones', code: 'HP:0001250' }],
   answers: { yes: ['Sudor salado'], no: ['Pólipos nasales'], unsure: [] },
   genes: [
-    { symbol: 'CFTR', summary: 'Este gen codifica un canal de cloruro de los epitelios. Su activación depende de la fosforilación. [provided by RefSeq, Jul 2008]' },
-    { symbol: 'DNAH5', summary: null },
-    { symbol: 'SCNN1A', summary: 'Codifica una subunidad del canal de sodio epitelial.' },
+    { symbol: 'CFTR', score: 0.85, summary: 'Este gen codifica un canal de cloruro de los epitelios. Su activación depende de la fosforilación. [provided by RefSeq, Jul 2008]' },
+    { symbol: 'DNAH5', score: 0.08, summary: null },
+    { symbol: 'SCNN1A', score: 0.012, summary: 'Codifica una subunidad del canal de sodio epitelial.' },
   ],
   specialties: ['Neumonología'],
   ...over,
@@ -64,9 +64,9 @@ test('every gene in the model order, with a brief description and its GeneCards 
   const t = text();
   assert.match(
     t,
-    /^1\. CFTR — Este gen codifica un canal de cloruro de los epitelios\. Su activación depende de la fosforilación\.\n   Ficha en GeneCards: https:\/\/www\.genecards\.org\/cgi-bin\/carddisp\.pl\?gene=CFTR$/m,
+    /^1\. CFTR — Este gen codifica un canal de cloruro de los epitelios\. Su activación depende de la fosforilación\.\n   Puntaje del modelo: alto\n   Ficha en GeneCards: https:\/\/www\.genecards\.org\/cgi-bin\/carddisp\.pl\?gene=CFTR$/m,
   );
-  assert.match(t, /^2\. DNAH5\n   Ficha en GeneCards: /m);
+  assert.match(t, /^2\. DNAH5\n   Puntaje del modelo: medio\n   Ficha en GeneCards: /m);
   assert.match(t, /^3\. SCNN1A — Codifica/m);
 });
 
@@ -145,4 +145,65 @@ test('the PDF text keeps Spanish and replaces what its fonts cannot draw', () =>
   assert.equal(pdfSafe('Niño ¿tos? «sí» — ñandú · 1°'), 'Niño ¿tos? «sí» — ñandú · 1°');
   assert.equal(pdfSafe('Edad ≥ 5 · déficit de β-oxidación'), 'Edad >= 5 · déficit de beta-oxidación');
   assert.equal(pdfSafe('中'), '?');
+});
+
+test('each gene says its score band: alto from 0,8, medio from 0,05, bajo under it', () => {
+  const genes = buildResultsReport(input({
+    genes: [0.8, 0.7999, 0.05, 0.0499].map((score, i) => ({ symbol: `G${i}`, score, summary: null })),
+  })).sections.at(-1).blocks.find((b) => b.kind === 'genes').genes;
+  assert.deepEqual(genes.map((g) => g.score), [
+    'Puntaje del modelo: alto',
+    'Puntaje del modelo: medio',
+    'Puntaje del modelo: medio',
+    'Puntaje del modelo: bajo',
+  ]);
+  assert.deepEqual(genes.map((g) => g.high), [true, false, false, false]);
+  assert.match(text(), /alto \(0,8 o más\), medio \(de 0,05 a 0,8\) o bajo \(menos de 0,05\)/);
+  assert.match(text({ adjustedByAnswers: true }), /^1\. CFTR — .*\n   Puntaje con las respuestas: alto$/m);
+});
+
+const PROFILE = {
+  simbolo: 'CFTR',
+  nombre_completo: 'CF transmembrane conductance regulator',
+  cromosoma: '7',
+  ubicacion: '7q31.2',
+  omim_gen: '602421',
+  resumen_es: null,
+  resumen_llano_es: null,
+  enfermedades: [{ nombre: 'Fibrosis quística', descripcion_es: '', omim: '219700' }, { nombre: 'Pancreatitis', descripcion_es: '', omim: '' }],
+  coincidencias: [{ hpo_id: 'HP:0012735', nombre: 'Tos crónica', frecuencia_pct: 90, frecuencia_texto: null }],
+  coincidencias_por_reporte: [
+    { reportado_hpo_id: 'HP:0012735', exacta: { hpo_id: 'HP:0012735', nombre: 'Tos crónica', frecuencia_pct: 90, frecuencia_texto: null }, especificas: [] },
+    { reportado_hpo_id: 'HP:0004322', exacta: null, especificas: [{ hpo_id: 'HP:0003510', nombre: 'Talla baja grave', frecuencia_pct: null, frecuencia_texto: null }] },
+  ],
+  frecuentes_no_reportados: [{ hpo_id: 'HP:0002613', nombre: 'Cirrosis biliar', frecuencia_pct: 40, frecuencia_texto: null }],
+  total_esperados: 12,
+  reportados_cubiertos: ['HP:0012735', 'HP:0004322'],
+  referencias: { ClinVar: 'https://www.ncbi.nlm.nih.gov/clinvar/?term=CFTR%5Bgene%5D' },
+  tecnico: {
+    resumen_es: null, funcion_proteina_es: 'Canal de cloruro regulado por AMPc. [provided by UniProt]', resumen_en: null,
+    funcion_proteina_en: null, aliases: 'ABC35, CFRD', ncbi_id: '1080', uniprot_accession: 'P13569', codigo_omim: ['602421'],
+  },
+};
+
+test('with «Ver detalle médico» on, each gene carries what that view shows', () => {
+  const medical = (over) => text({
+    medicalDetail: true,
+    genes: [{ symbol: 'CFTR', score: 0.851266, summary: null, profile: PROFILE }, { symbol: 'DNAH5', score: 0.02, summary: null, profile: null }],
+    ...over,
+  });
+  const t = medical();
+  assert.match(t, /Incluye el detalle médico de cada gen/);
+  assert.match(t, /^   Puntaje del modelo: alto \(0\.851\)$/m);
+  assert.match(t, /- CF transmembrane conductance regulator\n     - Locus 7q31\.2\n     - Alias: ABC35, CFRD\n     - NCBI:1080\n     - OMIM del gen: https:\/\/www\.omim\.org\/entry\/602421/);
+  assert.match(t, /Informado «Tos crónica»: coincidencia directa con Tos crónica \(HP:0012735\) · muy frecuente \(90%\)/);
+  assert.match(t, /Informado «Talla baja»: coincidencia parcial; las condiciones describen formas más específicas: Talla baja grave \(HP:0003510\)/);
+  assert.match(t, /Condiciones asociadas \(2\):\n     - Fibrosis quística \(OMIM 219700\)\n     - Pancreatitis$/m);
+  assert.match(t, /que no se informaron:\n     - Cirrosis biliar \(40%\)/);
+  assert.match(t, /Función de la proteína:\n     - Canal de cloruro regulado por AMPc\.$/m);
+  assert.match(t, /ClinVar: https:\/\/www\.ncbi/);
+  assert.match(t, /^2\. DNAH5\n   Puntaje del modelo: bajo \(0\.020\)\n   Ficha en GeneCards: .*\n   Detalle:\n     - Sin descripción disponible para este gen\.$/m);
+
+  const plain = text({ genes: [{ symbol: 'CFTR', score: 0.851266, summary: null, profile: PROFILE }] });
+  assert.doesNotMatch(plain, /detalle médico|Locus|OMIM 219700|Cirrosis biliar|0\.851/);
 });

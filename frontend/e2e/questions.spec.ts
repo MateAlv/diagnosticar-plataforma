@@ -191,15 +191,22 @@ async function askToStart(page: Page) {
     await panel(page).getByRole("button", { name: "Empezar las preguntas" }).click();
 }
 
-// includeHidden: while a drawer or sheet is open the page behind it is
-// aria-hidden, and these read its state rather than act on it.
-function listRadio(page: Page, name: "Con tus respuestas" | "Original") {
-    return page.getByRole("radio", { name, exact: true, includeHidden: true });
+type ListName = "Con tus respuestas" | "Original";
+
+// Read off the attribute: while a drawer or sheet is open the page behind it
+// is aria-hidden, and these read its state rather than act on it.
+async function expectList(page: Page, name: ListName) {
+    await expect(page.locator("[data-list-toggle]")).toHaveAttribute(
+        "data-showing",
+        name === "Original" ? "original" : "refined",
+    );
 }
 
-async function chooseList(page: Page, name: "Con tus respuestas" | "Original") {
-    await page.locator("[data-list-toggle]").getByText(name, { exact: true }).click();
-    await expect(listRadio(page, name)).toBeChecked();
+async function chooseList(page: Page, name: ListName) {
+    const toggle = page.locator("[data-list-toggle]");
+    const want = name === "Original" ? "original" : "refined";
+    if ((await toggle.getAttribute("data-showing")) !== want) await toggle.click();
+    await expectList(page, name);
 }
 
 async function terminate(page: Page) {
@@ -218,7 +225,7 @@ async function seriousViolations(page: Page, include: string) {
         .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
 }
 
-test("a family answers a round and gets the summary; the grid keeps the model's list until they ask for the other", async ({ page }) => {
+test("a family answers a round and gets the summary; once the questions end the grid takes on the list with the answers", async ({ page }) => {
     const errors = collectPageErrors(page);
     await setup(page);
     await runToResults(page);
@@ -254,10 +261,9 @@ test("a family answers a round and gets the summary; the grid keeps the model's 
         { hpoId: SWEAT.hpoId, answer: "si", note: "se lo hicieron a los 3 años" },
     ]);
 
-    // The answers produce a second order, which the grid does not take on its
-    // own: on real patients it ranked no better than the model's.
-    await expect(listRadio(page, "Original")).toBeChecked();
-    expect(await geneOrder(page)).toEqual(["CFTR", "DNAH5", "SCNN1A"]);
+    // The agent stopped there, so the order with the answers is applied.
+    await expectList(page, "Con tus respuestas");
+    expect(await geneOrder(page)).toEqual(["CFTR", "SCNN1A", "DNAH5"]);
 
     await expect(panel(page).getByRole("heading", { name: "Para conversar en la consulta" })).toBeFocused();
     await expect(panel(page).locator("[data-summary]")).toHaveText(SUMMARIES.refined.paciente);
@@ -274,6 +280,7 @@ test("a family answers a round and gets the summary; the grid keeps the model's 
     await expect(panel(page).getByText(/generaron sin IA/)).toHaveCount(0);
 
     await toTheList(page);
+    await chooseList(page, "Original");
     // A "no" reaches no list: it is recorded with what they do not have,
     // whichever list is on screen, and said to change neither.
     await expect(page.locator("[data-from-questions]")).toHaveCount(0);
@@ -578,43 +585,48 @@ test("finishing early leaves the original ranking as it was", async ({ page }) =
     await expect(panel(page).getByText(DISCLAIMER)).toBeVisible();
 });
 
-test("after refining the grid keeps the model's list, and the one with the answers is one tap away, labelled as under evaluation", async ({ page }) => {
+test("once the questions end the list with the answers is applied, with its own scores and a button back to the model's", async ({ page }) => {
     await setup(page);
     await runToResults(page);
     await startQuestions(page);
     await answerAll(page);
     await send(page);
-    await expect(listRadio(page, "Original")).toBeChecked();
+    await expectList(page, "Con tus respuestas");
     await toTheList(page);
 
-    // The model's list first, and chosen; the other second.
-    await expect(page.locator("[data-list-toggle] input")).toHaveCount(2);
-    const options = await page.locator("[data-list-toggle] label").allInnerTexts();
-    expect(options.map((text) => text.trim())).toEqual(["Original", "Con tus respuestas"]);
+    const toggle = page.locator("[data-list-toggle]");
+    await expect(toggle).toHaveText(/Volver a la lista inicial/);
     await expect(page.locator("[data-list-note]")).toHaveText(
         "La lista con tus respuestas es orientativa: todavía estamos evaluando si mejora el orden.",
     );
-    expect(await geneOrder(page)).toEqual(["CFTR", "DNAH5", "SCNN1A"]);
-    await expect(page.locator("[data-from-questions]")).toHaveCount(0);
-    const note = page.locator('[data-gene-card="CFTR"] [data-rank-note]');
-    await expect(note).toHaveText(/^puntaje \d\.\d{3}$/);
-    await expect(note).toHaveAttribute("title", /^Puntaje del modelo/);
-
-    const announcement = page.locator("[data-gene-panel] [aria-live]");
-    await chooseList(page, "Con tus respuestas");
-    await expect(announcement).toHaveText("Mostrando la lista con tus respuestas.");
     expect(await geneOrder(page)).toEqual(["CFTR", "SCNN1A", "DNAH5"]);
     await expect(page.locator("[data-from-questions]")).toHaveText([`${STOOL.label} · de las preguntas↗`]);
-    // A card in that list shows how far the gene moved, never the adjusted score.
-    await expect(note).toHaveText("= 1.º");
-    await expect(note).toHaveAttribute("title", /no quiere decir que sea la respuesta/);
+    // Each card shows the score of the list with the answers, not a move.
+    const notes = page.locator("[data-gene-card] [data-rank-note]");
+    await expect(notes).toHaveText(["puntaje 0.810", "puntaje 0.090", "puntaje 0.050"]);
+    await expect(notes.first()).toHaveAttribute("title", /^Puntaje con tus respuestas/);
+    // 0.8 or more is marked, with an outline and in words.
+    const cftr = page.locator('[data-gene-card="CFTR"]');
+    await expect(cftr).toHaveAttribute("data-high-score", "true");
+    await expect(cftr.locator("[data-high-score-badge]")).toHaveText("Puntaje alto");
+    await expect(page.locator("[data-high-score]")).toHaveCount(1);
 
-    await chooseList(page, "Original");
+    const announcement = page.locator("[data-gene-panel] [aria-live]");
+    await toggle.click();
+    await expectList(page, "Original");
     await expect(announcement).toHaveText("Mostrando la lista original del modelo.");
+    await expect(toggle).toHaveText("Ver la lista con tus respuestas");
     expect(await geneOrder(page)).toEqual(["CFTR", "DNAH5", "SCNN1A"]);
+    await expect(notes).toHaveText(["puntaje 0.412", "puntaje 0.201", "puntaje 0.087"]);
+    await expect(notes.first()).toHaveAttribute("title", /^Puntaje del modelo/);
+    await expect(page.locator("[data-high-score]")).toHaveCount(0);
     // The «Sí» leaves with the list it was added to; the «No» stays, recorded.
     await expect(page.locator("[data-from-questions]")).toHaveCount(0);
     await expect(page.getByText(`${SITUS.label} (de las preguntas)`)).toBeVisible();
+
+    await toggle.click();
+    await expectList(page, "Con tus respuestas");
+    await expect(announcement).toHaveText("Mostrando la lista con tus respuestas.");
 });
 
 test("the choice of list holds through the next round, and a round never puts the answers' list on by itself", async ({ page }) => {
@@ -624,18 +636,18 @@ test("the choice of list holds through the next round, and a round never puts th
     await answerAll(page, undefined, ["No", "No", "No sé"]);
     await send(page);
     await expect(panel(page).getByRole("heading", { name: "Ronda 2 de 3" })).toBeVisible();
-    await expect(listRadio(page, "Original")).toBeChecked();
+    await expectList(page, "Original");
 
     await besideThePanel(page, () => chooseList(page, "Con tus respuestas"));
     await answerAll(page, [SINUS.text, OTITIS.text, POTASSIUM.text], ["Sí", "No", "No"]);
     await send(page);
     await expect(panel(page).getByRole("heading", { name: "Para conversar en la consulta" })).toBeVisible();
-    await expect(listRadio(page, "Con tus respuestas")).toBeChecked();
+    await expectList(page, "Con tus respuestas");
     expect(await geneOrder(page)).toEqual(["CFTR", "SCNN1A", "DNAH5"]);
 });
 
 for (const medical of [false, true]) {
-    test(`the answers' list shows each gene's move from the list shown before the questions (${medical ? "medical" : "family"} view)`, async ({ page }) => {
+    test(`the answers' list shows each gene's new score, and the detail says what moved it (${medical ? "medical" : "family"} view)`, async ({ page }) => {
         await setup(page);
         await runToResults(page, { medical });
         await startQuestions(page);
@@ -645,19 +657,15 @@ for (const medical of [false, true]) {
         await answerAll(page, texts);
         await send(page);
         await toTheList(page);
-        await chooseList(page, "Con tus respuestas");
+        await expectList(page, "Con tus respuestas");
 
         const notes = page.locator("[data-gene-card] [data-rank-note]");
-        await expect(notes).toHaveText(["= 1.º", "↑ 3.º → 2.º", "↓ 2.º → 3.º"]);
-        await expect(notes.nth(1)).toHaveAttribute("data-direction", "up");
-        // The refined score is a posterior; no card shows it as a number.
-        for (const text of await notes.allInnerTexts()) expect(text).not.toMatch(/\d\.\d/);
-        // A screen reader gets the sentence, not the arrows.
-        await expect(page.locator('[data-gene-card="SCNN1A"]')).toHaveAccessibleName(/Subió del puesto 3 al 2 con tus respuestas/);
+        await expect(notes).toHaveText(["puntaje 0.810", "puntaje 0.090", "puntaje 0.050"]);
+        await expect(page.locator("[data-gene-card] [data-direction]")).toHaveCount(0);
 
         await page.locator('[data-gene-card="DNAH5"]').click();
         const dialog = page.getByRole("dialog");
-        await expect(dialog.locator("[data-rank-note]")).toHaveText("↓ 2.º → 3.º");
+        await expect(dialog.locator("[data-rank-note]")).toHaveText("puntaje 0.050");
         // The same in both views, and crediting no answer: the model ranked again.
         await expect(dialog.locator("[data-move-note]")).toHaveText(
             "Se movió cuando el modelo volvió a ordenar la lista con los síntomas que confirmaste.",
@@ -679,15 +687,15 @@ test("the specialities follow the list on screen: the model's first, the re-run'
     // Gastroenterology: SCNN1A alone in the model's list; CFTR joins it in
     // the re-run with the confirmed findings.
     const gastro = page.locator("li").filter({ hasText: /^Gastroenterología/ }).filter({ hasText: "de 3 genes" });
-    await expect(gastro).toContainText("1 de 3 genes");
-    await expect(gastro.getByRole("button")).toHaveText(["SCNN1A"]);
-
-    await chooseList(page, "Con tus respuestas");
     await expect(gastro).toContainText("2 de 3 genes");
     await expect(gastro.getByRole("button")).toHaveText(["CFTR", "SCNN1A"]);
 
     await chooseList(page, "Original");
     await expect(gastro).toContainText("1 de 3 genes");
+    await expect(gastro.getByRole("button")).toHaveText(["SCNN1A"]);
+
+    await chooseList(page, "Con tus respuestas");
+    await expect(gastro).toContainText("2 de 3 genes");
 });
 
 test("a gene the list before the questions did not have enters as new, and one that left is named", async ({ page }) => {
@@ -716,14 +724,9 @@ test("a gene the list before the questions did not have enters as new, and one t
     await expect(receipt.getByRole("listitem")).toHaveText([/DNAI1\s*nuevo/, /CFTR\s*= 1\.º/]);
     await expect(receipt.locator("[data-dropped]")).toHaveText("Quedaron fuera de esta lista: DNAH5.");
 
-    await besideThePanel(page, () => chooseList(page, "Con tus respuestas"));
-    const notes = page.locator("[data-gene-card] [data-rank-note]");
-    await expect(notes).toHaveText(["= 1.º", "nuevo", "= 3.º"]);
-    await expect(notes.nth(1)).toHaveAttribute("data-direction", "new");
-    await expect(notes.nth(1)).toHaveAttribute("title", /No estaba en la lista que viste antes de las preguntas/);
-
     await toTheList(page);
-    await expect(page.locator('[data-gene-card="DNAI1"]')).toHaveAccessibleName(/Entra en la lista con tus respuestas, en el puesto 2/);
+    await expectList(page, "Con tus respuestas");
+    await expect(page.locator("[data-gene-card] [data-rank-note]")).toHaveText(["puntaje 0.700", "puntaje 0.200", "puntaje 0.100"]);
     await page.locator('[data-gene-card="DNAI1"]').click();
     await expect(page.getByRole("dialog").locator("[data-move-note]")).toHaveText(
         "Entró en la lista cuando el modelo la volvió a ordenar con los síntomas que confirmaste.",
@@ -743,12 +746,8 @@ test("toggling between the model's list and the answers' list never refetches or
     await toTheList(page);
     const cftrMeter = page.locator('[data-gene-card="CFTR"]').getByRole("img", { name: /Coincide con/ });
     await expect(cftrMeter).toBeVisible();
-    // The model's list stays on screen, so a round alone fetches nothing more.
-    await expect.poll(() => batches).toBe(1);
-    await chooseList(page, "Con tus respuestas");
-    await expect(cftrMeter).toBeVisible();
-    // One batch for the answers' list, whose "Sí" answers change what the
-    // profiles are compared against.
+    // One batch for the answers' list, applied when the questions end, whose
+    // "Sí" answers change what the profiles are compared against.
     await expect.poll(() => batches).toBe(2);
     const settled = batches;
 
@@ -834,7 +833,7 @@ test("a second round opens with what the last answers changed (family view)", as
     await expect(question(page, SINUS.text)).toBeVisible();
     await expect(panel(page).locator("[data-associated-genes]")).toHaveCount(0);
 
-    await expect(listRadio(page, "Original")).toBeChecked();
+    await expectList(page, "Original");
     if (layoutOf(page) !== "docked") {
         // Over the list, the banner says there is another order; reopened
         // after a look, the receipt's own link does the same.
@@ -842,7 +841,7 @@ test("a second round opens with what the last answers changed (family view)", as
         await besideThePanel(page, async () => {});
     }
     await receipt.getByRole("button", { name: /Ver la lista con tus respuestas/ }).click();
-    await expect(listRadio(page, "Con tus respuestas")).toBeChecked();
+    await expectList(page, "Con tus respuestas");
     const genes = page.getByRole("heading", { name: /Genes para llevar a la consulta/ });
     await expect(genes).toBeFocused();
     await expect(genes).toBeInViewport();
@@ -905,6 +904,8 @@ test("the summary copies as plain text, with the disclaimer word for word", asyn
     await question(page, SWEAT.text).getByRole("button", { name: "Agregar un comentario" }).click();
     await question(page, SWEAT.text).getByLabel("Comentario (opcional)").fill("desde bebé");
     await send(page);
+    await expect(panel(page).getByRole("heading", { name: "Para conversar en la consulta" })).toBeVisible();
+    await besideThePanel(page, () => chooseList(page, "Original"));
 
     await panel(page).getByRole("button", { name: "Copiar resumen" }).click();
     await expect(panel(page).getByText(/Copiamos el resumen/)).toBeVisible();
@@ -914,7 +915,7 @@ test("the summary copies as plain text, with the disclaimer word for word", asyn
     expect(family).toContain(SUMMARIES.refined.paciente);
     expect(family).toContain(`Dijiste que sí: ${STOOL.label}.`);
     expect(family).toContain(`No sabías: ${SWEAT.label} («desde bebé»).`);
-    // The model's list, not the order with the answers, which was not chosen.
+    // The model's list, not the order with the answers, which they went back from.
     expect(family).toContain("en el orden original del modelo");
     expect(family).toContain("1. CFTR · 2. DNAH5 · 3. SCNN1A");
     expect(family).not.toContain("Orden con tus respuestas");
@@ -965,6 +966,7 @@ test("printing prints the summary, the gene list and the disclaimer, and nothing
     await answerAll(page);
     await send(page);
     await expect(panel(page).getByRole("heading", { name: "Para conversar en la consulta" })).toBeVisible();
+    await besideThePanel(page, () => chooseList(page, "Original"));
 
     const elsewhere = [
         page.locator('[data-gene-card="CFTR"]'),
@@ -990,7 +992,7 @@ test("printing prints the summary, the gene list and the disclaimer, and nothing
     await expect(panel(page).getByText(DISCLAIMER)).toBeVisible();
     const printed = panel(page).locator("[data-print-genes]");
     await expect(printed).toBeVisible();
-    // The model's list, and only it: the order with the answers was not chosen.
+    // The model's list, and only it: they went back from the order with the answers.
     await expect(printed).toContainText("En el orden original del modelo");
     await expect(printed.getByRole("listitem")).toHaveText([/^1\. CFTR$/, /^2\. DNAH5$/, /^3\. SCNN1A$/]);
     await expect(panel(page).locator("[data-print-adjusted]")).toHaveCount(0);
@@ -1154,14 +1156,14 @@ test("on a phone the panel is a sheet, and a new round offers the updated list",
     await expect(updated).toContainText("Hay una lista con tus respuestas");
     await expect(updated).toBeInViewport();
     // Said, not done: the grid behind still shows the model's list.
-    await expect(listRadio(page, "Original")).toBeChecked();
+    await expectList(page, "Original");
 
     await updated.getByRole("button", { name: "Verla" }).click();
     await expect(panel(page)).toHaveCount(0);
     const genes = page.getByRole("heading", { name: /Genes para llevar a la consulta/ });
     await expect(genes).toBeFocused();
     await expect(genes).toBeInViewport();
-    await expect(listRadio(page, "Con tus respuestas")).toBeChecked();
+    await expectList(page, "Con tus respuestas");
     await expect(launcher(page)).toHaveAttribute("data-question-launcher", "continue");
 
     // Back in, the round is where it was, and the news has been seen.
@@ -1221,13 +1223,13 @@ test.describe("on a tablet", () => {
         await expect(panel(page)).toHaveCount(0);
         await expect(launcher(page)).toBeFocused();
 
-        // After a round, the drawer says there is a list with the answers,
-        // and leaves the model's on screen behind it.
+        // When the questions end, the drawer says the list behind it now
+        // carries the answers.
         await startQuestions(page);
         await answerAll(page);
         await send(page);
-        await expect(panel(page).locator("[data-list-updated]")).toContainText("Hay una lista con tus respuestas");
-        await expect(listRadio(page, "Original")).toBeChecked();
+        await expect(panel(page).locator("[data-list-updated]")).toContainText("La lista ya está ordenada con tus respuestas");
+        await expectList(page, "Con tus respuestas");
     });
 });
 
@@ -1554,10 +1556,8 @@ test("a session already on the server is restored on load", async ({ page }) => 
     });
     await runToResults(page);
 
-    // A new page starts on the model's list, with the other one on offer.
-    await expect(listRadio(page, "Original")).toBeChecked();
-    expect(await geneOrder(page)).toEqual(["CFTR", "DNAH5", "SCNN1A"]);
-    await chooseList(page, "Con tus respuestas");
+    // The session had ended, so the page opens on the list with the answers.
+    await expectList(page, "Con tus respuestas");
     expect(await geneOrder(page)).toEqual(["CFTR", "SCNN1A", "DNAH5"]);
     await expect(page.locator("[data-from-questions]")).toHaveText([`${STOOL.label} · de las preguntas↗`]);
     await expect(page.getByText(`${SITUS.label} (de las preguntas)`)).toBeVisible();
