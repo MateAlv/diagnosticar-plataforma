@@ -4,28 +4,56 @@ Two halves: **what the pipeline does** (reference), and **how to take a change
 through it** (the runbook, at the bottom — start there if you are shipping
 something today).
 
-Accurate as of 2026-09-18, `v0.4.0`.
+Accurate as of 2026-10-15.
+
+---
+
+## The pipeline at a glance
+
+```
+ TARS (developer)            GitHub Actions                     GHCR         nodo0
+ ────────────────            ──────────────                     ────         ─────
+ make ci ─► PR ─► main ─► tag vX.Y.Z ─► release.yml
+                                        ├─ CI: checks, backend tests,
+                                        │  E2E, compose stack smoke
+                                        └─ 6 images: build, test inside,
+                                           Trivy, non-root ─────────► push
+                                                                       │
+                                     cron, every 5 minutes: ops/deploy.sh staging
+                                     new tag with every image? pull · up · smoke
+                                     smoke failed? back to the previous release
+```
+
+Three rules keep it inside the account's Actions minutes, a monthly quota
+(3,000 on this plan) shared by every repository of the account:
+
+1. **Nothing runs on a push or a pull request.** `make ci` runs the same checks
+   locally and is the gate for merging.
+2. **GitHub works once per release**: CI, then the images. A release whose
+   pinned commits did not move reuses those images instead of rebuilding them.
+3. **Deploying costs no minutes.** nodo0 asks GitHub for new tags and pulls;
+   nothing on GitHub reaches into it.
+
+The cloud copy has its own, manual pipeline (`docs/CLOUD_CICD.md`).
 
 ---
 
 ## Topology this pipeline assumes
 
 ```
-nodo0  (public)              brainy  (compute)
-├── frontend  (Next.js)      ├── HPO gateway   :8000  ─┐  separate repo:
-├── backend   (Express)      └── GenPhenAI    :18020  ─┘  diagnostic.ar-api
-├── postgres
-└── traefik  ──── TLS ────┐
-                          └── reverse SSH tunnels ──► brainy
+nodo0  (public, shared with other teams)          brainy  (compute)
+├── traefik ── TLS                                 ├── HPO gateway   :8000
+├── production  (project diagnosticar)             └── GenPhenAI    :18020
+│   frontend, backend, postgres, tunnels ──────────────► brainy
+└── staging     (project diagnosticar-staging)
+    frontend, backend, postgres,
+    hpo-recognizer, model, question-agent
 ```
 
-**This repository deploys nodo0 only.** The HPO and GenPhenAI services live in
-[`diagnostic.ar-api`](https://github.com/MateAlv/diagnostic.ar-api) and are
-deployed separately on brainy. They are treated here as an external dependency:
-CI stubs them, and `ops/smoke.sh` does not gate on them, so a GPU node reboot
-cannot block a frontend deploy. If you want the pipeline to also verify brainy,
-add a health probe against `/healthz` on both services as a **non-blocking**
-step — blocking on it would couple two independently-deployed systems.
+**This repository deploys nodo0.** Staging runs the symptom recognizer, the
+model and the question agent itself, built by the release from pinned commits
+of other repositories (`.github/recognizer.env`, `.github/question-agent.env`).
+Production still reaches brainy's services through SSH tunnels.
 
 Production is **https://diagnosticar.infra.cluster.qb.fcen.uba.ar**. Note
 `infra`, not `infa`; both resolve, but `infa` is a wildcard catch pointing at a
@@ -35,18 +63,37 @@ different machine.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every PR and weekly on `main`
-(vulnerabilities appear without anyone pushing), and by hand from the Actions
-tab. Not on push to `main`: a PR merges only when it is up to date with `main`
-and green, and merges are squashed, so what lands is the tree already tested.
-Six checks:
+### `make ci`: the gate for merging
 
-| Check | Gates on |
+`ops/ci-local.sh` runs every check of `ci.yml` on the developer's machine, in
+the same order and with the same commands, plus the image builds and scans the
+release does:
+
+| Group | Gates on |
+|---|---|
+| lint, typecheck | eslint + `tsc --noEmit`, both workspaces |
+| unit | frontend unit tests |
+| backend | the backend suite against a throwaway Postgres |
+| e2e | Playwright against the standalone build, model services stubbed |
+| audit | `npm audit` on runtime deps, lockfile drift |
+| secrets | gitleaks over the whole history (the same pinned image as CI); no tracked `.env` |
+| images | builds both images, asserts non-root, Trivy HIGH/CRITICAL |
+| stack | boots the compose stack and drives the real endpoints |
+
+Run it on the exact commit that will merge, with a clean tree. `make test`
+covers only part of it.
+
+### `.github/workflows/ci.yml`
+
+The same suite on GitHub, minus the image builds (the release builds and scans
+the real images right after). It runs when `release.yml` calls it, before any
+image is built, and by hand from the Actions tab. Four jobs:
+
+| Job | Gates on |
 |---|---|
 | `Checks` | eslint + `tsc --noEmit` for both workspaces, frontend unit tests, `npm audit` on runtime deps, lockfile drift, gitleaks, no tracked `.env` |
 | `Backend tests (Postgres)` | full backend suite against a Postgres service container |
 | `E2E (Playwright)` | the standalone build, model services stubbed |
-| `Build & scan images (frontend)` / `(backend)` | Trivy HIGH/CRITICAL, asserts non-root |
 | `Compose stack smoke test` | boots the real compose stack and drives real endpoints |
 
 Three deserve explanation:
@@ -57,23 +104,22 @@ Three deserve explanation:
 - **`Compose stack smoke test` restarts the backend** to prove migrations are
   idempotent. `migrate()` runs on every boot, so a non-idempotent statement
   breaks the *second* deploy, not the first.
-- **The image scan finds base-image CVEs, not just yours.** `npm audit` and
-  Trivy disagree by design: `npm audit` reads your lockfile, Trivy reads
-  everything in the image, including npm's own bundled dependencies. This is why
-  both runner stages delete npm and run `apk upgrade` — see
-  "Why the Dockerfiles delete npm" below.
+- **gitleaks scans the whole history**, not the commits of one push: a secret
+  removed in a later commit is still readable in the one that added it.
 
 `.github/dependabot.yml` sends routine updates monthly, one grouped PR per
-ecosystem, not rebased automatically, and pins Next/React major versions, which
-change the standalone layout the Dockerfile depends on. Security fixes still
-arrive immediately.
+ecosystem, and pins Next/React major versions, which change the standalone
+layout the Dockerfile depends on. No check runs on those PRs either: run
+`make ci` on the branch before merging one.
 
-**Actions minutes are an account-wide quota**, and in September 2026 this repo
-spent all 3,000. Where they went: Dependabot PRs rebased and re-tested on every
-push to `main` (39%), the suite re-run on `main` after each merge (23%), and six
-jobs that each took seconds but were billed a whole minute (a job is rounded up
-to the minute). The trigger, the grouping and the single `Checks` job above are
-the fixes; keep new work inside an existing job unless it needs its own runner.
+**Where the minutes went.** In September 2026 the account spent all 3,000:
+Dependabot PRs re-tested on every push to `main` (39%), the suite re-run on
+`main` after each merge (23%), and jobs that took seconds but were billed a
+whole minute each (a job is rounded up to the minute). In October the cloud
+copy's publishing ran on every merge in three repositories. Since 2026-10-15
+nothing runs by itself: CI runs once per release, and cloud publishing is
+manual everywhere. Keep new checks inside an existing job unless they need
+their own runner.
 
 **There is no CodeQL workflow.** It was removed on 2026-09-14 — code scanning
 needs GitHub Advanced Security, which a private repo on this plan does not
@@ -82,64 +128,95 @@ include, so the analysis ran and its results were discarded on every push. See
 
 ### Branch protection
 
-`main` requires all six checks, blocks force-pushes and deletions, and
-requires changes to arrive by pull request. It does **not** require an approving
-review — a solo owner cannot self-approve, and requiring one would block every
-merge.
+`main` requires changes to arrive by pull request and blocks force-pushes and
+deletions. It requires no status checks, since none run on pull requests: the
+gate is `make ci`, kept by discipline rather than enforced by GitHub. It does
+not require an approving review either — a solo owner cannot self-approve.
 
-`enforce_admins` is **off**, so these rules do not restrain the repo owner:
-an admin can still push directly to `main`. That is deliberate (no lockout), but
-it means protection is a safety net, not a wall. Turn it on if a second
-maintainer joins.
+`enforce_admins` is **off**, so these rules do not restrain the repo owner.
+Deliberate (no lockout), but it makes protection a safety net, not a wall.
 
 ---
 
 ## Releases
 
-Tagging `vX.Y.Z` triggers `.github/workflows/release.yml`. Per image:
+Tagging `vX.Y.Z` triggers `.github/workflows/release.yml`:
 
 ```
-Build (load, not push)  →  Trivy HIGH,CRITICAL  →  assert non-root  →  Push
+CI (ci.yml)  ─►  backend · frontend (production) · frontend (staging)
+                 hpo-recognizer · model · question-agent
 ```
+
+Every image follows the same order:
+
+```
+Build (load, not push)  →  tests inside the image  →  Trivy HIGH,CRITICAL  →  assert non-root  →  Push
+```
+
+The three images built from other repositories run their own test suites
+inside the image; the backend and frontend were already tested by CI.
 
 **The order matters and was wrong until `v0.1.0`.** The workflow used to push
-first and scan second, so a failed scan left a published tag that `ops/deploy.sh`
-would happily pull. It now publishes only what has already passed. The second
-build is a cache hit, so this costs nothing.
+first and scan second, so a failed scan left a published tag a node would pull.
+It now publishes only what has already passed. The second build is a cache hit,
+so this costs nothing.
 
-`fail-fast: false` on the matrix is also load-bearing: without it, one image
-failing cancels the other mid-push, and a **half-published release** is worse
-than a failed one — `deploy.sh` would find a mismatched pair.
+**A half-published release is never deployed.** Each job pushes its own image,
+and `fail-fast: false` keeps one failure from cancelling the others mid-push.
+nodo0 deploys a tag only once every image it runs carries it. Re-run the failed
+jobs, or fix forward with the next tag.
 
-**Three images per tag.** The backend reads every URL from `.env` at runtime,
-so one image serves both environments. The frontend does not — `NEXT_PUBLIC_*`
-values are compiled into the client bundle at build time — so it is built once
-per environment:
+**Six images per tag.**
 
 ```
-ghcr.io/matealv/diagnosticar-backend:X.Y.Z
-ghcr.io/matealv/diagnosticar-frontend:X.Y.Z            production URLs
-ghcr.io/matealv/diagnosticar-frontend-staging:X.Y.Z    staging URLs
+ghcr.io/matealv/diagnosticar-backend:X.Y.Z               both environments
+ghcr.io/matealv/diagnosticar-frontend:X.Y.Z              production URLs
+ghcr.io/matealv/diagnosticar-frontend-staging:X.Y.Z      staging URLs
+ghcr.io/matealv/diagnosticar-hpo-recognizer:X.Y.Z        diagnostic.ar-api + spanish-symptoms-recognizer
+ghcr.io/matealv/diagnosticar-model:X.Y.Z                 diagnostic.ar-api's GenPhenAI
+ghcr.io/matealv/diagnosticar-question-agent:X.Y.Z        diagnostic.ar-api's Dockerfile + the agent
 ```
 
-plus `X.Y`, `latest`, and `sha-<full commit sha>`. Note the **lowercase**
-registry path, which is not how the account name is spelled.
+each also as `vX.Y.Z`, `X.Y`, `latest` and `sha-<full commit sha>`. Note the
+**lowercase** registry path, which is not how the account name is spelled.
 
-The matrix is keyed on `environment` alone; the image name, the four public
-URLs and the cache scope are all derived from it, so a staging build cannot be
-published under the production name by editing one line. A build whose resolved
-API URL disagrees with its declared environment **fails** rather than shipping
-an image that starts cleanly and posts to the wrong place — which is exactly
-what happened on the first staging deploy, where the login failed because the
-request reached production's API.
+The backend reads every URL from `.env` at runtime, so one image serves both
+environments. The frontend does not — `NEXT_PUBLIC_*` values are compiled into
+the client bundle at build time — so it is built once per environment. The
+matrix is keyed on `environment` alone; the image name, the four public URLs
+and the cache scope are all derived from it, so a staging build cannot be
+published under the production name by editing one line. A build whose
+resolved API URL disagrees with its declared environment **fails** rather than
+shipping an image that starts cleanly and posts to the wrong place — which is
+exactly what happened on the first staging deploy. Setting `NEXT_PUBLIC_*` in
+`.env` on the node has **no effect on an already-built image**; changing one
+requires a new tag.
 
-Setting `NEXT_PUBLIC_*` in `.env` on the node has **no effect on an
-already-built image**. Changing one requires a new tag, not a restart.
+### Images reused across releases
+
+The recognizer, the model and the question agent are built from commits of
+other repositories, so each is also tagged by them:
+
+```
+diagnosticar-hpo-recognizer:api-<12>-recognizer-<12>    GATEWAY_COMMIT, RECOGNIZER_COMMIT
+diagnosticar-model:api-<12>                             GATEWAY_COMMIT
+diagnosticar-question-agent:api-<12>-agent-<12>         GATEWAY_COMMIT, QUESTION_AGENT_COMMIT
+```
+
+When a release finds that tag already published, `.github/scripts/reuse-image.sh`
+gives the release's tags to that image and the job skips its build: the same
+bytes, already tested and scanned, in seconds. The recognizer alone takes about
+20 minutes to build. Moving a pin builds again. A reused image is not scanned
+again, so it only picks up a newer base image when one of its pins moves.
+
+What a release costs, estimated from earlier runs: about 25 billed minutes when
+only this repository changed, about 50 when a pin moved and the recognizer
+rebuilds.
 
 ### The question agent image
 
-`diagnosticar-question-agent` is built like `hpo-recognizer`, from two private
-repositories pinned by commit:
+`diagnosticar-question-agent` comes from two private repositories pinned by
+commit:
 
 - the **Dockerfile** is `services/question-agent/Dockerfile` in
   `MateAlv/diagnostic.ar-api`, at `GATEWAY_COMMIT` in `.github/recognizer.env`
@@ -147,41 +224,22 @@ repositories pinned by commit:
   `API_DEPLOY_KEY`;
 - the **agent's code** is `MarBL00126/diagnosticar-question-agent`, at
   `QUESTION_AGENT_COMMIT` in `.github/question-agent.env`, checked out into
-  `agent/` with `MODEL_RELEASE_TOKEN` (diagnosticar-fiuba, a collaborator on
-  that repository) and passed to the build as the named
-  context `agent` (`context: ./api`, `build-contexts: agent=./agent`).
-
-```
-read pins  →  checkout api + agent  →  build :candidate
-           →  pytest inside the image (-m 'not live')  →  Trivy HIGH,CRITICAL
-           →  assert non-root  →  push
-```
+  `agent/` with `QUESTION_AGENT_DEPLOY_KEY`, a read-only deploy key its owner
+  added, and passed to the build as the named context `agent`
+  (`context: ./api`, `build-contexts: agent=./agent`).
 
 The image carries both commits as labels, `org.opencontainers.image.revision.api`
 and `org.opencontainers.image.revision.question-agent`. The Dockerfile installs
 the agent's runtime dependencies with `-c constraints.txt`, the exact versions
-committed in the agent's repository (regenerated there with `make lock`), so
-rebuilding the same two commits installs the same packages.
-
-The pins are read by the job's first step. While `QUESTION_AGENT_COMMIT` is
-empty, every later step is **skipped** and the job succeeds with a notice, so a
-release is never blocked before a commit has been chosen. A pin that is set but
-is not a full 40-character SHA fails the release. The check is a step, not a
-job of its own that `publish-question-agent` needs, because every job is billed
-at least a minute.
+committed in the agent's repository, so rebuilding the same two commits
+installs the same packages. A pin that is not a full 40-character SHA fails the
+release.
 
 The tests run from the agent's checkout, mounted read-only: `tests/` at
 `/tmp/tests` and `docs/` at `/tmp/docs`, which holds the contract example some
-tests validate (without it they skip). pytest is installed for that run only
-(`pip install --user` with `HOME=/tmp`, which is why the runtime has pip and no
-virtualenv); the Dockerfile documents the same command.
-
-Before the first pinned release: `diagnosticar-fiuba` must be a collaborator on
-the agent's repository, which lives on a teammate's personal account where only
-its owner can add deploy keys; its classic token is already the
-`MODEL_RELEASE_TOKEN` secret here. `GATEWAY_COMMIT` already points at an API
-commit with `services/question-agent/Dockerfile`. `make ci` does not build this image — it
-needs both other repositories.
+tests validate (without it they skip). Tests marked `live` call a real LLM and
+are left out. `make ci` does not build this image — it needs both other
+repositories.
 
 The backend's `QUESTION_AGENT_TIMEOUT_MS` (100 s) must stay above the agent's
 queue wait (10 s) + round budget (`PREGUNTAS_ROUND_BUDGET_S`, 75 s) + its
@@ -208,23 +266,44 @@ two builds of identical source can differ. Pin `FROM node:22-alpine@sha256:…`
 when reproducibility matters more than convenience, and keep `apk upgrade` for
 patches published after that digest.
 
+The Python images (recognizer, model, question agent) do the same with
+`apt-get upgrade`: `python:3.12-slim` lags on Debian security fixes. BuildKit
+caches that layer, so when Trivy flags an OS package that already has a fix,
+the cached layer still holds the old one; rebuild it without the cache.
+
 ---
 
 ## Deployment: pull-based
 
-Nothing reaches into nodo0. A systemd timer asks GitHub every ten minutes
-whether a newer release exists, and if so deploys it. No inbound access, no CI
-runner and no repository credentials on the machine holding clinical data.
+Nothing reaches into nodo0: no CI runner, no inbound access, no credential that
+can write to GitHub. The node holds clinical records and is shared with other
+teams, and five accounts can push to this repository; a runner there would let
+any of them run commands on it. So the node pulls.
+
+cron runs `ops/deploy.sh staging` every five minutes as `<usuario>`:
 
 ```
-release tag ──► GHCR ◄── ops/deploy.sh (timer on nodo0)
-                            │
-                            ├─ pg_dump backup      (refuses to deploy if this fails)
-                            ├─ docker compose pull
-                            ├─ docker compose up -d --no-build
-                            ├─ ops/smoke.sh
-                            └─ on failure: roll back to previous tag, re-smoke
+git ls-remote --tags          newest vX.Y.Z, newer than every tag already handled?
+docker manifest inspect       every staging image published under it?
+disk                          20 GiB free for Docker, 5 GiB under /home?
+git checkout vX.Y.Z           the release's own compose files and scripts
+ops/staging.sh up vX.Y.Z      pull, then recreate the staging containers only
+ops/staging.sh smoke          through Traefik, against the public staging host
+  └─ failed: check out and start the previous release again, smoke it
 ```
+
+- **Quiet when there is nothing to do.** It logs only what it does, to
+  `~/.local/state/diagnosticar/staging/deploy.log`; the same directory holds
+  what runs and what ran before.
+- **Each tag is tried once.** A failed tag is not retried every five minutes;
+  fix forward with the next one.
+- **One deploy at a time** (`flock`), and only `diagnosticar-staging-*`
+  containers change. It never prunes or removes images: the host's disk is
+  shared, and freeing it is a human decision.
+- **By hand:** `ops/deploy.sh staging --status`, `ops/deploy.sh staging vX.Y.Z`
+  (also to go back to an older release), `ops/deploy.sh staging --rollback`.
+  A tag deployed by hand does not make cron move it back: cron only acts on a
+  tag newer than every tag it has handled.
 
 `ops/smoke.sh` checks behaviour, not liveness. It asserts `/api/patients`
 returns 401 unauthenticated, that a cross-origin POST is rejected, that five
@@ -232,166 +311,65 @@ security headers are present and `X-Powered-By` is absent, and that `/home`
 renders without mojibake. A container that starts with a broken database
 connection or an accidentally public patients endpoint is a **failed deploy**.
 
-### Production CD: how we intend to turn it on
+### Turning it on for staging
+
+Once, as `<usuario>` on nodo0, from a checkout that has `ops/deploy.sh`:
+
+```bash
+cd ~/diagnostic.ar/diagnostic.ar-staging
+state=~/.local/state/diagnosticar/staging
+mkdir -p "$state"
+echo "<tag running now>" > "$state/current"       # what a failed deploy goes back to
+echo "<its commit>"      > "$state/current-ref"
+ops/deploy.sh staging    # records the newest tag; the next newer one deploys
+( crontab -l 2>/dev/null; echo 'MAILTO=""'
+  echo '*/5 * * * * $HOME/diagnostic.ar/diagnostic.ar-staging/ops/deploy.sh staging' ) | crontab -
+```
+
+To stop it, remove that line with `crontab -e`. Staging keeps running whatever
+it runs.
+
+### Production: what is left
 
 **Nothing has ever deployed production through this pipeline.** Production
-diagnostic.ar was deployed by hand and has been running for weeks from
-`/home/<usuario>/nodo0-server/services/diagnostic.ar`. Everything below is the
-intended path, written down before anyone walks it.
+runs images built by hand from `/home/<usuario>/nodo0-server/services/diagnostic.ar`,
+owned by another account, and has for weeks. To bring it in:
 
-The staging work already proved most of it: the release workflow publishes
-correctly, `ops/staging.sh` pulls and starts a stack, and `ops/smoke.sh` catches
-real defects. What is untested is `ops/deploy.sh` itself — the backup, the
-rollback, and the systemd timer.
+1. **Decide who deploys it**: the account that owns production's checkout,
+   with read access to GHCR, or a checkout of production moved to an account
+   that can have both.
+2. **Rehearse a restore** of a `pg_dump` into staging (see *Backup restore*).
+   Until then the way back from a bad migration is unverified.
+3. **Add `production` to `ops/deploy.sh`**: its two images (backend,
+   frontend), project `diagnosticar` with `docker-compose.prod.yml` and the
+   deploy overlay, a `pg_dump` before every deploy that refuses to continue if
+   it fails, and only tags staging already ran. Production should move when a
+   person says so (`ops/deploy.sh production vX.Y.Z`), not on every tag.
+4. **Deploy one tag by hand**, watching it, before anything automatic.
 
-#### What must be true first
+`ops/systemd/` holds a timer from the first design of this, written for a
+root-owned checkout at `/opt/diagnostic.ar` and never installed. Whatever runs
+production's deploy (that timer or cron) calls `ops/deploy.sh production`.
 
-1. **Staging has run the same tag.** Production should never be the first place
-   an image executes.
-2. **A restore has been rehearsed.** `ops/deploy.sh` takes a `pg_dump` before
-   every deploy and refuses to proceed without one, but nothing has ever
-   restored one. Until that is rehearsed, treat the backups as unverified —
-   which means the rollback story is "roll back the image", not "roll back the
-   data".
-3. **The node can pull.** `docker login ghcr.io` as whoever runs the deploy, and
-   a read-only PAT at `/etc/diagnosticar/github-token` for the release-lookup
-   call in `latest_release()`.
-
-#### Step 1 — dry run against staging, with the production script
-
-```bash
-ssh nodo0-diagnostic.ar
-cd ~/diagnostic.ar/diagnostic.ar-staging
-DEPLOY_STATE_DIR=$HOME/deploy-state-test \
-ENV_FILE=$PWD/.env.staging \
-  ops/deploy.sh v0.4.0
-```
-
-This exercises the real script — backup, pull, restart, smoke, and the rollback
-branch — against the staging stack and a throwaway state directory. It is the
-only way to find out whether the rollback path works **before** needing it.
-
-Expect to find something. The script has never run.
-
-#### Step 2 — deploy production by hand once
-
-Before automating, do it manually so the failure modes are observed by a person:
-
-```bash
-# on nodo0, as whoever owns the production deployment
-cd /home/<usuario>/nodo0-server/services/diagnostic.ar
-docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-               -f docker-compose.deploy.yml pull
-docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-               -f docker-compose.deploy.yml up -d --no-build
-ops/smoke.sh
-```
-
-Note production's checkout predates this pipeline and may not contain `ops/` or
-the deploy overlay. Bringing it up to date is itself a change to a live service
-serving families, so schedule it rather than doing it opportunistically.
-
-#### Step 3 — install the timer
-
-```bash
-sudo mkdir -p /var/lib/diagnosticar /etc/diagnosticar
-printf '%s' 'ghp_...' | sudo tee /etc/diagnosticar/github-token >/dev/null
-sudo chmod 600 /etc/diagnosticar/github-token
-sudo cp ops/systemd/diagnosticar-deploy.* /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now diagnosticar-deploy.timer
-```
-
-The timer asks GitHub every ten minutes whether a newer release exists. Nothing
-reaches into the node: no inbound access, no CI runner, no repository
-credentials on the machine holding clinical data. That property is the reason
-for the pull-based design and should not be traded away for convenience.
-
-#### Step 4 — watch the first automated deploy
-
-```bash
-journalctl -u diagnosticar-deploy -f
-systemctl list-timers diagnosticar-deploy.timer
-```
-
-#### Why production is riskier than staging, concretely
+Why production is riskier than staging, concretely:
 
 - **Staging shares the host with production.** A compose command that resolves
   to the wrong project name hits live clinical data. Every command carries an
   explicit `-p`.
 - **Migrations run on every backend boot.** A bad migration breaks the deploy
-  *and* the data. This is what the pre-deploy `pg_dump` exists for, and why an
+  *and* the data. This is what the pre-deploy `pg_dump` is for, and why an
   unrehearsed restore is the biggest open risk in this repository.
 - **Rollback restores the image, not the database.** If a migration corrupts
-  data, rolling back the tag does not undo it.
-
-#### What would make this safe enough to automate
-
-In rough order of value:
-
-1. Rehearse a restore from a `pg_dump` into staging.
-2. Run `ops/deploy.sh` end to end against staging, including a deliberate smoke
-   failure, to prove the rollback branch.
-3. Add uptime monitoring. The smoke test covers the moment of release; nothing
-   currently notices a disk filling at 03:00.
-4. Only then enable the timer.
-
-Until at least the first two are done, deploy production by hand.
-
-### Installing on nodo0
-
-```bash
-sudo git clone https://github.com/MateAlv/diagnostic.ar /opt/diagnostic.ar
-cd /opt/diagnostic.ar
-sudo cp .env.example .env && sudo $EDITOR .env      # fill in real secrets
-sudo mkdir -p /var/lib/diagnosticar /etc/diagnosticar
-
-# The GHCR packages are private, so the node needs a read-only PAT:
-printf '%s' 'ghp_...' | sudo tee /etc/diagnosticar/github-token >/dev/null
-sudo chmod 600 /etc/diagnosticar/github-token
-
-sudo cp ops/systemd/diagnosticar-deploy.* /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now diagnosticar-deploy.timer
-```
-
-Operating it:
-
-```bash
-make deploy              # deploy the latest release now
-make deploy TAG=v1.4.2   # deploy a specific tag
-make deploy-rollback     # back to the previous tag
-make smoke               # health-check without deploying
-journalctl -u diagnosticar-deploy -f
-systemctl list-timers diagnosticar-deploy.timer
-```
+  data, going back to the previous tag does not undo it.
 
 ---
 
 ## Staging
 
 A full copy of production on the same node, under its own compose project name
-and its own database volume, behind its own Traefik host with basic auth and
-`X-Robots-Tag: noindex`.
-
-```bash
-cp .env.staging.example .env.staging && $EDITOR .env.staging
-make staging-up            # build and deploy the working tree
-make staging-up TAG=v1.4.2 # or deploy a released tag
-make staging-smoke
-make staging-down
-ops/staging.sh reset-db    # wipe staging data (prompts first)
-```
-
-The two modes matter:
-
-- **`make staging-up` with no tag builds your working tree.** This is the "does
-  my branch survive the real model services" path — the reason staging exists.
-- **`make staging-up TAG=vX.Y.Z` pulls a released image.** This is the rehearsal
-  path: identical bytes to what production would run.
-
-Staging shares brainy's HPO/GenPhenAI tunnels, which is the point: it is the
-only place the real model services are exercised before production.
+and its own database volume, behind its own Traefik host with
+`X-Robots-Tag: noindex`. Everything about it — access, the traps, the model
+services it runs — is in `STAGING.md`.
 
 Two rules:
 
@@ -404,10 +382,7 @@ Two rules:
 
 ---
 
-# Runbook: taking a change to production
-
-This is the intended path end to end. Steps 1–3 are the normal loop; 4 onward
-happen when you decide to ship.
+# Runbook: taking a change to staging
 
 ### 1. Develop against mocks
 
@@ -418,124 +393,81 @@ cd frontend && npm run dev:mock
 No database, no GPU, no `.env`. Sign in with any email and an 8-char password.
 Right for almost all UI work.
 
-### 2. Run the gates locally before pushing
+### 2. Run the gate on the exact commit
 
 ```bash
-make test        # lint, typecheck, backend (throwaway Postgres), frontend, e2e
+make ci
 ```
 
-Cheaper than discovering the same failure in CI five minutes later.
+Fix until it passes. This is the only check before merging, so run it on what
+will actually merge.
 
-### 3. Open a pull request
+### 3. Open a pull request and merge it
 
-`main` is protected, so this is the only route in. All six checks must pass.
-No approving review is required, so you can merge your own PR once green.
+`main` is protected, so this is the only route in. No check runs on GitHub.
 
 ```bash
 git switch -c feat/my-change
-# ... work ...
+# ... work, make ci ...
 git push -u origin feat/my-change
 gh pr create --fill
-gh pr checks --watch
 gh pr merge --squash
 ```
 
-### 4. Exercise it on staging
+Merge several changes before releasing: each release costs Actions minutes,
+each merge does not.
 
-**Before tagging.** Staging is where the real HPO and GenPhenAI services are
-first involved — CI only ever sees stubs, so this is the first honest test of
-anything touching the model path.
-
-```bash
-# on nodo0
-cd /opt/diagnostic.ar && git pull
-make staging-up          # builds the working tree
-make staging-smoke
-```
-
-Look at it in a browser at the staging host. Then, if the change touches the
-database, **rehearse the restore** (see "Backup restore" below).
-
-### 5. Tag a release
+### 4. Tag a release
 
 ```bash
 git switch main && git pull
-git tag -a v0.2.0 -m "v0.2.0 — <what changed>"
-git push origin v0.2.0
-gh run watch                       # release.yml: build → scan → push
+make ci                                  # once more, on main as it is now
+git tag -a v0.10.0 -m "v0.10.0 — <what changed>"
+git push origin v0.10.0
+gh run watch                             # release.yml: CI → images
 ```
 
 Semver: patch for fixes, minor for features, major for anything that breaks the
-API contract or the database schema in a non-additive way.
+API contract or the database schema in a non-additive way. To ship a new
+recognizer, model or question agent, move its pin in `.github/recognizer.env`
+or `.github/question-agent.env` first.
 
-If the release fails, **nothing is published** — that is the point of scanning
-before pushing. Fix forward and move the tag only if nothing has consumed it;
-otherwise cut the next patch version.
+If the release fails, nothing deploys. Re-run the failed jobs if the failure
+was outside the code, or fix forward and tag the next patch version. Do not
+move a tag.
 
-### 6. Rehearse the release on staging
+### 5. Watch staging take it
 
-```bash
-# on nodo0
-make staging-up TAG=v0.2.0
-make staging-smoke
-```
-
-This runs the exact bytes production will run. Skipping it means the first
-execution of that image is on the machine holding real clinical records.
-
-### 7. Deploy to production
-
-The timer picks up the new release within ten minutes on its own. To go now:
+Within five minutes of the run going green:
 
 ```bash
-make deploy TAG=v0.2.0
+ssh nodo0-diagnostic.ar diagnostic.ar/diagnostic.ar-staging/ops/deploy.sh staging --status
 ```
 
-`deploy.sh` backs up the database, pulls, restarts, smoke-tests, and **rolls
-back automatically** if the smoke test fails. Watch it:
+Then look at it in a browser at the staging host. If something is wrong that
+the smoke test did not catch, go back:
 
 ```bash
-journalctl -u diagnosticar-deploy -f
+ssh nodo0-diagnostic.ar diagnostic.ar/diagnostic.ar-staging/ops/deploy.sh staging --rollback
 ```
 
-### 8. Verify, and know the way back
+### 6. Production
 
-```bash
-make smoke
-curl -sI https://diagnosticar.infra.cluster.qb.fcen.uba.ar/home
-```
-
-If something is wrong that the smoke test did not catch:
-
-```bash
-make deploy-rollback
-```
-
-Rollback restores the **previous image**, not the previous database. A
-migration that corrupted data needs the `pg_dump` from
-`/var/lib/diagnosticar/backups/`, which is why the backup gates the deploy.
+Not through the pipeline yet; see *Production: what is left*.
 
 ---
 
 ## Backup restore
 
-`ops/deploy.sh` writes `pre-<tag>-<timestamp>.sql.gz` before every deploy and
-refuses to deploy if it fails. **Nothing has ever restored one.** Until a
-restore has been rehearsed, treat the backups as unverified.
+Nothing has ever restored a backup of production. Until a restore has been
+rehearsed, treat the backups as unverified.
 
-To rehearse, into staging, never production:
-
-```bash
-# on nodo0
-gunzip -c /var/lib/diagnosticar/backups/pre-v0.1.0-*.sql.gz \
-  | docker compose -p diagnosticar-staging exec -T db \
-      psql -U diagnosticar -d diagnosticar
-```
-
-Then `make staging-smoke` and confirm the data is actually there. Note this
-contradicts the synthetic-data rule if the dump came from production — so
-rehearse with a **staging** dump, or accept that a production dump must be
-destroyed immediately afterwards and never left on the staging volume.
+Rehearse on staging, never on production, with a dump **of staging**: take a
+`pg_dump` of the staging database, recreate it empty (`ops/staging.sh
+reset-db`), load the dump back with `psql` in the `db` container, and run
+`ops/staging.sh smoke` and a real search to confirm the data is there. A
+production dump must never land on the staging volume: that contradicts the
+synthetic-data rule.
 
 Do this quarterly. An unverified backup is not a backup.
 
@@ -547,11 +479,13 @@ Do this quarterly. An unverified backup is not a backup.
   clinical data. See above.
 - **No uptime monitoring.** The deploy smoke test covers the moment of release;
   it does not notice a database filling its disk at 03:00.
+- **No check on pull requests.** `make ci` is the gate, by discipline. A merge
+  that skipped it is caught by the release's CI, before any image is built.
+- **The way back has only run in a simulation.** `ops/deploy.sh`'s rollback was
+  exercised against a fake checkout and a fake Docker, not the real stack.
 - **Actions are pinned to tags, not commit SHAs.** Dependabot watches them. For
   a stricter supply chain, pin to SHAs.
 - **`apk upgrade` makes builds non-reproducible.** Pin a base digest when that
   matters more than convenience.
-- **The rollback path has never been executed.** It is reasoned about and
-  reviewed, not run in anger. Rehearse it on staging before you need it.
-- **brainy is not covered.** `diagnostic.ar-api` needs its own pipeline; its
-  `tests/` directory suggests the groundwork is there.
+- **brainy is not covered.** Production's model services there are deployed by
+  hand.

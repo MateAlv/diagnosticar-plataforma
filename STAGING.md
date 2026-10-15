@@ -5,8 +5,9 @@ real HPO and GenPhenAI services are exercised before production.** CI stubs
 them, so anything touching the model path is genuinely untested until it runs
 here.
 
-**https://staging.diagnosticar.infra.cluster.qb.fcen.uba.ar** — running
-`v0.4.0` as of 2026-09-18.
+**https://staging.diagnosticar.infra.cluster.qb.fcen.uba.ar** — every release
+tag deploys here by itself; `ops/deploy.sh staging --status` on nodo0 says
+which one is running.
 
 ---
 
@@ -51,12 +52,16 @@ password travelled through a terminal. Sign in again with the new one.
 ## How a change reaches staging
 
 ```
-branch ──► PR ──► main ──► tag vX.Y.Z ──► 3 images on GHCR ──► ops/staging.sh up
-           11 CI checks     release.yml                         on nodo0
+make ci ──► PR ──► main ──► tag vX.Y.Z ──► release.yml ──────────► GHCR
+(local)                                    CI, then the 6 images     │
+                                                                     ▼
+                                nodo0, cron every 5 min: ops/deploy.sh staging
+                                pull · up · smoke, or back to the previous release
 ```
 
-Nothing is built on nodo0. Both environments pull images CI already scanned,
-which is why a deploy cannot pick up a half-finished commit.
+Nothing is built on nodo0 and nothing reaches into it: the node asks GitHub for
+new tags and pulls images CI already tested and scanned. `CI_CD.md` has the
+whole pipeline.
 
 ### The three images, and why there are three
 
@@ -82,83 +87,32 @@ image that looks fine and talks to the wrong environment.
 
 ### Deploying
 
+A release deploys itself. Within five minutes of its last image reaching GHCR,
+cron on nodo0 runs `ops/deploy.sh staging`, which checks out the tag, runs
+`ops/staging.sh up vX.Y.Z` and `ops/staging.sh smoke`, and goes back to the
+release that was running if the smoke test fails. Each tag is tried once; a
+failed one is fixed forward with the next tag.
+
+By hand, on nodo0 in `~/diagnostic.ar/diagnostic.ar-staging`:
+
 ```bash
-ssh nodo0-diagnostic.ar
-cd ~/diagnostic.ar/diagnostic.ar-staging
-git pull
-ops/staging.sh up v0.4.0     # a released tag — what production will run
-ops/staging.sh smoke
+ops/deploy.sh staging --status     # what runs, the newest tag, the end of the log
+ops/deploy.sh staging v0.10.0      # deploy a published release now, also an older one
+ops/deploy.sh staging --rollback   # back to the release before the current one
 ```
 
-Two modes:
+Its log and state are in `~/.local/state/diagnosticar/staging/`. Deploy through
+`ops/deploy.sh`, not `ops/staging.sh up`, so it knows what runs and can go back.
+A deploy does not start with less than 20 GiB free in Docker's root dir (`/data`)
+or 5 GiB under `/home`; both disks are shared with other teams.
 
-- **`up vX.Y.Z`** pulls released images. Identical bytes to production. This is
-  the rehearsal path and the default choice.
-- **`up`** with no tag builds the working tree on the node. Useful for "does my
-  branch survive the real model services", but it compiles on a host running 62
-  containers and ships something no CI run ever scanned. Prefer a tag.
+`ops/staging.sh up` with no tag builds the working tree on the node. Useful for
+"does my branch survive the real model services", but it compiles on a host
+running 65 containers and ships something no CI run ever scanned. Prefer a tag.
 
-Any `up` must run with `COMPOSE_PROFILES=question-agent`, or the question agent
-is neither pulled nor updated (see *Follow-up questions* below).
-
-### Deploying by hand, when CI cannot publish
-
-Used for `v0.9.3-manual` to `v0.9.5-manual` (2026-09-28 to 09-30) while the
-account's Actions minutes were exhausted. It reproduces what `release.yml`
-does, on TARS instead of a runner, and ships the images over SSH instead of
-GHCR. Replace it with a real tag as soon as CI can publish again.
-
-1. **Merge first, build from `main`.** Check out the merged commit detached.
-   Run the full `make ci` on it (never `make ci | tail && …`; gate on its exit
-   code). The API pins in `.github/recognizer.env` and
-   `.github/question-agent.env` must already name the commits you are about to
-   build.
-2. **Build the five images with the release's arguments**, tag
-   `ghcr.io/matealv/diagnosticar-<name>:vX.Y.Z-manual`:
-   - `backend`: `--build-arg RELEASE_VERSION/RELEASE_COMMIT/RELEASE_BUILT_AT`.
-   - `frontend-staging`: the same three, plus `NEXT_PUBLIC_API_URL` and
-     `NEXT_PUBLIC_API_BASE_URL` = `https://staging.diagnosticar.infra.cluster.qb.fcen.uba.ar/api`,
-     `NEXT_PUBLIC_HPO_API_URL` = `…/hpo-api`, `NEXT_PUBLIC_GENPHENAI_URL` =
-     `…/genphenai`.
-   - `model`: diagnostic.ar-api at `GATEWAY_COMMIT`, after
-     `services/genphenai/fetch_model.sh` (checks the bundle's sha256);
-     `-f services/genphenai/Dockerfile .`
-   - `hpo-recognizer`: diagnostic.ar-api at `GATEWAY_COMMIT`,
-     `-f services/api-gateway/Dockerfile.recognizer --build-context recognizer=<recognizer checkout at RECOGNIZER_COMMIT>`.
-     About 20 minutes cold.
-   - `question-agent`: diagnostic.ar-api at `GATEWAY_COMMIT`,
-     `-f services/question-agent/Dockerfile --build-context agent=<agent checkout at QUESTION_AGENT_COMMIT>`.
-3. **Test inside each image, as the release does**:
-   - model: `pytest /app/tests`;
-   - recognizer: the gateway suite and `symptoms_recognizer/tests`;
-   - question agent: the agent's `tests -m 'not live'`.
-4. **Gate every image** on Trivy (`--ignore-unfixed --severity HIGH,CRITICAL`
-   exit 0) and a non-root `Config.User`. Then ship it:
-   `docker save IMG | gzip -1 | ssh nodo0-diagnostic.ar 'gunzip | docker load'`.
-   Ship each one right after building: other sessions prune images on TARS.
-5. **On nodo0**, in the staging checkout: `git fetch && git checkout <sha>`,
-   then the same compose files as `ops/staging.sh`, without the `pull` (the
-   tag is not on GHCR):
-
-   ```bash
-   COMPOSE_PROFILES=question-agent GENE_PROFILES_DB=$PWD/data/genes.db \
-   RELEASE_TAG=vX.Y.Z-manual FRONTEND_IMAGE=diagnosticar-frontend-staging \
-   docker compose -p diagnosticar-staging --env-file .env.staging \
-     -f docker-compose.yml -f docker-compose.staging.yml \
-     -f docker-compose.genes.yml -f docker-compose.deploy.yml \
-     up -d --no-build
-   ops/staging.sh smoke
-   ```
-
-   Before and after, count containers (`docker ps -q | wc -l`: 65 as of
-   2026-09-30) and check that production's uptimes did not change.
-
-**Two traps from 2026-09-30.**
-- `python:3.12-slim` lags on Debian security fixes. That day it still shipped
-  an openssl with two HIGH advisories fixed a day earlier, so every Python
-  image runs `apt-get upgrade`.
-- BuildKit caches the upgrade layer, so it keeps the old packages. When Trivy
-  flags an OS package that already has a fix, rebuild with `--no-cache`.
+Until 2026-10-15 releases were also built by hand on TARS and loaded over SSH
+(the `-manual` tags), while the account's Actions minutes ran out; the
+procedure is in this file's history. The pipeline replaces it.
 
 ### Repository variables
 
@@ -334,15 +288,13 @@ teams' containers, and every round spends LLM quota. It sits on the project's
 default network, which is why `model` joins that network too — the agent
 ranks through `http://model:18020`.
 
-It is behind the `question-agent` compose profile and off by default, so
-`ops/staging.sh up` neither pulls nor starts it. The release builds its image
-from two pins: the agent's code (`MarBL00126/diagnosticar-question-agent`) at
+Every release builds its image and staging always runs it (the base compose
+file's `question-agent` profile is reset in `docker-compose.staging.yml`). The
+image comes from two pins: the agent's code (`MarBL00126/diagnosticar-question-agent`) at
 `QUESTION_AGENT_COMMIT` in `.github/question-agent.env`, and the Dockerfile
 (`services/question-agent/Dockerfile` in diagnostic.ar-api) at `GATEWAY_COMMIT`
-in `.github/recognizer.env`, checked out with the `MODEL_RELEASE_TOKEN` and
-`API_DEPLOY_KEY` secrets. The image only exists once a release ran with
-`QUESTION_AGENT_COMMIT` set (see `CI_CD.md`). To switch it on, in
-`.env.staging`:
+in `.github/recognizer.env`, checked out with the `QUESTION_AGENT_DEPLOY_KEY`
+and `API_DEPLOY_KEY` secrets (see `CI_CD.md`). It needs, in `.env.staging`:
 
 1. `QUESTION_AGENT_TOKEN` — `openssl rand -hex 32`. The backend runs with
    `NODE_ENV=production`, so it refuses to boot with the URL set and no token
@@ -351,11 +303,11 @@ in `.github/recognizer.env`, checked out with the `MODEL_RELEASE_TOKEN` and
 2. `STAGING_CLAUDE_CODE_OAUTH_TOKEN` — the same one hpo-recognizer uses,
    passed to the agent as `CLAUDE_CODE_OAUTH_TOKEN` for its default
    `claude-cli` provider.
-3. `QUESTION_AGENT_TAG` — a release that published the image.
-4. `QUESTION_AGENT_URL=http://question-agent:8010`.
+3. `QUESTION_AGENT_URL=http://question-agent:8010`.
 
-Then `COMPOSE_PROFILES=question-agent ops/staging.sh up vX.Y.Z`. Switching it
-off is `QUESTION_AGENT_URL=` and `up` again: the backend answers
+`QUESTION_AGENT_TAG` pins its image apart from the release, to roll the agent
+back alone. Switching it off is `QUESTION_AGENT_URL=` and a redeploy of the
+running tag (`ops/deploy.sh staging vX.Y.Z`): the backend answers
 `GET /api/questions/status` with `{"enabled": false}` and the UI hides the
 feature.
 
@@ -423,6 +375,8 @@ docker inspect --format '{{.State.Health.Status}}' diagnosticar-staging-question
 nodo0
 ├── ~<usuario>/diagnostic.ar/diagnostic.ar-staging   the checkout
 │   └── .env.staging                                  mode 600, gitignored
+├── ~<usuario>/.local/state/diagnosticar/staging/   deploy state and log
+├── crontab of <usuario>                             */5 ops/deploy.sh staging
 ├── ~<usuario>/.docker/config.json                   GHCR pull credential
 ├── ~<usuario>/.ssh/id_ed25519_github                read-only deploy key
 └── /etc/ssh/sshd_config.d/10-allowusers.conf         AllowUsers <usuario> <usuario>
@@ -440,5 +394,6 @@ anything there.**
   search once: text → symptoms → genes → specialties → questions → logout.
 - **No backup of staging.** Acceptable — the data is synthetic and
   `ops/staging.sh reset-db` recreates it.
-- **`ops/deploy.sh` has never run**, on either environment. The rollback path
-  is reasoned about, not exercised.
+- **The way back has only run in a simulation.** `ops/deploy.sh` returns to
+  the previous release when the smoke test fails; that branch was exercised
+  against a fake checkout and a fake Docker (2026-10-15), not the real stack.

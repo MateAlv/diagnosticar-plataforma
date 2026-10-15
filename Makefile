@@ -2,7 +2,7 @@
         up-prod down-prod logs-prod config-prod \
         ci test test-backend test-frontend test-e2e lint typecheck \
         staging-up staging-down staging-logs staging-smoke \
-        deploy deploy-rollback smoke
+        staging-deploy staging-rollback staging-status smoke
 
 # --- Local development -----------------------------------------------------
 up:
@@ -71,13 +71,6 @@ logs-prod:
 config-prod:
 	docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml config
 
-# Pull-based deploy of a CI-built release, with smoke test and auto-rollback.
-deploy:
-	ops/deploy.sh $(TAG)
-
-deploy-rollback:
-	ops/deploy.sh --rollback
-
 smoke:
 	ops/smoke.sh
 
@@ -93,3 +86,13 @@ staging-logs:
 
 staging-smoke:
 	ops/staging.sh smoke
+
+# What cron runs on nodo0 is `ops/deploy.sh staging`; these are for a person.
+staging-deploy:
+	ops/deploy.sh staging $(TAG)
+
+staging-rollback:
+	ops/deploy.sh staging --rollback
+
+staging-status:
+	ops/deploy.sh staging --status

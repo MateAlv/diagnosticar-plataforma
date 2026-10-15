@@ -1,138 +1,210 @@
 #!/usr/bin/env bash
-# Pull-based deploy for nodo0.
+# Pull-based continuous deployment for nodo0.
 #
-# Nothing reaches into this machine. The node asks GitHub whether a newer
-# release exists, and if so pulls images CI already built and tested, restarts
-# the stack, and runs ops/smoke.sh. A failed smoke check rolls straight back to
-# the tag that was running before, so a bad release costs a restart rather than
-# an outage.
+# Nothing reaches into the node: no runner, no inbound access, no GitHub
+# credential beyond the read-only ones it already has. cron runs this every five
+# minutes; it asks GitHub for the newest release tag and deploys it once
+# release.yml has published every image the environment runs, which only
+# happens after CI and every image scan passed. A failed smoke test goes back
+# to the release that was running before.
 #
-# Install as a systemd timer (see ops/systemd/) or run by hand:
-#   ops/deploy.sh              # deploy the latest release if it differs
-#   ops/deploy.sh v1.4.2       # deploy a specific tag
-#   ops/deploy.sh --rollback   # go back to the previous tag
+#   ops/deploy.sh staging              # what cron runs: deploy a new release, if there is one
+#   ops/deploy.sh staging v0.10.0      # deploy this release now (also to go back to an older one)
+#   ops/deploy.sh staging --rollback   # back to the release before the current one
+#   ops/deploy.sh staging --status     # what runs, what is newest, and the end of the log
+#
+# Only staging for now. Production joins once it runs from GHCR images too
+# (CI_CD.md, "Production").
+#
+# Each release is attempted once. A tag that failed is not retried; fix forward
+# with the next tag. Deploying a tag by hand moves nothing back: cron only acts
+# on a tag newer than every tag it has already handled.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$REPO_ROOT"
+GHCR="ghcr.io/${GHCR_OWNER:-matealv}"
 
-STATE_DIR="${DEPLOY_STATE_DIR:-/var/lib/diagnosticar}"
-CURRENT_FILE="$STATE_DIR/current-tag"
-PREVIOUS_FILE="$STATE_DIR/previous-tag"
-GITHUB_REPO="${GITHUB_REPO:-MateAlv/diagnostic.ar}"
-ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env}"
+# Free space a deploy needs, in GiB. Images land in Docker's root dir (/data on
+# nodo0) and the checkout under /home; both disks are shared with other teams,
+# so a deploy that would fill one does not start.
+MIN_FREE_DOCKER_GIB=20
+MIN_FREE_HOME_GIB=5
 
-COMPOSE=(docker compose --env-file "$ENV_FILE"
-         -f docker-compose.yml
-         -f docker-compose.prod.yml
-         -f docker-compose.deploy.yml)
+log() { echo "[$(date -Is)] $*"; }
+die() { log "ERROR: $*"; exit 1; }
 
-log()  { echo "[$(date -Is)] $*"; }
-die()  { log "ERROR: $*"; exit 1; }
-
-mkdir -p "$STATE_DIR"
-[ -f "$ENV_FILE" ] || die "environment file not found at $ENV_FILE"
-
-# ---------------------------------------------------------------------------
-# Resolve the tag to deploy
-# ---------------------------------------------------------------------------
-latest_release() {
-  local auth=()
-  # A token is only needed while the repository is private. Store it root-owned
-  # at /etc/diagnosticar/github-token with mode 0600.
-  if [ -n "${GITHUB_TOKEN:-}" ]; then
-    auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
-  elif [ -r /etc/diagnosticar/github-token ]; then
-    auth=(-H "Authorization: Bearer $(cat /etc/diagnosticar/github-token)")
-  fi
-  curl -sf --max-time 20 "${auth[@]}" \
-    -H "Accept: application/vnd.github+json" \
-    "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" \
-    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1
+usage() {
+  echo "usage: ops/deploy.sh staging [vX.Y.Z | --rollback | --status]" >&2
+  exit 2
 }
 
-CURRENT_TAG="$(cat "$CURRENT_FILE" 2>/dev/null || echo "")"
+newest_tag() {
+  git -C "$REPO_ROOT" ls-remote --tags --refs origin 'v*' \
+    | sed 's|.*refs/tags/||' \
+    | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+    | sort -V | tail -1
+}
 
-case "${1:-}" in
-  --rollback)
-    TARGET_TAG="$(cat "$PREVIOUS_FILE" 2>/dev/null || echo "")"
-    [ -n "$TARGET_TAG" ] || die "no previous tag recorded; nothing to roll back to"
-    log "Rolling back to $TARGET_TAG"
-    ;;
-  "")
-    TARGET_TAG="$(latest_release)"
-    [ -n "$TARGET_TAG" ] || die "could not determine the latest release from GitHub"
-    ;;
-  *)
-    TARGET_TAG="$1"
-    ;;
-esac
+# True when $1 sorts after $2 as a version.
+newer() {
+  [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$1" ]
+}
 
-if [ "$TARGET_TAG" = "$CURRENT_TAG" ] && [ "${1:-}" != "--rollback" ]; then
-  log "Already running $CURRENT_TAG — nothing to do."
-  exit 0
-fi
+# release.yml pushes each image only after CI and that image's scan passed, so
+# a tag that every image carries is a release that passed everything.
+published() {
+  local image
+  for image in "${IMAGES[@]}"; do
+    docker manifest inspect "$GHCR/$image:$1" >/dev/null 2>&1 || return 1
+  done
+}
 
-log "Deploying $TARGET_TAG (currently $([ -n "$CURRENT_TAG" ] && echo "$CURRENT_TAG" || echo "unknown"))"
-export RELEASE_TAG="$TARGET_TAG"
-export GHCR_OWNER="${GHCR_OWNER:-matealv}"
+free_gib() {
+  df -Pk "$1" | awk 'NR == 2 { print int($4 / 1048576) }'
+}
 
-# ---------------------------------------------------------------------------
-# Back up the database before anything restarts.
-# ---------------------------------------------------------------------------
-if [ "${SKIP_BACKUP:-0}" != "1" ]; then
-  backup="$STATE_DIR/backups/pre-$TARGET_TAG-$(date +%Y%m%dT%H%M%S).sql.gz"
-  mkdir -p "$(dirname "$backup")"
-  log "Backing up the database to $backup"
-  # A migration runs on every backend boot; this is the only way back from one
-  # that goes wrong.
-  if "${COMPOSE[@]}" exec -T db pg_dump -U "${POSTGRES_USER:-postgres}" \
-       "${POSTGRES_DB:-diagnosticar}" 2>/dev/null | gzip > "$backup"; then
-    log "Backup written ($(du -h "$backup" | cut -f1))"
-    # Keep a month of pre-deploy snapshots.
-    find "$STATE_DIR/backups" -name 'pre-*.sql.gz' -mtime +30 -delete 2>/dev/null || true
-  else
-    rm -f "$backup"
-    die "database backup failed — refusing to deploy"
+enough_disk() {
+  local docker_root docker_free home_free
+  docker_root="$(docker info -f '{{.DockerRootDir}}')"
+  docker_free="$(free_gib "$docker_root")"
+  home_free="$(free_gib "$REPO_ROOT")"
+  if [ "$docker_free" -lt "$MIN_FREE_DOCKER_GIB" ] || [ "$home_free" -lt "$MIN_FREE_HOME_GIB" ]; then
+    log "Not deploying: ${docker_free} GiB free in $docker_root (needs $MIN_FREE_DOCKER_GIB)," \
+        "${home_free} GiB free under $REPO_ROOT (needs $MIN_FREE_HOME_GIB)."
+    return 1
   fi
-fi
+}
 
-# ---------------------------------------------------------------------------
-# Pull first, so a registry problem fails before anything is torn down.
-# ---------------------------------------------------------------------------
-log "Pulling images for $TARGET_TAG"
-"${COMPOSE[@]}" pull backend frontend || die "image pull failed for $TARGET_TAG"
+read_state() { cat "$STATE_DIR/$1" 2>/dev/null || true; }
+write_state() { printf '%s\n' "$2" > "$STATE_DIR/$1"; }
 
-log "Starting the stack"
-"${COMPOSE[@]}" up -d --no-build --remove-orphans || die "compose up failed"
+# Check out the release's own compose files and scripts, then run them.
+# COMPOSE_PROFILES only matters for a commit from before the question agent
+# ran by default, which a rollback can land on.
+run_release() {
+  local tag=$1 ref=$2
+  git -C "$REPO_ROOT" fetch -q --tags origin &&
+    git -C "$REPO_ROOT" checkout -q --detach "$ref" &&
+    COMPOSE_PROFILES=question-agent "$REPO_ROOT/ops/$ENVIRONMENT.sh" up "$tag" &&
+    "$REPO_ROOT/ops/$ENVIRONMENT.sh" smoke
+}
 
-# ---------------------------------------------------------------------------
-# Verify, and undo if the new release is not healthy.
-# ---------------------------------------------------------------------------
-log "Running smoke tests"
-if ops/smoke.sh; then
-  log "Smoke tests passed — $TARGET_TAG is live"
-  [ -n "$CURRENT_TAG" ] && echo "$CURRENT_TAG" > "$PREVIOUS_FILE"
-  echo "$TARGET_TAG" > "$CURRENT_FILE"
-  "${COMPOSE[@]}" ps
-  # Reclaim space from superseded images, keeping the rollback target.
-  docker image prune -f --filter "until=720h" >/dev/null 2>&1 || true
-  exit 0
-fi
+deploy() {
+  local tag=$1 ref=$2 current current_ref
+  current="$(read_state current)"
+  current_ref="$(read_state current-ref)"
+  [ -n "$current_ref" ] || current_ref="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 
-log "Smoke tests FAILED for $TARGET_TAG"
-"${COMPOSE[@]}" logs --tail 100 backend frontend || true
+  enough_disk || return 1
+  log "Deploying $tag to $ENVIRONMENT (running: ${current:-unknown})"
+  if run_release "$tag" "$ref"; then
+    if [ -n "$current" ] && [ "$current" != "$tag" ]; then
+      write_state previous "$current"
+      write_state previous-ref "$current_ref"
+    fi
+    write_state current "$tag"
+    write_state current-ref "$(git -C "$REPO_ROOT" rev-parse HEAD)"
+    log "$tag is live on $ENVIRONMENT"
+    return 0
+  fi
 
-if [ -z "$CURRENT_TAG" ]; then
-  die "no known-good tag to roll back to; the stack is running $TARGET_TAG and is unhealthy"
-fi
+  log "$tag FAILED on $ENVIRONMENT"
+  [ -n "$current" ] || die "nothing known to go back to; $ENVIRONMENT needs a hand"
+  log "Going back to $current"
+  if run_release "$current" "$current_ref"; then
+    log "Back on $current. $tag was not deployed."
+  else
+    log "ROLLBACK FAILED: $ENVIRONMENT is not healthy and needs a hand"
+  fi
+  return 1
+}
 
-log "Rolling back to $CURRENT_TAG"
-export RELEASE_TAG="$CURRENT_TAG"
-"${COMPOSE[@]}" up -d --no-build || die "ROLLBACK FAILED — manual intervention required"
+status() {
+  local newest
+  newest="$(newest_tag || true)"
+  echo "environment: $ENVIRONMENT"
+  echo "running:     $(read_state current) ($(read_state current-ref | cut -c1-12))"
+  echo "previous:    $(read_state previous)"
+  echo "handled:     $(read_state handled)"
+  if [ -n "$newest" ] && published "$newest"; then
+    echo "newest tag:  $newest (published)"
+  else
+    echo "newest tag:  ${newest:-unknown} (not published yet)"
+  fi
+  echo
+  tail -n 20 "$STATE_DIR/deploy.log" 2>/dev/null || echo "(no deploy log yet)"
+}
 
-if ops/smoke.sh; then
-  log "Rollback to $CURRENT_TAG succeeded. $TARGET_TAG was not deployed."
-  exit 1
-fi
-die "ROLLBACK FAILED smoke tests — the site is down, manual intervention required"
+# What cron runs. Quiet unless there is something to do.
+follow() {
+  local handled newest
+  handled="$(read_state handled)"
+  newest="$(newest_tag)" || die "could not list the tags on GitHub"
+  [ -n "$newest" ] || die "no release tags on GitHub"
+
+  if [ -z "$handled" ]; then
+    write_state handled "$newest"
+    log "Following $ENVIRONMENT from $newest: the next newer tag deploys."
+    return 0
+  fi
+  newer "$newest" "$handled" || return 0
+  published "$newest" || return 0   # release.yml is still running
+  enough_disk || return 1           # retried on the next run
+
+  write_state handled "$newest"
+  deploy "$newest" "refs/tags/$newest"
+}
+
+main() {
+  ENVIRONMENT="${1:-}"
+  case "$ENVIRONMENT" in
+    staging)
+      IMAGES=(diagnosticar-backend diagnosticar-frontend-staging diagnosticar-hpo-recognizer
+              diagnosticar-model diagnosticar-question-agent)
+      ;;
+    *) usage ;;
+  esac
+
+  STATE_DIR="${DEPLOY_STATE_DIR:-$HOME/.local/state/diagnosticar/$ENVIRONMENT}"
+  mkdir -p "$STATE_DIR"
+
+  if [ "${2:-}" = --status ]; then
+    status
+    return 0
+  fi
+
+  # One deploy at a time: cron fires every five minutes and a first pull takes longer.
+  exec 9>"$STATE_DIR/lock"
+  if ! flock -n 9; then
+    [ -z "${2:-}" ] || die "another deploy is running"
+    return 0
+  fi
+
+  local log_file="$STATE_DIR/deploy.log"
+  if [ -f "$log_file" ] && [ "$(stat -c %s "$log_file")" -gt 5000000 ]; then
+    mv "$log_file" "$log_file.1"
+  fi
+  exec > >(tee -a "$log_file") 2>&1
+
+  case "${2:-}" in
+    "") follow ;;
+    --rollback)
+      local previous
+      previous="$(read_state previous)"
+      [ -n "$previous" ] || die "no previous release recorded"
+      deploy "$previous" "$(read_state previous-ref)"
+      ;;
+    v*)
+      [[ "$2" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "not a release tag: $2"
+      published "$2" || die "$2 is not fully published on GHCR"
+      if newer "$2" "$(read_state handled)"; then write_state handled "$2"; fi
+      deploy "$2" "refs/tags/$2"
+      ;;
+    *) usage ;;
+  esac
+}
+
+# A deploy checks out another commit, replacing this file while it runs.
+# Everything is inside main, read whole before it starts, so bash never
+# executes a mix of the two versions.
+main "$@"; exit

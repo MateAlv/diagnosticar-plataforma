@@ -1,21 +1,13 @@
 name: CI
 
-# Not on push to main. main only accepts a pull request that is up to date with
-# it and passed every check below, and merges squash it, so the commit that
-# lands has exactly the tree that was tested. Re-running the suite on that push
-# found nothing and cost about a quarter of the account's Actions minutes.
-# workflow_dispatch runs it on main by hand when that is wanted.
+# Not on pull requests, pushes or a schedule: Actions minutes are a monthly
+# quota shared by every repository of the account. The gate for merging is
+# `make ci` (ops/ci-local.sh), the same checks on the developer's machine. This
+# suite runs once per release, called by release.yml before any image is
+# built, and by hand from the Actions tab.
 on:
-  pull_request:
+  workflow_call:
   workflow_dispatch:
-  schedule:
-    # Vulnerabilities appear without anyone pushing; check every Monday 06:00 UTC.
-    - cron: "0 6 * * 1"
-
-# Cancel superseded runs on the same branch — the node is small and PRs are chatty.
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -24,52 +16,6 @@ env:
   NODE_VERSION: "22"
 
 jobs:
-  # --------------------------------------------------------------------------
-  # Whether the pull request touches anything the slow jobs test. A change
-  # only to documentation or to the cloud copy's infrastructure (infra/cloud/,
-  # which only the `infra` job exercises) skips the backend suite, E2E, the
-  # image builds and the stack smoke test: about 20 of a run's 22 billed
-  # minutes. The skipped jobs
-  # still report, as skipped, which satisfies the required checks.
-  # The weekly run looks for newly published vulnerabilities, which only the
-  # audit (Checks) and the image scans can find, so it skips the test suites.
-  # --------------------------------------------------------------------------
-  changes:
-    name: Changes
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: read
-    outputs:
-      code: ${{ steps.diff.outputs.code }}
-      tests: ${{ steps.diff.outputs.tests }}
-      infra: ${{ steps.diff.outputs.infra }}
-    steps:
-      - id: diff
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EVENT: ${{ github.event_name }}
-          PR: ${{ github.event.pull_request.number }}
-        run: |
-          code=true
-          infra=true
-          if [ "$EVENT" = pull_request ]; then
-            files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" -q '.[].filename')
-            printf '%s\n' "$files"
-            # Anything outside these paths counts as code; workflow changes
-            # always do, since they change what CI itself runs.
-            if ! printf '%s\n' "$files" | grep -qvE '(\.md$|^docs/|^infra/cloud/|^LICENSE$|^\.gitignore$)'; then
-              code=false
-            fi
-            # The cloud stack embeds ops/seed-admin.sh.
-            printf '%s\n' "$files" | grep -qE '^(infra/cloud/|ops/seed-admin\.sh$|\.github/workflows/ci\.yml$)' || infra=false
-          fi
-          tests=$code
-          [ "$EVENT" = schedule ] && tests=false
-          echo "code=$code tests=$tests infra=$infra"
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "tests=$tests" >> "$GITHUB_OUTPUT"
-          echo "infra=$infra" >> "$GITHUB_OUTPUT"
-
   # --------------------------------------------------------------------------
   # Everything that takes seconds, in one job: lint and types, frontend unit
   # tests, dependency audit and secret scan. As six jobs each was billed a full
@@ -80,17 +26,11 @@ jobs:
   checks:
     name: Checks
     runs-on: ubuntu-latest
-    # gitleaks-action asks the API which commits a pull request contains, which
-    # `contents: read` alone does not cover ("Resource not accessible by
-    # integration", only ever on PRs).
-    permissions:
-      contents: read
-      pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -140,11 +80,13 @@ jobs:
           (cd frontend && npm audit --audit-level=high)
           (cd backend && npm audit --audit-level=high)
 
+      # The whole history, not only the release's commits: a secret removed
+      # in a later commit is still readable in the one that added it.
       - name: Secret scan (gitleaks)
         if: ${{ !cancelled() }}
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo:ro" \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --no-banner --redact
       - name: Assert no .env file is tracked
         # .env holds the JWT secrets and the SMTP password.
         if: ${{ !cancelled() }}
@@ -157,105 +99,12 @@ jobs:
           echo "ok — no .env files tracked"
 
   # --------------------------------------------------------------------------
-  # The provider-neutral cloud deployment (infra/cloud/): about a minute, and
-  # only when it changed. It cannot boot a machine here, so it checks what can
-  # be checked without one: Terraform formatting and validity of the shared
-  # module and of every adapter, the scripts, the compose file, and the
-  # rendered cloud-init against cloud-init's own schema.
-  # --------------------------------------------------------------------------
-  infra:
-    name: Cloud infrastructure
-    needs: changes
-    if: needs.changes.outputs.infra == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
-
-      - name: Terraform format
-        run: terraform fmt -check -recursive -diff infra/cloud
-
-      # Every adapter validates without credentials or a backend.
-      - name: Terraform validate (every adapter)
-        run: |
-          set -euo pipefail
-          for dir in infra/cloud/providers/*/; do
-            echo "::group::$dir"
-            terraform -chdir="$dir" init -backend=false -input=false
-            terraform -chdir="$dir" validate
-            echo "::endgroup::"
-          done
-
-      - name: Shell scripts
-        run: shellcheck -x infra/cloud/stack/diagnosticar.sh infra/cloud/scripts/remote.sh
-
-      - name: Compose file
-        run: |
-          cat > "$RUNNER_TEMP/ci.env" <<'ENV'
-          DOMAIN='ci.example'
-          POSTGRES_PASSWORD='ci'
-          JWT_ACCESS_SECRET='ci'
-          JWT_REFRESH_SECRET='ci'
-          JWT_ACCESS_PRIVATE_KEY='ci'
-          JWT_ACCESS_PUBLIC_KEY='ci'
-          QUESTION_AGENT_TOKEN='ci'
-          GLOBAL_EXTRACTIONS_PER_WEEK='1'
-          GLOBAL_EXTRACTIONS_PER_5H='1'
-          BACKEND_IMAGE='ci/backend'
-          FRONTEND_IMAGE='ci/frontend'
-          RECOGNIZER_IMAGE='ci/recognizer'
-          MODEL_IMAGE='ci/model'
-          QUESTION_AGENT_IMAGE='ci/question-agent'
-          ENV
-          docker compose -f infra/cloud/stack/docker-compose.yml --env-file "$RUNNER_TEMP/ci.env" config -q
-
-      # With and without aliases: an empty DOMAIN_ALIASES must still parse.
-      - name: Caddyfile
-        run: |
-          set -euo pipefail
-          for aliases in '' 'old.ci.example'; do
-            docker run --rm -v "$PWD/infra/cloud/stack/Caddyfile:/etc/caddy/Caddyfile:ro" \
-              -e DOMAIN=ci.example -e DOMAIN_ALIASES="$aliases" \
-              caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-          done
-
-      # Cloudflare's ranges live in two places: the Caddyfile (whose addresses
-      # are believed) and modules/stack (which the firewall may admit). A range
-      # added to one only would either trust a stranger or lock Cloudflare out.
-      - name: Cloudflare ranges match
-        run: |
-          set -euo pipefail
-          grep -E '^\s*trusted_proxies static ' infra/cloud/stack/Caddyfile \
-            | tr -s ' \t' '\n' | grep / | sort > "$RUNNER_TEMP/caddy.txt"
-          sed -n '/^output "cloudflare_ipv[46]"/,/^}/p' infra/cloud/modules/stack/main.tf \
-            | grep -oE '"[0-9a-f:.]+/[0-9]+"' | tr -d '"' | sort > "$RUNNER_TEMP/module.txt"
-          [ -s "$RUNNER_TEMP/caddy.txt" ] && [ -s "$RUNNER_TEMP/module.txt" ]
-          diff -u "$RUNNER_TEMP/caddy.txt" "$RUNNER_TEMP/module.txt"
-
-      # The same document every provider receives, rendered with a throwaway
-      # key, then checked by cloud-init itself and against the size limits.
-      - name: Rendered cloud-init
-        run: |
-          set -euo pipefail
-          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/ci_key"
-          terraform -chdir=infra/cloud/providers/manual apply -auto-approve -input=false \
-            -var "ssh_public_key_path=$RUNNER_TEMP/ci_key.pub"
-          sudo apt-get install -y -q --no-install-recommends cloud-init >/dev/null
-          cloud-init schema --config-file infra/cloud/providers/manual/cloud-init.yaml
-          echo "plain: $(wc -c < infra/cloud/providers/manual/cloud-init.yaml) bytes (limit 32768)"
-          echo "gzip:  $(gzip -9c infra/cloud/providers/manual/cloud-init.yaml | wc -c) bytes (limit 16384)"
-
-  # --------------------------------------------------------------------------
   # Backend suite against a real Postgres. The ownership tests here are the ones
   # that prove one family cannot read another family's clinical records, so they
   # must run against the genuine schema and genuine SQL — not a mock.
   # --------------------------------------------------------------------------
   backend-tests:
     name: Backend tests (Postgres)
-    needs: changes
-    if: needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -280,8 +129,8 @@ jobs:
       TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/diagnosticar_test
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -311,15 +160,13 @@ jobs:
   # --------------------------------------------------------------------------
   e2e:
     name: E2E (Playwright)
-    needs: changes
-    if: needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -328,7 +175,7 @@ jobs:
       - run: npm ci
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
@@ -342,7 +189,7 @@ jobs:
       - name: Run E2E
         run: npm run test:e2e
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
@@ -350,78 +197,13 @@ jobs:
           retention-days: 7
 
   # --------------------------------------------------------------------------
-  # Container images: build both, then scan the filesystem of each for known
-  # CVEs in OS packages and bundled node_modules.
-  # --------------------------------------------------------------------------
-  # Gated per step rather than per job: a matrix job skipped as a whole
-  # reports a check without the matrix values in its name, which never matches
-  # the required "Build & scan images (frontend, …)" and blocks the merge.
-  images:
-    name: Build & scan images
-    needs: changes
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - workspace: frontend
-            image: diagnosticar-frontend
-          - workspace: backend
-            image: diagnosticar-backend
-    steps:
-      - if: needs.changes.outputs.code == 'true'
-        uses: actions/checkout@v4
-
-      - if: needs.changes.outputs.code == 'true'
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build image
-        if: needs.changes.outputs.code == 'true'
-        uses: docker/build-push-action@v6
-        with:
-          context: ./${{ matrix.workspace }}
-          push: false
-          load: true
-          tags: ${{ matrix.image }}:ci
-          cache-from: type=gha,scope=${{ matrix.workspace }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.workspace }}
-          build-args: |
-            NEXT_PUBLIC_API_URL=https://example.invalid/api
-            NEXT_PUBLIC_API_BASE_URL=https://example.invalid/api
-            NEXT_PUBLIC_HPO_API_URL=https://example.invalid/hpo-api
-            NEXT_PUBLIC_GENPHENAI_URL=https://example.invalid/genphenai
-
-      - name: Scan image for known vulnerabilities
-        if: needs.changes.outputs.code == 'true'
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ matrix.image }}:ci
-          format: table
-          exit-code: "1"
-          ignore-unfixed: true
-          severity: HIGH,CRITICAL
-          vuln-type: os,library
-
-      - name: Assert the image does not run as root
-        if: needs.changes.outputs.code == 'true'
-        run: |
-          user=$(docker image inspect ${{ matrix.image }}:ci --format '{{.Config.User}}')
-          if [ -z "$user" ] || [ "$user" = "root" ] || [ "$user" = "0" ]; then
-            echo "::error::${{ matrix.image }} runs as root; add a USER directive to its Dockerfile."
-            exit 1
-          fi
-          echo "ok — runs as $user"
-
-  # --------------------------------------------------------------------------
   # Boots the whole stack the way the node does and drives the real endpoints.
   # --------------------------------------------------------------------------
   stack-smoke:
     name: Compose stack smoke test
-    needs: changes
-    if: needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Write a CI environment file
         run: |

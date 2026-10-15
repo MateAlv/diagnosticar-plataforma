@@ -1,10 +1,15 @@
 # CI/CD hacia la copia en la nube
 
 Cómo llega una versión nueva a la copia de diagnostic.ar en la nube
-([`infra/cloud/`](../infra/cloud/README.md)), en cualquier proveedor: **cada vez
-que algo entra a `main` en uno de los repositorios, GitHub Actions construye lo
-que cambió, lo prueba y lo publica en GHCR; la máquina lo baja sola, lo verifica
-y, si falla, vuelve sola a la versión anterior.**
+([`infra/cloud/`](../infra/cloud/README.md)), en cualquier proveedor: **cuando
+alguien corre a mano el workflow `publish-cloud.yml` de uno de los repositorios,
+GitHub Actions construye, prueba y publica en GHCR; la máquina lo baja sola, lo
+verifica y, si falla, vuelve sola a la versión anterior.**
+
+Hasta el 2026-10-15 corría solo con cada merge a `main`. Desde entonces es a
+mano (pestaña Actions, o `gh workflow run publish-cloud.yml -R <repo>`): los
+minutos de Actions son una cuota mensual que comparten todos los repositorios
+de la cuenta.
 
 Reemplaza desde el 2026-10-04 al despliegue anterior, que funcionaba solo en
 AWS (por qué: [`CLOUD_CAMBIOS.md`](CLOUD_CAMBIOS.md)). No toca producción ni
@@ -12,7 +17,7 @@ staging en nodo0: esos siguen con su propio pipeline ([`../CI_CD.md`](../CI_CD.m
 
 ## Qué dispara qué
 
-| Cambio en `main` de… | Workflow | Construye y prueba | Publica en GHCR (`ghcr.io/matealv/…`) |
+| A mano en… | Workflow | Construye y prueba | Publica en GHCR (`ghcr.io/matealv/…`) |
 |---|---|---|---|
 | `diagnostic.ar` (solo `backend/`, `frontend/`) | `.github/workflows/publish-cloud.yml` | backend + frontend (con URLs relativas); el frontend tiene que renderizar | `diagnosticar-cloud-backend`, `diagnosticar-cloud-frontend` |
 | `diagnostic.ar-api` | `.github/workflows/publish-cloud.yml` | modelo + extractor (con el último `main` del reconocedor); tests dentro de cada imagen | `diagnosticar-cloud-model`, `diagnosticar-cloud-hpo-recognizer` |
@@ -20,13 +25,15 @@ staging en nodo0: esos siguen con su propio pipeline ([`../CI_CD.md`](../CI_CD.m
 | `diagnostic.ar-model` | — | Nada directo: el modelo y los embeddings que se usan están fijados en los `.lock` de la API; cambiar esa línea publica por el workflow de la API |
 | `diagnostic.ar-gene-profiles` | — | Nada: `genes.db` es un release; se fija en `infra/cloud/stack/genes.lock` y se instala con `remote.sh install-genes` |
 
-Como el trabajo entra a `main` por pull request, **una publicación ocurre cuando
-se mergea un PR**. Los PR ya pasaron por el CI de su repositorio.
+Ninguno corre solo: **una publicación ocurre cuando alguien la dispara**, sobre
+el último `main` de ese repositorio. En `diagnostic.ar`, antes correr `make ci`
+en ese commit: el workflow valida `infra/cloud/` y construye, pero no corre la
+suite de tests.
 
 ## Cómo funciona
 
 ```
-merge a main ──▶ GitHub Actions (publish-cloud.yml)
+a mano ──▶ GitHub Actions (publish-cloud.yml)
                   ├─ 1. construye las imágenes y corre sus tests dentro de ellas
                   ├─ 2. las sube a GHCR con un tag propio (app-<sha>, api-<sha>, api-<sha>-rec-<sha>)
                   └─ 3. si todo pasó, mueve el tag `cloud` (el canal) a esas imágenes

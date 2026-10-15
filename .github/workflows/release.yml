@@ -1,27 +1,42 @@
 name: Release
 
-# Publishes immutable images to GHCR on a version tag. The nodes never run a
-# build: nodo0 pulls a digest that CI already tested, so a deploy cannot pick up
-# a half-finished commit and there is always a previous digest to roll back to.
+# A version tag is the only trigger, pushed once `make ci` passed locally and
+# main holds the version to ship. One run tests it again (CI), then builds,
+# tests and scans every image and publishes it to GHCR under the tag:
+#
+#   CI ──► backend · frontend ×2 · hpo-recognizer · model · question-agent ──► GHCR
+#                                                                               │
+#                         nodo0: ops/deploy.sh, every 5 minutes from cron ◄─────┘
+#
+# The nodes never build and nothing here reaches into them: nodo0 pulls the
+# tag once every image it runs carries it, so it only ever deploys a release
+# that passed CI and every scan, and a half-published one (a job failed) is
+# never deployed. Re-run the failed jobs, or fix forward with the next tag.
 
 on:
   push:
     tags: ["v*.*.*"]
-  workflow_dispatch:
-    inputs:
-      ref:
-        description: Commit or tag to release
-        required: true
 
 permissions:
   contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
 
 jobs:
+  # The same suite `make ci` runs, minus the image builds, which the jobs below
+  # do for real. Nothing is built until it passes.
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
   publish:
     name: Build & publish ${{ matrix.workspace }} (${{ matrix.environment }})
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -51,13 +66,11 @@ jobs:
             environment: staging
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: actions/checkout@v7
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -129,7 +142,7 @@ jobs:
           echo "environment=$ENVIRONMENT image=$image api=$api"
 
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ steps.env.outputs.image }}
           tags: |
@@ -137,7 +150,7 @@ jobs:
             # ("v0.1.0"), but {{version}} strips the leading v and publishes
             # "0.1.0". Without the raw tag below, every pull on the node 404s on
             # an image that was built and published perfectly.
-            type=raw,value=${{ github.ref_name }},enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=raw,value=${{ github.ref_name }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=long
@@ -145,14 +158,11 @@ jobs:
       - id: stamp
         run: echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
-      # Choose which set of public URLs gets compiled into this image. The
-      # staging variant reads STAGING_NEXT_PUBLIC_*; everything else reads the
-      # production ones. Selecting here rather than in the build-args block
       # Build into the local daemon first. Pushing before the scan would put a
       # vulnerable image on the registry and only then fail the job, leaving a
       # tag that nodo0 could pull.
       - name: Build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./${{ matrix.workspace }}
           push: false
@@ -195,7 +205,7 @@ jobs:
       # Only now, with a scanned image, publish it. Re-running the build is
       # free: every layer is already in the local cache.
       - name: Push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./${{ matrix.workspace }}
           push: true
@@ -211,19 +221,29 @@ jobs:
             RELEASE_COMMIT=${{ github.sha }}
             RELEASE_BUILT_AT=${{ steps.stamp.outputs.built_at }}
 
-  # The HPO gateway with the Spanish symptom recognizer serving /extract-hpo,
-  # run by staging on nodo0 as hpo-recognizer. Its code lives in two other
-  # private repositories, checked out at the commits pinned in
-  # .github/recognizer.env with read-only deploy keys, so a release tag names
-  # one build of it exactly as it does the backend and frontend.
+
+  # --------------------------------------------------------------------------
+  # Three images built from other private repositories, at the commits pinned
+  # in .github/recognizer.env and .github/question-agent.env, so a release tag
+  # names one build of each exactly as it does the backend and frontend.
+  # Published from this repository, not from diagnostic.ar-api, so the packages
+  # are linked here and the node's pull account (a collaborator on this
+  # repository) reads them like the others.
   #
-  # Published from this repository, not from diagnostic.ar-api, so the package
-  # is linked here and the node's pull account — a collaborator on this
-  # repository — can read it like the others.
+  # Each is also tagged by the commits it was built from (`source` below). A
+  # release whose pins did not move adds its version tags to that image instead
+  # of building it again: the same bytes, already tested and scanned, in
+  # seconds instead of up to 20 minutes of Actions time. Moving a pin builds.
+  # --------------------------------------------------------------------------
+
+  # The HPO gateway with the Spanish symptom recognizer serving /extract-hpo,
+  # run by staging on nodo0 as hpo-recognizer. Its Dockerfile copies all of
+  # the API's services/, so any API commit can change it.
   publish-recognizer:
     name: Build & publish hpo-recognizer
+    needs: ci
     runs-on: ubuntu-latest
-    # A cold build takes ~30 minutes; without a limit a hang runs for six hours.
+    # A cold build takes ~20 minutes; without a limit a hang runs for six hours.
     timeout-minutes: 60
     permissions:
       contents: read
@@ -231,9 +251,7 @@ jobs:
     env:
       IMAGE: diagnosticar-hpo-recognizer
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: actions/checkout@v7
 
       - id: pins
         run: |
@@ -246,17 +264,52 @@ jobs:
               exit 1
             fi
           done
-          echo "api_ref=$GATEWAY_COMMIT" >> "$GITHUB_OUTPUT"
-          echo "recognizer_ref=$RECOGNIZER_COMMIT" >> "$GITHUB_OUTPUT"
+          source="api-${GATEWAY_COMMIT::12}-recognizer-${RECOGNIZER_COMMIT::12}"
+          {
+            echo "api_ref=$GATEWAY_COMMIT"
+            echo "recognizer_ref=$RECOGNIZER_COMMIT"
+            echo "source=$REGISTRY/${GITHUB_REPOSITORY_OWNER,,}/$IMAGE:$source"
+          } >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE }}
+          tags: |
+            type=raw,value=${{ github.ref_name }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+          labels: |
+            org.opencontainers.image.revision.api=${{ steps.pins.outputs.api_ref }}
+            org.opencontainers.image.revision.recognizer=${{ steps.pins.outputs.recognizer_ref }}
+
+      - id: reuse
+        name: Reuse the image built from these commits
+        env:
+          SOURCE: ${{ steps.pins.outputs.source }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: .github/scripts/reuse-image.sh
+
+      - name: Fetch the source
+        if: steps.reuse.outputs.reused != 'true'
+        uses: actions/checkout@v7
         with:
           repository: MateAlv/diagnostic.ar-api
           ref: ${{ steps.pins.outputs.api_ref }}
           ssh-key: ${{ secrets.API_DEPLOY_KEY }}
           path: api
 
-      - uses: actions/checkout@v4
+      - if: steps.reuse.outputs.reused != 'true'
+        uses: actions/checkout@v7
         with:
           repository: MateAlv/spanish-symptoms-recognizer
           ref: ${{ steps.pins.outputs.recognizer_ref }}
@@ -268,6 +321,7 @@ jobs:
       # the Dockerfile reads from embeddings-dist/. A deploy key cannot download
       # release assets, so this uses the same read-only token as the model.
       - name: Fetch the pinned HPO embeddings
+        if: steps.reuse.outputs.reused != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.MODEL_RELEASE_TOKEN }}
         run: api/services/api-gateway/fetch_embeddings.sh
@@ -276,31 +330,12 @@ jobs:
       # building, loading it for the scan and caching it overruns the runner's
       # default free space.
       - name: Free runner disk
+        if: steps.reuse.outputs.reused != 'true'
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
 
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE }}
-          tags: |
-            type=raw,value=${{ github.ref_name }},enable=${{ startsWith(github.ref, 'refs/tags/') }}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=long
-          labels: |
-            org.opencontainers.image.revision.api=${{ steps.pins.outputs.api_ref }}
-            org.opencontainers.image.revision.recognizer=${{ steps.pins.outputs.recognizer_ref }}
-
       - name: Build
-        uses: docker/build-push-action@v6
+        if: steps.reuse.outputs.reused != 'true'
+        uses: docker/build-push-action@v7
         with:
           context: ./api
           file: ./api/services/api-gateway/Dockerfile.recognizer
@@ -315,6 +350,7 @@ jobs:
       # Both suites run offline inside the image: this is the one environment
       # where the gateway's and the recognizer's dependencies have to agree.
       - name: Test inside the image
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           docker run --rm -e PYTHONPATH=/app/services/api-gateway:/app:/opt/recognizer \
             -w /app/services/api-gateway ${{ env.IMAGE }}:candidate \
@@ -323,6 +359,7 @@ jobs:
             python -m pytest symptoms_recognizer/tests/ -q -p no:cacheprovider
 
       - name: Scan the candidate image
+        if: steps.reuse.outputs.reused != 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}:candidate
@@ -333,6 +370,7 @@ jobs:
           vuln-type: os,library
 
       - name: Assert the image does not run as root
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           user=$(docker image inspect ${{ env.IMAGE }}:candidate --format '{{.Config.User}}')
           if [ -z "$user" ] || [ "$user" = "root" ] || [ "$user" = "0" ]; then
@@ -342,18 +380,24 @@ jobs:
           echo "ok — runs as $user"
 
       - name: Push
-        uses: docker/build-push-action@v6
+        if: steps.reuse.outputs.reused != 'true'
+        uses: docker/build-push-action@v7
         with:
           context: ./api
           file: ./api/services/api-gateway/Dockerfile.recognizer
           build-contexts: recognizer=./recognizer
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ steps.pins.outputs.source }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=hpo-recognizer
 
+  # GenPhenAI with its model, run by staging as `model`. Built from the API's
+  # services/genphenai alone, so only GATEWAY_COMMIT names it.
   publish-model:
     name: Build & publish model
+    needs: ci
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -362,9 +406,7 @@ jobs:
     env:
       IMAGE: diagnosticar-model
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: actions/checkout@v7
 
       - id: pins
         run: |
@@ -375,9 +417,41 @@ jobs:
             echo "::error::GATEWAY_COMMIT in .github/recognizer.env must be a full commit SHA, got '$GATEWAY_COMMIT'."
             exit 1
           fi
-          echo "api_ref=$GATEWAY_COMMIT" >> "$GITHUB_OUTPUT"
+          {
+            echo "api_ref=$GATEWAY_COMMIT"
+            echo "source=$REGISTRY/${GITHUB_REPOSITORY_OWNER,,}/$IMAGE:api-${GATEWAY_COMMIT::12}"
+          } >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE }}
+          tags: |
+            type=raw,value=${{ github.ref_name }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+          labels: |
+            org.opencontainers.image.revision.api=${{ steps.pins.outputs.api_ref }}
+
+      - id: reuse
+        name: Reuse the image built from this commit
+        env:
+          SOURCE: ${{ steps.pins.outputs.source }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: .github/scripts/reuse-image.sh
+
+      - name: Fetch the source
+        if: steps.reuse.outputs.reused != 'true'
+        uses: actions/checkout@v7
         with:
           repository: MateAlv/diagnostic.ar-api
           ref: ${{ steps.pins.outputs.api_ref }}
@@ -389,32 +463,14 @@ jobs:
       # Deploy keys only reach git, not release assets, hence the token: a
       # classic token of diagnosticar-fiuba, a collaborator on that repo.
       - name: Fetch the pinned model
+        if: steps.reuse.outputs.reused != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.MODEL_RELEASE_TOKEN }}
         run: api/services/genphenai/fetch_model.sh
 
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE }}
-          tags: |
-            type=raw,value=${{ github.ref_name }},enable=${{ startsWith(github.ref, 'refs/tags/') }}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=long
-          labels: |
-            org.opencontainers.image.revision.api=${{ steps.pins.outputs.api_ref }}
-
       - name: Build
-        uses: docker/build-push-action@v6
+        if: steps.reuse.outputs.reused != 'true'
+        uses: docker/build-push-action@v7
         with:
           context: ./api
           file: ./api/services/genphenai/Dockerfile
@@ -428,11 +484,13 @@ jobs:
       # The tests compare three clinical cases with rankings captured from
       # production, so a wrong or corrupted model fails here, before it ships.
       - name: Test inside the image
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           docker run --rm -v "$PWD/api/services/genphenai/tests:/app/tests:ro" ${{ env.IMAGE }}:candidate \
             sh -c "pip install -q --user pytest==8.3.2 httpx==0.28.1 && python -m pytest /app/tests -q -p no:cacheprovider"
 
       - name: Scan the candidate image
+        if: steps.reuse.outputs.reused != 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}:candidate
@@ -443,6 +501,7 @@ jobs:
           vuln-type: os,library
 
       - name: Assert the image does not run as root
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           user=$(docker image inspect ${{ env.IMAGE }}:candidate --format '{{.Config.User}}')
           if [ -z "$user" ] || [ "$user" = "root" ] || [ "$user" = "0" ]; then
@@ -452,27 +511,26 @@ jobs:
           echo "ok — runs as $user"
 
       - name: Push
-        uses: docker/build-push-action@v6
+        if: steps.reuse.outputs.reused != 'true'
+        uses: docker/build-push-action@v7
         with:
           context: ./api
           file: ./api/services/genphenai/Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ steps.pins.outputs.source }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=model
 
-  # The follow-up question agent, run by staging on nodo0 as question-agent.
-  # Built like hpo-recognizer: the Dockerfile is diagnostic.ar-api's
-  # services/question-agent/Dockerfile at GATEWAY_COMMIT, and the agent's code,
-  # from another private repository pinned in .github/question-agent.env, is
-  # its `agent` build context.
-  #
-  # While QUESTION_AGENT_COMMIT is empty every step after the pin check is
-  # skipped, so a release is not blocked before a commit has been chosen. The
-  # pin is read here rather than in a job of its own because every job is
-  # billed at least a minute.
+  # The follow-up question agent, run by staging as question-agent. The
+  # Dockerfile is the API's services/question-agent/Dockerfile at
+  # GATEWAY_COMMIT; the agent's code, from a teammate's private repository
+  # pinned in .github/question-agent.env, is its `agent` build context, read
+  # with the read-only deploy key its owner added.
   publish-question-agent:
     name: Build & publish question-agent
+    needs: ci
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -481,78 +539,47 @@ jobs:
     env:
       IMAGE: diagnosticar-question-agent
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: actions/checkout@v7
 
       - id: pins
         run: |
           set -euo pipefail
           # shellcheck disable=SC1091
           . .github/question-agent.env
-          if [ -z "${QUESTION_AGENT_COMMIT:-}" ]; then
-            echo "::notice::QUESTION_AGENT_COMMIT is empty in .github/question-agent.env; not building the question agent."
-            echo "build=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if ! printf '%s' "$QUESTION_AGENT_COMMIT" | grep -Eq '^[0-9a-f]{40}$'; then
-            echo "::error::QUESTION_AGENT_COMMIT in .github/question-agent.env must be a full commit SHA, got '$QUESTION_AGENT_COMMIT'."
-            exit 1
-          fi
+          # shellcheck disable=SC1091
+          . .github/recognizer.env
+          for v in QUESTION_AGENT_COMMIT GATEWAY_COMMIT; do
+            if ! printf '%s' "${!v}" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "::error::$v must be a full commit SHA, got '${!v}'."
+              exit 1
+            fi
+          done
           if ! printf '%s' "$QUESTION_AGENT_REPO" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'; then
             echo "::error::QUESTION_AGENT_REPO in .github/question-agent.env must be owner/name, got '$QUESTION_AGENT_REPO'."
             exit 1
           fi
-          # shellcheck disable=SC1091
-          . .github/recognizer.env
-          if ! printf '%s' "$GATEWAY_COMMIT" | grep -Eq '^[0-9a-f]{40}$'; then
-            echo "::error::GATEWAY_COMMIT in .github/recognizer.env must be a full commit SHA, got '$GATEWAY_COMMIT'."
-            exit 1
-          fi
+          source="api-${GATEWAY_COMMIT::12}-agent-${QUESTION_AGENT_COMMIT::12}"
           {
-            echo "build=true"
             echo "api_ref=$GATEWAY_COMMIT"
             echo "agent_repo=$QUESTION_AGENT_REPO"
             echo "agent_ref=$QUESTION_AGENT_COMMIT"
+            echo "source=$REGISTRY/${GITHUB_REPOSITORY_OWNER,,}/$IMAGE:$source"
           } >> "$GITHUB_OUTPUT"
 
-      - if: steps.pins.outputs.build == 'true'
-        uses: actions/checkout@v4
-        with:
-          repository: MateAlv/diagnostic.ar-api
-          ref: ${{ steps.pins.outputs.api_ref }}
-          ssh-key: ${{ secrets.API_DEPLOY_KEY }}
-          path: api
+      - uses: docker/setup-buildx-action@v4
 
-      - if: steps.pins.outputs.build == 'true'
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ steps.pins.outputs.agent_repo }}
-          ref: ${{ steps.pins.outputs.agent_ref }}
-          # The repository belongs to a teammate's account, where only its owner
-          # can add a deploy key; diagnosticar-fiuba is a collaborator there
-          # instead, and this is its read token (the same one that fetches the
-          # model release).
-          token: ${{ secrets.MODEL_RELEASE_TOKEN }}
-          path: agent
-
-      - if: steps.pins.outputs.build == 'true'
-        uses: docker/setup-buildx-action@v3
-
-      - if: steps.pins.outputs.build == 'true'
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: meta
-        if: steps.pins.outputs.build == 'true'
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE }}
           tags: |
-            type=raw,value=${{ github.ref_name }},enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=raw,value=${{ github.ref_name }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=long
@@ -560,9 +587,33 @@ jobs:
             org.opencontainers.image.revision.api=${{ steps.pins.outputs.api_ref }}
             org.opencontainers.image.revision.question-agent=${{ steps.pins.outputs.agent_ref }}
 
+      - id: reuse
+        name: Reuse the image built from these commits
+        env:
+          SOURCE: ${{ steps.pins.outputs.source }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: .github/scripts/reuse-image.sh
+
+      - name: Fetch the source
+        if: steps.reuse.outputs.reused != 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: MateAlv/diagnostic.ar-api
+          ref: ${{ steps.pins.outputs.api_ref }}
+          ssh-key: ${{ secrets.API_DEPLOY_KEY }}
+          path: api
+
+      - if: steps.reuse.outputs.reused != 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.pins.outputs.agent_repo }}
+          ref: ${{ steps.pins.outputs.agent_ref }}
+          ssh-key: ${{ secrets.QUESTION_AGENT_DEPLOY_KEY }}
+          path: agent
+
       - name: Build
-        if: steps.pins.outputs.build == 'true'
-        uses: docker/build-push-action@v6
+        if: steps.reuse.outputs.reused != 'true'
+        uses: docker/build-push-action@v7
         with:
           context: ./api
           file: ./api/services/question-agent/Dockerfile
@@ -579,14 +630,14 @@ jobs:
       # validate; without it they skip. Tests marked `live` call a real LLM or
       # model and need secrets this job does not have.
       - name: Test inside the image
-        if: steps.pins.outputs.build == 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           docker run --rm -e HOME=/tmp -v "$PWD/agent/tests:/tmp/tests:ro" -v "$PWD/agent/docs:/tmp/docs:ro" \
             ${{ env.IMAGE }}:candidate \
             sh -c "pip install -q --user pytest==8.3.2 && python -m pytest /tmp/tests -q -p no:cacheprovider -m 'not live'"
 
       - name: Scan the candidate image
-        if: steps.pins.outputs.build == 'true'
+        if: steps.reuse.outputs.reused != 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}:candidate
@@ -597,7 +648,7 @@ jobs:
           vuln-type: os,library
 
       - name: Assert the image does not run as root
-        if: steps.pins.outputs.build == 'true'
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           user=$(docker image inspect ${{ env.IMAGE }}:candidate --format '{{.Config.User}}')
           if [ -z "$user" ] || [ "$user" = "root" ] || [ "$user" = "0" ]; then
@@ -607,13 +658,15 @@ jobs:
           echo "ok — runs as $user"
 
       - name: Push
-        if: steps.pins.outputs.build == 'true'
-        uses: docker/build-push-action@v6
+        if: steps.reuse.outputs.reused != 'true'
+        uses: docker/build-push-action@v7
         with:
           context: ./api
           file: ./api/services/question-agent/Dockerfile
           build-contexts: agent=./agent
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ steps.pins.outputs.source }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=question-agent

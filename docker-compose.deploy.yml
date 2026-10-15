@@ -6,9 +6,11 @@
 # service at an immutable tag published by .github/workflows/release.yml, so a
 # deploy is "pull a digest that already passed CI, then restart".
 #
-# Usage (see ops/deploy.sh, which wraps this):
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-#                  -f docker-compose.deploy.yml pull
+# Staging uses it through `ops/staging.sh up vX.Y.Z`, which ops/deploy.sh runs
+# for each new release:
+#   docker compose -p diagnosticar-staging --env-file .env.staging \
+#     -f docker-compose.yml -f docker-compose.staging.yml \
+#     -f docker-compose.deploy.yml pull
 #   docker compose ... up -d --no-build
 
 services:

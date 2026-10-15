@@ -66,8 +66,9 @@ propio, ver **Dominio propio**.
 - **Primer arranque (cloud-init).** La máquina instala Docker, crea el swap y el
   usuario `diagnosticar` (solo con tu clave SSH), genera sus secretos y programa
   dos timers: deploy cada 5 minutos y backup cada noche (06:00 UTC).
-- **Imágenes.** Los workflows `publish-cloud.yml` de cada repositorio construyen,
-  prueban y publican las imágenes en GHCR (`ghcr.io/matealv/diagnosticar-cloud-*`).
+- **Imágenes.** Los workflows `publish-cloud.yml` de cada repositorio, que se
+  corren a mano desde la pestaña Actions, construyen, prueban y publican las
+  imágenes en GHCR (`ghcr.io/matealv/diagnosticar-cloud-*`).
   Cuando los tests pasan, mueven el tag `cloud` (el *canal*). El frontend se
   compila una sola vez con rutas relativas (`/api`, `/hpo-api`, `/genphenai`),
   así que la misma imagen sirve para cualquier dominio.

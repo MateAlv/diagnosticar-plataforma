@@ -244,13 +244,12 @@ services:
   # containers, and every call here spends LLM quota. The backend reaches it on
   # the project's default network, and the internal token is checked on top.
   #
-  # Behind the question-agent profile, so `ops/staging.sh up` neither pulls nor
-  # starts it until the image exists:
-  #   COMPOSE_PROFILES=question-agent ops/staging.sh up vX.Y.Z
-  # plus QUESTION_AGENT_URL=http://question-agent:8010 in .env.staging.
+  # Every release publishes its image, so staging always runs it; the base
+  # file's question-agent profile does not apply here. The backend finds it
+  # through QUESTION_AGENT_URL=http://question-agent:8010 in .env.staging.
   question-agent:
     image: ghcr.io/${GHCR_OWNER:-matealv}/diagnosticar-question-agent:${QUESTION_AGENT_TAG:-${RELEASE_TAG:-latest}}
-    profiles: ["question-agent"]
+    profiles: !reset []
     restart: unless-stopped
     init: true
     # The rest of its PREGUNTAS_* settings, and the healthcheck, come from

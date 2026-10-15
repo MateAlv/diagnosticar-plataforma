@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Run every CI check on this machine, in CI's own order.
+# Run every CI check on this machine, in CI's own order, plus the image builds
+# and scans the release does. This is the gate for merging: GitHub runs CI only
+# once per release (release.yml), because Actions minutes are a monthly quota
+# shared by every repository of the account.
 #
-# `make test` only covers five of the eleven checks in .github/workflows/ci.yml.
-# The image builds, the dependency audits, the secret scan and the compose
-# stack smoke test are not exercised by it at all — which is how a frontend
-# image that does not build reaches a pull request with a green local run
-# behind it. GitHub Actions minutes are a paid, finite resource; burning them
-# to discover a broken Docker build is waste.
+# `make test` covers only part of it. The image builds, the dependency audits,
+# the secret scan and the compose stack smoke test are not exercised by it at
+# all — which is how a frontend image that does not build reaches a pull
+# request with a green local run behind it.
 #
 #   ops/ci-local.sh            # everything, stopping at the first failure
 #   ops/ci-local.sh images     # one group: lint typecheck unit backend e2e
@@ -79,17 +80,18 @@ group_audit() {
         'cd backend  && npm audit --omit=dev --audit-level=high && npm ci --dry-run' || return 1
 }
 
+# The same image and command as CI. In a worktree, .git points into the main
+# checkout's .git, so that is mounted too, at its own path: without it gitleaks
+# finds no commits and reports no leaks.
+readonly GITLEAKS_IMAGE=ghcr.io/gitleaks/gitleaks:v8.30.1
+
 group_secrets() {
-    # gitleaks runs as a container action in CI. Locally it is optional, since
-    # requiring it would make the whole gate unrunnable without a pull.
-    if command -v gitleaks >/dev/null 2>&1; then
-        run "Secret scan (gitleaks)" gitleaks detect --no-banner --redact || return 1
-    elif docker image inspect zricethezav/gitleaks:latest >/dev/null 2>&1; then
-        run "Secret scan (gitleaks)" docker run --rm -v "$REPO_ROOT:/repo" \
-            zricethezav/gitleaks:latest detect -s /repo --no-banner --redact || return 1
-    else
-        SKIPPED+=("Secret scan (gitleaks not installed — CI still runs it)")
-    fi
+    local root common
+    root="$(pwd -P)"
+    common="$(cd "$(git rev-parse --git-common-dir)" && pwd -P)"
+    run "Secret scan (gitleaks)" docker run --rm --user "$(id -u):$(id -g)" \
+        -v "$root:$root:ro" -v "$common:$common:ro" \
+        "$GITLEAKS_IMAGE" git "$root" --no-banner --redact || return 1
 
     run "No .env file is tracked" bash -c '
         tracked=$(git ls-files | grep -E "(^|/)\.env(\.[A-Za-z0-9_-]+)*$" | grep -v "\.example$" || true)
