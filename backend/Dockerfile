@@ -2,7 +2,7 @@
 
 # Node 18 reached end of life in April 2025 and no longer receives security
 # patches; CI, the frontend image and package.json engines all target 22.
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 # `npm ci` installs exactly the audited lockfile — `npm install` can silently
@@ -14,7 +14,7 @@ WORKDIR /app
 COPY . .
 RUN npm run build
 
-FROM node:22-alpine AS runner
+FROM node:26-alpine AS runner
 # The base image lags Alpine's security updates; without this the image ships
 # known-vulnerable openssl and the CI scan fails.
 RUN apk upgrade --no-cache

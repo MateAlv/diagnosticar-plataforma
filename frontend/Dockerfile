@@ -7,7 +7,7 @@
 # them invalidates the install beneath it. Production, staging and each local
 # variant then wrote their own ~800 MB dependency layer, which is how this
 # filled ~9.5 GB of one laptop's disk.
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 # `npm ci` rather than `npm install`: it installs exactly what the lockfile
@@ -34,7 +34,7 @@ ENV NEXT_PUBLIC_GENPHENAI_URL=${NEXT_PUBLIC_GENPHENAI_URL}
 COPY . .
 RUN npm run build
 
-FROM node:22-alpine AS runner
+FROM node:26-alpine AS runner
 # The base image lags Alpine's security updates; without this the image ships
 # known-vulnerable openssl and the CI scan fails.
 RUN apk upgrade --no-cache
