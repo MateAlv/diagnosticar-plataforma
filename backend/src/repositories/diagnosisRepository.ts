@@ -99,6 +99,10 @@ export type QuestionContext = {
     symptoms_extracted: unknown;
     phenotypes: unknown;
     preguntas_respuestas: unknown;
+    created_at: Date;
+    sexo: string | null;
+    /** `YYYY-MM-DD`. */
+    fecha_nacimiento: string | null;
 };
 
 /**
@@ -107,9 +111,11 @@ export type QuestionContext = {
  */
 export async function getQuestionContext(id: string, userId: string): Promise<QuestionContext | null> {
     const res = await query(
-        `SELECT symptoms_extracted, phenotypes, preguntas_respuestas
-         FROM diagnoses
-         WHERE id = $1 AND user_id = $2`,
+        `SELECT d.symptoms_extracted, d.phenotypes, d.preguntas_respuestas, d.created_at,
+                p.sexo, to_char(p.fecha_nacimiento, 'YYYY-MM-DD') AS fecha_nacimiento
+         FROM diagnoses d
+         JOIN patients p ON p.id = d.patient_id
+         WHERE d.id = $1 AND d.user_id = $2`,
         [id, userId],
     );
     return res.rows[0] ?? null;

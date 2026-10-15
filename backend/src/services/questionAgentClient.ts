@@ -51,6 +51,9 @@ export type UpstreamRoundRequest = {
     round: number;
     present_hpo_ids: string[];
     absent_hpo_ids: string[];
+    sex?: 'male' | 'female';
+    age_years?: number;
+    onset_years?: number;
     answers: UpstreamAnswer[];
     finish: boolean;
 };

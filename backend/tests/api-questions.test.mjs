@@ -302,6 +302,39 @@ test('a full session: round 1, answers, round 2, finish — persisted and resuma
     assert.equal(calls.length, 3);
 });
 
+test('the agent gets the patient\'s sex, age and earliest exact onset with every round', { skip }, async () => {
+    const { client } = await newAccount();
+    const diagnosisId = await newDiagnosis(client, {
+        sexo: 'masculino',
+        fechaNacimiento: '2012-03-01',
+        symptomsExtracted: [
+            { description: 'Tos crónica', code: 'HP:0012735', onset: { hpo_id: 'HP:0011463', age_years: 3 } },
+            { description: 'Talla baja', code: 'HP:0004322', onset: { hpo_id: 'HP:0003621', age_years: 6.5 } },
+        ],
+    });
+    const { query } = await import('../dist/database/pool.js');
+    const { rows } = await query('SELECT created_at FROM diagnoses WHERE id = $1', [diagnosisId]);
+    const day = new Date(rows[0].created_at);
+    const expectedAge = Math.round(
+        ((Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) - Date.UTC(2012, 2, 1)) / 86_400_000 / 365.25) * 100,
+    ) / 100;
+    calls.length = 0;
+
+    const round1 = await client.post('/api/questions/rounds', { diagnosisId, mode: 'paciente' });
+    assert.equal(round1.status, 200, round1.text);
+    const round2 = await client.post('/api/questions/rounds', {
+        diagnosisId, mode: 'paciente', answers: answer(questionIds(1), 'no'),
+    });
+    assert.equal(round2.status, 200, round2.text);
+
+    assert.equal(calls.length, 2);
+    for (const call of calls) {
+        assert.equal(call.body.sex, 'male');
+        assert.equal(call.body.age_years, expectedAge);
+        assert.equal(call.body.onset_years, 3);
+    }
+});
+
 test('a diagnosis without a session resumes as null', { skip }, async () => {
     const { client } = await newAccount();
     const diagnosisId = await newDiagnosis(client);

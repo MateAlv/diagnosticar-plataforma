@@ -209,6 +209,59 @@ export function deriveEvidence(diagnosis: { symptoms_extracted: unknown; phenoty
     };
 }
 
+/** The agent's optional case fields; each is left out when it is not known. */
+export type PatientCase = Pick<UpstreamRoundRequest, 'sex' | 'age_years' | 'onset_years'>;
+
+const SEX: Record<string, 'male' | 'female'> = { masculino: 'male', femenino: 'female' };
+const MAX_AGE_YEARS = 130;
+const DAY_MS = 86_400_000;
+
+function knownYears(value: number | null): number | undefined {
+    return value !== null && Number.isFinite(value) && value >= 0 && value <= MAX_AGE_YEARS ? value : undefined;
+}
+
+function ageOn(birthDate: string | null, on: Date): number | null {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate ?? '');
+    if (!match || Number.isNaN(on.getTime())) return null;
+    const born = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    const day = Date.UTC(on.getUTCFullYear(), on.getUTCMonth(), on.getUTCDate());
+    if (born > day) return null;
+    return Math.round(((day - born) / DAY_MS / 365.25) * 100) / 100;
+}
+
+function earliestOnsetYears(symptoms: unknown): number | null {
+    let earliest: number | null = null;
+    for (const symptom of Array.isArray(symptoms) ? symptoms : []) {
+        const age = (symptom as { onset?: { age_years?: unknown } | null } | null)?.onset?.age_years;
+        if (typeof age === 'number' && Number.isFinite(age) && age >= 0 && (earliest === null || age < earliest)) {
+            earliest = age;
+        }
+    }
+    return earliest;
+}
+
+/**
+ * The sex, age and earliest exact age at onset the wizard sent to /rank-genes
+ * for this diagnosis, by the rule of frontend/src/lib/model-inputs.ts, so the
+ * lists the agent ranks start from the same case as the first one. The age is
+ * taken on the day of the diagnosis, as the wizard did.
+ */
+export function derivePatientCase(context: {
+    sexo: string | null;
+    fecha_nacimiento: string | null;
+    created_at: Date;
+    symptoms_extracted: unknown;
+}): PatientCase {
+    const fields: PatientCase = {};
+    const sex = SEX[(context.sexo ?? '').trim().toLowerCase()];
+    if (sex) fields.sex = sex;
+    const age = knownYears(ageOn(context.fecha_nacimiento, new Date(context.created_at)));
+    if (age !== undefined) fields.age_years = age;
+    const onset = knownYears(earliestOnsetYears(context.symptoms_extracted));
+    if (onset !== undefined) fields.onset_years = onset;
+    return fields;
+}
+
 // --- Rounds -------------------------------------------------------------------
 
 /** The round whose questions are waiting for answers, if any. */
@@ -319,7 +372,12 @@ function toStoredRound(response: UpstreamRoundResponse): StoredRound {
  * Every call uses the mode of this request, so the wording can change between
  * rounds; each stored round remembers the mode it was written in.
  */
-export function planRound(session: StoredSession | null, evidence: Evidence, input: RoundInput): RoundPlan {
+export function planRound(
+    session: StoredSession | null,
+    evidence: Evidence,
+    input: RoundInput,
+    patientCase: PatientCase = {},
+): RoundPlan {
     const newAnswers = input.answers.map(normaliseAnswer);
     const answering = newAnswers.length > 0;
 
@@ -347,6 +405,7 @@ export function planRound(session: StoredSession | null, evidence: Evidence, inp
         round: answeredRounds + 1,
         present_hpo_ids: evidence.present,
         absent_hpo_ids: evidence.absent,
+        ...patientCase,
         answers: [
             ...previous.map((a) => {
                 const read = known.get(a.hpoId);

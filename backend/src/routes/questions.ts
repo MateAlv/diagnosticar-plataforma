@@ -31,6 +31,7 @@ import {
 import {
     CorruptSessionError,
     deriveEvidence,
+    derivePatientCase,
     latestResponse,
     parseStoredSession,
     planRound,
@@ -182,7 +183,7 @@ router.post('/rounds', ...auth, postLimit, async (req: AuthRequest, res: Respons
         }
 
         const session = parseStoredSession(diagnosis.preguntas_respuestas);
-        const plan = planRound(session, deriveEvidence(diagnosis), { mode, answers, finish });
+        const plan = planRound(session, deriveEvidence(diagnosis), { mode, answers, finish }, derivePatientCase(diagnosis));
 
         if (plan.action === 'reject') {
             return fail(res, REJECTIONS[plan.reason]);

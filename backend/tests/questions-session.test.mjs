@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
     deriveEvidence,
+    derivePatientCase,
     parseStoredSession,
     pendingRound,
     planRound,
@@ -129,6 +130,64 @@ test('the first POST asks the agent for round 1 with no answers', () => {
         answers: [],
         finish: false,
     });
+});
+
+const DIAGNOSED = new Date('2026-10-09T15:00:00Z');
+const withOnset = (code, onset) => ({ description: code, code, onset });
+
+test('the case is the sex, the age on the day of the diagnosis and the earliest exact onset', () => {
+    const patientCase = derivePatientCase({
+        sexo: 'Femenino',
+        fecha_nacimiento: '2019-04-09',
+        created_at: DIAGNOSED,
+        symptoms_extracted: [
+            withOnset('HP:0012735', { hpo_id: 'HP:0011463', age_years: 3 }),
+            withOnset('HP:0004322', { hpo_id: 'HP:0003593', age_years: 0.5 }),
+            withOnset('HP:0002205', { hpo_id: 'HP:0003623', age_years: null }),
+            { description: 'Sin inicio', code: 'HP:0001250' },
+        ],
+    });
+    assert.deepEqual(patientCase, { sex: 'female', age_years: 7.5, onset_years: 0.5 });
+});
+
+test('whatever is not known is left out of the case', () => {
+    const empty = { sexo: null, fecha_nacimiento: null, created_at: DIAGNOSED, symptoms_extracted: [] };
+    assert.deepEqual(derivePatientCase(empty), {});
+    assert.deepEqual(derivePatientCase({ ...empty, sexo: 'otro' }), {});
+    assert.deepEqual(derivePatientCase({ ...empty, sexo: ' masculino ' }), { sex: 'male' });
+    assert.deepEqual(derivePatientCase({ ...empty, fecha_nacimiento: '2026-10-10' }), {}, 'born after the diagnosis');
+    assert.deepEqual(derivePatientCase({ ...empty, fecha_nacimiento: '1880-01-01' }), {}, 'older than the agent accepts');
+    assert.deepEqual(derivePatientCase({ ...empty, fecha_nacimiento: '2026-10-09' }), { age_years: 0 });
+    assert.deepEqual(
+        derivePatientCase({ ...empty, symptoms_extracted: [withOnset('HP:0012735', { hpo_id: 'HP:0011463', age_years: null })] }),
+        {},
+        'an onset class alone is not an exact age',
+    );
+    assert.deepEqual(derivePatientCase({ ...empty, symptoms_extracted: 'not an array' }), {});
+});
+
+test('every call carries the case, and none does without one', () => {
+    const patientCase = { sex: 'male', age_years: 14.57, onset_years: 3 };
+    const first = planRound(null, EVIDENCE, input(), patientCase);
+    assert.deepEqual(first.request, {
+        mode: 'paciente',
+        round: 1,
+        present_hpo_ids: EVIDENCE.present,
+        absent_hpo_ids: EVIDENCE.absent,
+        sex: 'male',
+        age_years: 14.57,
+        onset_years: 3,
+        answers: [],
+        finish: false,
+    });
+
+    const second = planRound(first.apply(questionsResponse(1, R1)), EVIDENCE, input({ answers: answer(R1) }), patientCase);
+    assert.equal(second.action, 'call');
+    assert.equal(second.request.sex, 'male');
+    assert.equal(second.request.onset_years, 3);
+
+    const without = planRound(null, EVIDENCE, input());
+    assert.equal('sex' in without.request || 'age_years' in without.request || 'onset_years' in without.request, false);
 });
 
 test('a diagnosis with no coded symptoms cannot start a session', () => {
