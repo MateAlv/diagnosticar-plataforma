@@ -313,20 +313,87 @@ connection or an accidentally public patients endpoint is a **failed deploy**.
 
 ### Turning it on for staging
 
-Once, as `<usuario>` on nodo0, from a checkout that has `ops/deploy.sh`:
+Once, as `<usuario>` on nodo0. **Order matters:** cron deploys only a tag
+newer than the one it has handled, so the state goes in before the tag that
+should deploy is pushed. The values below are staging's on 2026-10-15.
+
+1. **Look first, read-only.** These are what to compare against afterwards:
+
+   ```bash
+   docker ps -q | wc -l        # every container on the host
+   docker ps --filter label=com.docker.compose.project=diagnosticar \
+     --format '{{.Names}} {{.Status}}'      # production's uptimes
+   df -h / /data | tail -2
+   ```
+
+2. **Put the staging checkout on a commit that has `ops/deploy.sh`.** Changing
+   files does not touch the running containers; only `up` does.
+
+   ```bash
+   cd ~/diagnostic.ar/diagnostic.ar-staging
+   git status --short          # only untracked files: .env.staging.bak-*, data/
+   git fetch --tags origin && git checkout --detach origin/main
+   ```
+
+3. **Write the state**: what runs now, the commit it was deployed from, and
+   the newest tag that must not deploy.
+
+   ```bash
+   state=~/.local/state/diagnosticar/staging
+   mkdir -p "$state"
+   echo v0.9.26-manual > "$state/current"
+   echo d633abffe2eb98bb864fd8c1f68e1b2bdbec60db > "$state/current-ref"
+   echo v0.9.2 > "$state/handled"
+   ops/deploy.sh staging --status
+   ```
+
+4. **Install the cron line.**
+
+   ```bash
+   ( crontab -l 2>/dev/null; echo 'MAILTO=""'
+     echo '*/5 * * * * $HOME/diagnostic.ar/diagnostic.ar-staging/ops/deploy.sh staging' ) | crontab -
+   crontab -l
+   ```
+
+5. **Push the release tag** from the developer's machine (runbook, step 4).
+   The first run builds every image, so it takes about half an hour (about 50
+   billed minutes). Within five minutes of it going green the deploy starts:
+
+   ```bash
+   tail -f ~/.local/state/diagnosticar/staging/deploy.log
+   ```
+
+6. **Check afterwards**: `ops/deploy.sh staging --status`, the same container
+   count as in step 1, production's uptimes unchanged, and a real search in a
+   browser, through the follow-up questions.
+
+If `--status` still says *not published yet* after the run went green, the
+node's pull account cannot read one of the packages — most likely one the
+release created for the first time, such as `diagnosticar-question-agent`.
+Give that account read access in the package's settings on GitHub; the next
+cron run deploys.
+
+**The first deploy has no automatic way back.** `v0.9.26-manual` was built by
+hand and loaded over SSH, so it is not on GHCR: if the first release fails its
+smoke test, `ops/deploy.sh` cannot pull it back and logs `ROLLBACK FAILED`.
+Its images are still on the node; bring them back by hand:
 
 ```bash
 cd ~/diagnostic.ar/diagnostic.ar-staging
-state=~/.local/state/diagnosticar/staging
-mkdir -p "$state"
-echo "<tag running now>" > "$state/current"       # what a failed deploy goes back to
-echo "<its commit>"      > "$state/current-ref"
-ops/deploy.sh staging    # records the newest tag; the next newer one deploys
-( crontab -l 2>/dev/null; echo 'MAILTO=""'
-  echo '*/5 * * * * $HOME/diagnostic.ar/diagnostic.ar-staging/ops/deploy.sh staging' ) | crontab -
+git checkout --detach d633abffe2eb98bb864fd8c1f68e1b2bdbec60db
+COMPOSE_PROFILES=question-agent GENE_PROFILES_DB=$PWD/data/genes.db \
+RELEASE_TAG=v0.9.26-manual FRONTEND_IMAGE=diagnosticar-frontend-staging \
+docker compose -p diagnosticar-staging --env-file .env.staging \
+  -f docker-compose.yml -f docker-compose.staging.yml \
+  -f docker-compose.genes.yml -f docker-compose.deploy.yml \
+  up -d --no-build --pull never
+ops/staging.sh smoke
 ```
 
-To stop it, remove that line with `crontab -e`. Staging keeps running whatever
+From the second release on, the previous release is on GHCR and the way back
+is automatic.
+
+To stop it, remove the line with `crontab -e`. Staging keeps running whatever
 it runs.
 
 ### Production: what is left
