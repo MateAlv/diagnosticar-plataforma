@@ -259,25 +259,29 @@ spends nothing.
 ### Gene ranking on staging runs on nodo0 too
 
 For the same reason, staging has its own GenPhenAI: `model`, with the
-GenPhenia model inside (ONNX on the CPU, ~90 MiB, no secret). It is the
-checkpoint brainy serves — `model-v3.0.0` of diagnostic.ar-model, pinned by
-sha256 in the API's `services/genphenai/model.lock` — so rankings do not
-change; its image tests compare them with production's before it ships.
+GenPhenia model inside (ONNX on the CPU, ~90 MiB, no secret). Since
+2026-10-15 it is `model-v4.0.0` of diagnostic.ar-model, pinned by sha256 in
+the API's `services/genphenai/model.lock`: the v4 network, and v4-layer on its
+logits, which reads the patient's sex, age and onset (ADR-0020 in
+diagnostic.ar-training). Production still runs v3.0 on brainy, and moves only
+with Mateo's go.
 
-It starts **unrouted** (`MODEL_ROUTED` defaults to `false`). After
-`ops/staging.sh up vX.Y.Z`, check it from inside the network:
+- **Flag.** `V4_LAYER_ENABLED` (default `true` in `docker-compose.staging.yml`).
+  `false` and a recreate of `model` serve the v4 network alone, with no new
+  image.
+- **`/healthz`.** Names the model under `model` and the layer under `layer`,
+  each with its sha256. `model_version` still says "3.0": the engine reports
+  the architecture, which v4 shares.
+- **Checking it.** From a checkout of diagnostic.ar-api,
+  `python3 services/genphenai/check_deployed.py https://staging.diagnosticar.infra.cluster.qb.fcen.uba.ar/genphenai`
+  runs the release's 32 fixture cases through the deployed service, without
+  and with the layer's inputs, and reports the latency. It must print
+  `all checks passed`.
 
-```bash
-docker exec diagnosticar-staging-model-1 \
-  python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:18020/healthz').read().decode())"
-```
-
-`status` must be `ok`, `checkpoint_sha256` must start `ee10aa42`, and
-`specialties_available` must be `true`. Then set `MODEL_ROUTED=true` in
-`.env.staging` and `up` again: a router one priority above
-`genphenai-tunnel`'s takes `/genphenai`. With both routed, staging no longer
-reaches brainy for anything but the incumbent's search and specialties.
-Routing back is the same variable set to `false`.
+`MODEL_ROUTED=true` in `.env.staging` sends `/genphenai` to it: a router one
+priority above `genphenai-tunnel`'s takes the path. With both it and the
+recognizer routed, staging reaches brainy for nothing but the incumbent's
+search and specialties. Routing back is the same variable set to `false`.
 
 ### Follow-up questions (question agent)
 

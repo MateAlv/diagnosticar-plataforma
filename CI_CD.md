@@ -363,9 +363,14 @@ should deploy is pushed. The values below are staging's on 2026-10-15.
    tail -f ~/.local/state/diagnosticar/staging/deploy.log
    ```
 
-6. **Check afterwards**: `ops/deploy.sh staging --status`, the same container
-   count as in step 1, production's uptimes unchanged, and a real search in a
-   browser, through the follow-up questions.
+6. **Check afterwards**:
+   - `ops/deploy.sh staging --status`;
+   - the same container count as in step 1, and production's uptimes unchanged;
+   - the model, from a checkout of diagnostic.ar-api on the developer's
+     machine: `python3 services/genphenai/check_deployed.py
+     https://staging.diagnosticar.infra.cluster.qb.fcen.uba.ar/genphenai` must
+     print `all checks passed` (model-v4.0.0's 32 fixture cases);
+   - a real search in a browser, through the follow-up questions.
 
 If `--status` still says *not published yet* after the run went green, the
 node's pull account cannot read one of the packages — most likely one the

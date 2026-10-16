@@ -74,7 +74,7 @@ propio, ver **Dominio propio**.
   así que la misma imagen sirve para cualquier dominio.
 - **Deploy *pull*.** Cada 5 minutos la máquina pregunta a GHCR a qué digest
   apunta el canal. Si cambió, baja las imágenes nuevas, reinicia y corre los
-  chequeos: los healthz, un ranking de referencia (`NF1, SPRED1, NF2`) y que la
+  chequeos: los healthz, un ranking de referencia y que la
   home renderice. **Si fallan, vuelve sola a las anteriores** y no reintenta ese
   mismo conjunto. Nadie necesita entrar a la máquina ni tener credenciales del
   proveedor para desplegar. Es el mismo patrón que usa nodo0 (`ops/deploy.sh`).
@@ -416,8 +416,8 @@ output "config" { value = module.stack.config }
 Con el 22 abierto (`remote.sh open`):
 
 1. `remote.sh status`: todos los contenedores `Up`, y `deploy-status.json` con `"result": "ok"`.
-2. `curl -s <url>/genphenai/healthz`: `in-process`, `checkpoint_sha256` empieza con `ee10aa42`.
-3. Ranking de referencia: `curl -s -X POST <url>/genphenai/rank-genes -H 'Content-Type: application/json' -d '{"hpo_ids":["HP:0000957","HP:0001067","HP:0009737","HP:0000316"],"top_k":3}'` → `NF1`, `SPRED1`, `NF2`.
+2. `curl -s <url>/genphenai/healthz`: `in-process`, `checkpoint_sha256` empieza con `bff1a05b` (`model-v4.0.0`; con `model-v3.0.0`, `ee10aa42`).
+3. Ranking de referencia: `curl -s -X POST <url>/genphenai/rank-genes -H 'Content-Type: application/json' -d '{"hpo_ids":["HP:0000957","HP:0001067","HP:0009737","HP:0000316"],"top_k":3}'` → `NF1`, `NF2`, `MSH6` (`model-v4.0.0`; con `model-v3.0.0`, `NF1`, `SPRED1`, `NF2`).
 4. `SMOKE_HEALTH_PATH=/api/health ../../ops/smoke.sh <url> <url>` → `SMOKE PASS`.
 5. Con el token de Claude cargado, `<url>/hpo-api/healthz` dice `extract_hpo.ready: true`, y una historia con
    una negación ("no presenta convulsiones") no aparece como síntoma presente.

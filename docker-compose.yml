@@ -99,8 +99,8 @@ services:
       # The two switches to back out of what the 2026-10-05 agent adds, without
       # a new image: PREGUNTAS_SELECTOR=legacy restores the previous question
       # selector (the default is q2b, D-19), and PREGUNTAS_RERANK_NEGATIONS=false
-      # stops sending the "no" answers to the model's re-ranker, whose output
-      # is then v3.0's, bit for bit.
+      # stops sending the "no" answers to the model, which since model-v4.0.0
+      # does not use them anyway.
       PREGUNTAS_SELECTOR:
       PREGUNTAS_RERANK_NEGATIONS:
       # Always set, because QUESTION_AGENT_TIMEOUT_MS above is sized against it.

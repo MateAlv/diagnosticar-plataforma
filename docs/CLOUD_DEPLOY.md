@@ -46,7 +46,7 @@ Todos privados, en la cuenta `MateAlv`:
 |---|---|
 | `diagnostic.ar` | Frontend, backend, composes de referencia, esta guía |
 | `diagnostic.ar-api` | El extractor (`services/api-gateway`) y `model` (`services/genphenai`) |
-| `diagnostic.ar-model` | El release `model-v3.0.0` que `model` trae adentro |
+| `diagnostic.ar-model` | El release que `model` trae adentro, fijado en el `model.lock` de la API (desde el 2026-10-15, `model-v4.0.0`) |
 | `diagnostic.ar-gene-profiles` | El release `db-v1.0.0`: la base `genes.db` |
 | `spanish-symptoms-recognizer` | El código del extractor, que se construye junto con la API |
 
@@ -173,8 +173,9 @@ completa del módulo es `docs/GUIA_DE_INTEGRACION.md` en su repo.
 | backend | `QUESTION_AGENT_ROUNDS_PER_HOUR`, `QUESTION_AGENT_GLOBAL_ROUNDS_PER_5H` | Topes por cuenta y globales; staging usa `20` y `50`. Una ronda cuesta del orden de una o dos llamadas al LLM |
 
 **Model.** Nada secreto. `CORS_ORIGINS=https://TU-DOMINIO`. `GET /healthz`
-tiene que decir `mode: in-process`, `checkpoint_sha256` empezando en
-`ee10aa42` y `specialties_available: true`.
+tiene que decir `mode: in-process`, el `checkpoint_sha256` del modelo que fija
+la API (`bff1a05b…` con `model-v4.0.0`; `ee10aa42…` era `model-v3.0.0`) y
+`specialties_available: true`.
 
 **Proxy.** Quitá el prefijo antes de pasar a cada servicio (`/hpo-api` y
 `/genphenai` se quitan; así lo hace Traefik en staging, ver
@@ -192,10 +193,10 @@ tiene que decir `mode: in-process`, `checkpoint_sha256` empezando en
 
 ## Cómo saber que anda
 
-1. `GET https://TU-DOMINIO/genphenai/healthz` → `in-process`, `ee10aa42…`.
+1. `GET https://TU-DOMINIO/genphenai/healthz` → `in-process`, `bff1a05b…` (`model-v4.0.0`).
 2. Ranking de referencia: `POST /genphenai/rank-genes` con
    `{"hpo_ids":["HP:0000957","HP:0001067","HP:0009737","HP:0000316"],"top_k":3}`
-   → `NF1`, `SPRED1`, `NF2`.
+   → `NF1`, `NF2`, `MSH6` con `model-v4.0.0` (con `model-v3.0.0` era `NF1`, `SPRED1`, `NF2`).
 3. Registrate en la web, cargá una historia con una negación ("no presenta
    convulsiones") y confirmá que no aparece como síntoma presente.
 4. `ops/smoke.sh https://TU-DOMINIO https://TU-DOMINIO`: revisa headers de

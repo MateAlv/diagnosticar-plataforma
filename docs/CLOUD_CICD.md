@@ -40,7 +40,7 @@ a mano ──▶ GitHub Actions (publish-cloud.yml)
 
 cada máquina, cada 5 minutos (timer de systemd, `diagnosticar deploy`)
                   ├─ 4. pregunta a GHCR a qué digest apunta `cloud` en cada imagen
-                  ├─ 5. si cambió: baja, reinicia, chequea (healthz, ranking NF1/SPRED1/NF2, /home)
+                  ├─ 5. si cambió: baja, reinicia, chequea (healthz, un ranking de referencia, /home)
                   ├─ 6. si los chequeos fallan: vuelve a los digests anteriores y no reintenta ese conjunto
                   └─ 7. escribe el resultado en https://<dominio>/deploy-status.json
 ```

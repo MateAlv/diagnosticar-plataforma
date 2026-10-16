@@ -205,8 +205,9 @@ services:
   # GenPhenAI with the GenPhenia model inside, answering /genphenai for staging
   # only. genphenai-tunnel reaches brainy's GenPhenAI, which production uses
   # through the same tunnel, so staging gets its own instead of changing that
-  # one. The model is the same checkpoint brainy serves (model-v3.0.0 of
-  # diagnostic.ar-model, baked into the image), so rankings do not change.
+  # one. The model is model-v4.0.0 of diagnostic.ar-model, baked into the
+  # image: the v4 network with v4-layer on its logits (diagnostic.ar-api's
+  # services/genphenai/model/README.md). Production still runs v3.0 on brainy.
   #
   # A router one priority above genphenai-tunnel's takes the whole path once
   # MODEL_ROUTED=true; until then the container runs and nothing reaches
@@ -220,9 +221,10 @@ services:
     init: true
     environment:
       CORS_ORIGINS: https://${STAGING_HOST}
-      # ft-v1.1 (diagnostic.ar-model ft-v1.1.0), on in staging only. Rollback
-      # without a new image: FT_V11_ENABLED=false and recreate this container.
-      FT_V11_ENABLED: ${FT_V11_ENABLED:-true}
+      # v4-layer: sex, age and onset on top of the v4 network. Rollback to
+      # the network alone without a new image: V4_LAYER_ENABLED=false and
+      # recreate this container.
+      V4_LAYER_ENABLED: ${V4_LAYER_ENABLED:-true}
     labels:
       - "traefik.enable=${MODEL_ROUTED:-false}"
       - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
