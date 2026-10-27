@@ -18,6 +18,9 @@ BACKEND_URL="${2:-${SMOKE_BACKEND_URL:-http://127.0.0.1:4000}}"
 # through the proxy set SMOKE_HEALTH_PATH=/api/health.
 HEALTH_PATH="${SMOKE_HEALTH_PATH:-/health}"
 TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-90}"
+# hpo-recognizer loads the HPO index and warms the extractor before it listens:
+# 58 s on nodo0 on 2026-10-27, against the backend's 1 s.
+MODEL_TIMEOUT_SECONDS="${SMOKE_MODEL_TIMEOUT_SECONDS:-240}"
 
 # Staging sits behind Traefik basic auth, so every request there needs
 # credentials — including /health. Without them each check reads 401 and the
@@ -32,15 +35,15 @@ fail() { echo "SMOKE FAIL: $*" >&2; exit 1; }
 ok()   { echo "  ok   $*"; }
 
 wait_for() {
-  local url=$1 name=$2 i
-  for ((i = 1; i <= TIMEOUT_SECONDS; i++)); do
+  local url=$1 name=$2 timeout=${3:-$TIMEOUT_SECONDS} i
+  for ((i = 1; i <= timeout; i++)); do
     if curl -sf "${AUTH[@]}" -o /dev/null --max-time 5 "$url"; then
       ok "$name responded after ${i}s"
       return 0
     fi
     sleep 1
   done
-  fail "$name never responded at $url within ${TIMEOUT_SECONDS}s"
+  fail "$name never responded at $url within ${timeout}s"
 }
 
 echo "==> Availability"
@@ -88,18 +91,20 @@ ok "landing page renders"
 # Locally they are usually not running, so the check is opt-in.
 if [ "${SMOKE_MODEL_SERVICES:-false}" = true ]; then
   echo "==> Model services answer on this host"
+  wait_for "$FRONTEND_URL/hpo-api/healthz" "/hpo-api" "$MODEL_TIMEOUT_SECONDS"
+  wait_for "$FRONTEND_URL/genphenai/healthz" "/genphenai" "$MODEL_TIMEOUT_SECONDS"
   body=$(curl -sf "${AUTH[@]}" --max-time 10 "$FRONTEND_URL/hpo-api/hpo/es/search?q=convulsiones&limit=3") \
     || fail "/hpo-api symptom search did not answer"
   echo "$body" | grep -q '"HP:0001250"' || fail "symptom search did not find Seizure: $body"
   ok "symptom search"
   body=$(curl -sf "${AUTH[@]}" --max-time 10 "$FRONTEND_URL/hpo-api/healthz") \
     || fail "/hpo-api/healthz did not answer"
-  echo "$body" | grep -q '"ready":true' || fail "symptom extraction is not ready: $body"
+  echo "$body" | grep -Eq '"ready": *true' || fail "symptom extraction is not ready: $body"
   ok "symptom extraction ready"
   body=$(curl -sf "${AUTH[@]}" --max-time 10 "$FRONTEND_URL/genphenai/healthz") \
     || fail "/genphenai/healthz did not answer"
-  echo "$body" | grep -q '"status":"ok"' || fail "gene ranking is not ok: $body"
-  ok "gene ranking ($(echo "$body" | grep -o '"release":"[^"]*"' | head -1))"
+  echo "$body" | grep -Eq '"status": *"ok"' || fail "gene ranking is not ok: $body"
+  ok "gene ranking ($(echo "$body" | grep -Eo '"release": *"[^"]*"' | head -1))"
 fi
 
 echo

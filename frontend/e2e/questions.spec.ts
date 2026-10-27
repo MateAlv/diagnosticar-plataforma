@@ -202,6 +202,17 @@ async function expectList(page: Page, name: ListName) {
     );
 }
 
+/**
+ * The questions are over: the summary is up and the grid has moved to the
+ * answers' list by itself. That move is an effect that runs just after the
+ * render with the summary, so a test that reads the toggle in between sees
+ * the model's list, does not click, and then watches the list switch.
+ */
+async function expectFinishedOnTheAnswers(page: Page) {
+    await expect(panel(page).getByRole("heading", { name: "Para conversar en la consulta" })).toBeVisible();
+    await expectList(page, "Con tus respuestas");
+}
+
 async function chooseList(page: Page, name: ListName) {
     const toggle = page.locator("[data-list-toggle]");
     const want = name === "Original" ? "original" : "refined";
@@ -904,7 +915,7 @@ test("the summary copies as plain text, with the disclaimer word for word", asyn
     await question(page, SWEAT.text).getByRole("button", { name: "Agregar un comentario" }).click();
     await question(page, SWEAT.text).getByLabel("Comentario (opcional)").fill("desde bebé");
     await send(page);
-    await expect(panel(page).getByRole("heading", { name: "Para conversar en la consulta" })).toBeVisible();
+    await expectFinishedOnTheAnswers(page);
     await besideThePanel(page, () => chooseList(page, "Original"));
 
     await panel(page).getByRole("button", { name: "Copiar resumen" }).click();
@@ -965,7 +976,7 @@ test("printing prints the summary, the gene list and the disclaimer, and nothing
     await startQuestions(page);
     await answerAll(page);
     await send(page);
-    await expect(panel(page).getByRole("heading", { name: "Para conversar en la consulta" })).toBeVisible();
+    await expectFinishedOnTheAnswers(page);
     await besideThePanel(page, () => chooseList(page, "Original"));
 
     const elsewhere = [
