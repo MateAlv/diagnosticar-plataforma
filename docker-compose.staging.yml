@@ -2,9 +2,10 @@
 #
 # Runs beside prod under a separate compose project (see ops/staging.sh), with
 # its own database volume and its own Traefik host, so nothing here can touch a
-# real family's records. It shares brainy's HPO/GenPhenAI services through the
-# same reverse SSH tunnels, which is the point: it is the only place the real
-# model services get exercised before production does.
+# real family's records. Every service runs here, on nodo0: nothing reaches
+# brainy, and nothing goes through an SSH tunnel. It is the only place the real
+# model services get exercised before production does, and production runs the
+# same images (docker-compose.prod.yml).
 #
 # Rule: synthetic data only. Never restore a production dump into staging —
 # that would put clinical data on a host with weaker access control.
@@ -68,69 +69,10 @@ services:
       - default
       - traefik_net
 
-  # Bridges to brainy, reusing the SAME reverse SSH tunnel as production
-  # (host ports 18100 and 18120). These are read-only inference calls and the
-  # tunnel is a shared transport, so staging does not need its own — see
-  # REVERSE_SSH_TUNNELS.md. Separate socat containers and separate Traefik
-  # routers are still required, because the routers match on Host() and
-  # production's only answer for DIAGNOSTICAR_HOST.
-  hpo-tunnel:
-    image: alpine/socat:1.8.0.1
-    command:
-      - "TCP-LISTEN:8000,fork,reuseaddr"
-      - "TCP:host.docker.internal:18100"
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
-      - "traefik.http.services.diagnosticar-staging-hpo.loadbalancer.server.port=8000"
-      - "traefik.http.routers.diagnosticar-staging-hpo.rule=Host(`${STAGING_HOST}`) && PathPrefix(`/hpo-api`)"
-      - "traefik.http.routers.diagnosticar-staging-hpo.entrypoints=websecure"
-      - "traefik.http.routers.diagnosticar-staging-hpo.tls=true"
-      - "traefik.http.routers.diagnosticar-staging-hpo.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
-      - "traefik.http.routers.diagnosticar-staging-hpo.priority=230"
-      # Basic auth here too: without it these paths are an unauthenticated
-      # public route to the GPU node.
-      - "traefik.http.routers.diagnosticar-staging-hpo.middlewares=diagnosticar-staging-hpo-strip"
-      - "traefik.http.middlewares.diagnosticar-staging-hpo-strip.stripprefix.prefixes=/hpo-api"
-    networks:
-      - traefik_net
-
-  genphenai-tunnel:
-    image: alpine/socat:1.8.0.1
-    command:
-      - "TCP-LISTEN:18020,fork,reuseaddr"
-      - "TCP:host.docker.internal:18120"
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
-      - "traefik.http.services.diagnosticar-staging-genphenai.loadbalancer.server.port=18020"
-      - "traefik.http.routers.diagnosticar-staging-genphenai.rule=Host(`${STAGING_HOST}`) && PathPrefix(`/genphenai`)"
-      - "traefik.http.routers.diagnosticar-staging-genphenai.entrypoints=websecure"
-      - "traefik.http.routers.diagnosticar-staging-genphenai.tls=true"
-      - "traefik.http.routers.diagnosticar-staging-genphenai.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
-      - "traefik.http.routers.diagnosticar-staging-genphenai.priority=230"
-      - "traefik.http.routers.diagnosticar-staging-genphenai.middlewares=diagnosticar-staging-genphenai-strip"
-      - "traefik.http.middlewares.diagnosticar-staging-genphenai-strip.stripprefix.prefixes=/genphenai"
-    networks:
-      - traefik_net
-
-  # The Spanish symptom recognizer, answering /hpo-api/extract-hpo for staging
-  # only. Production and staging otherwise share brainy's gateway through the
-  # same tunnel, so switching the recognizer on there would switch it on for
-  # production too.
-  #
-  # Only extraction moves: a router one priority above hpo-tunnel's takes that
-  # one path, and search and specialties keep going to brainy. The router is
-  # off until HPO_RECOGNIZER_ROUTED=true, so a deploy starts the container
-  # without sending it traffic; check /healthz first, then route. Routing back
-  # is the same variable set to false and `ops/staging.sh up` again — nothing
-  # has to be stopped.
+  # The HPO gateway with the Spanish symptom recognizer inside: every path
+  # under /hpo-api, i.e. extraction, the Spanish symptom search and
+  # specialties. Search and specialties used to go to brainy through an SSH
+  # tunnel; the gateway in this image answers all three.
   #
   # No GPU: the LLM is remote and the encoder runs on CPU. The image is built
   # by the release workflow like the other two, from the gateway and
@@ -189,10 +131,10 @@ services:
     volumes:
       - staging_recognizer_state:/var/lib/recognizer
     labels:
-      - "traefik.enable=${HPO_RECOGNIZER_ROUTED:-false}"
+      - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
       - "traefik.http.services.diagnosticar-staging-hpo-recognizer.loadbalancer.server.port=8000"
-      - "traefik.http.routers.diagnosticar-staging-hpo-recognizer.rule=Host(`${STAGING_HOST}`) && Path(`/hpo-api/extract-hpo`)"
+      - "traefik.http.routers.diagnosticar-staging-hpo-recognizer.rule=Host(`${STAGING_HOST}`) && PathPrefix(`/hpo-api`)"
       - "traefik.http.routers.diagnosticar-staging-hpo-recognizer.entrypoints=websecure"
       - "traefik.http.routers.diagnosticar-staging-hpo-recognizer.tls=true"
       - "traefik.http.routers.diagnosticar-staging-hpo-recognizer.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
@@ -202,16 +144,10 @@ services:
     networks:
       - traefik_net
 
-  # GenPhenAI with the GenPhenia model inside, answering /genphenai for staging
-  # only. genphenai-tunnel reaches brainy's GenPhenAI, which production uses
-  # through the same tunnel, so staging gets its own instead of changing that
-  # one. The model is model-v4.0.0 of diagnostic.ar-model, baked into the
-  # image: the v4 network with v4-layer on its logits (diagnostic.ar-api's
-  # services/genphenai/model/README.md). Production still runs v3.0 on brainy.
-  #
-  # A router one priority above genphenai-tunnel's takes the whole path once
-  # MODEL_ROUTED=true; until then the container runs and nothing reaches
-  # it. Routing back is the same variable set to false and `ops/staging.sh up`.
+  # GenPhenAI with the GenPhenia model inside, answering /genphenai. The model
+  # is model-v4.0.0 of diagnostic.ar-model, baked into the image: the v4
+  # network with v4-layer on its logits (diagnostic.ar-api's
+  # services/genphenai/model/README.md).
   #
   # No GPU and no secret: ONNX on the CPU, ~90 MiB, a few ms per ranking.
   # MODEL_IMAGE_TAG pins it separately, to roll it back without the rest.
@@ -226,7 +162,7 @@ services:
       # recreate this container.
       V4_LAYER_ENABLED: ${V4_LAYER_ENABLED:-true}
     labels:
-      - "traefik.enable=${MODEL_ROUTED:-false}"
+      - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
       - "traefik.http.services.diagnosticar-staging-model.loadbalancer.server.port=18020"
       - "traefik.http.routers.diagnosticar-staging-model.rule=Host(`${STAGING_HOST}`) && PathPrefix(`/genphenai`)"

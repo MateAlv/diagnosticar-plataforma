@@ -41,19 +41,20 @@ The cloud copy has its own, manual pipeline (`docs/CLOUD_CICD.md`).
 ## Topology this pipeline assumes
 
 ```
-nodo0  (public, shared with other teams)          brainy  (compute)
-├── traefik ── TLS                                 ├── HPO gateway   :8000
-├── production  (project diagnosticar)             └── GenPhenAI    :18020
-│   frontend, backend, postgres, tunnels ──────────────► brainy
-└── staging     (project diagnosticar-staging)
-    frontend, backend, postgres,
-    hpo-recognizer, model, question-agent
+nodo0  (public, shared with other teams)
+├── traefik ── TLS
+├── production  (project diagnosticar, docker-compose.prod.yml)
+│   frontend, backend, postgres, hpo-recognizer, model, question-agent
+└── staging     (project diagnosticar-staging, docker-compose.staging.yml)
+    frontend, backend, postgres, hpo-recognizer, model, question-agent
 ```
 
-**This repository deploys nodo0.** Staging runs the symptom recognizer, the
-model and the question agent itself, built by the release from pinned commits
-of other repositories (`.github/recognizer.env`, `.github/question-agent.env`).
-Production still reaches brainy's services through SSH tunnels.
+**This repository deploys nodo0, and nothing else.** Both environments run the
+symptom recognizer, the model and the question agent themselves, built by the
+release from pinned commits of other repositories (`.github/recognizer.env`,
+`.github/question-agent.env`). Neither reaches brainy: the SSH tunnels to it
+are gone from both compose files. Production runs the hand-built stack, still
+on those tunnels, until its first deploy through `PRODUCTION.md`.
 
 Production is **https://diagnosticar.infra.cluster.qb.fcen.uba.ar**. Note
 `infra`, not `infa`; both resolve, but `infa` is a wildcard catch pointing at a
@@ -401,36 +402,23 @@ is automatic.
 To stop it, remove the line with `crontab -e`. Staging keeps running whatever
 it runs.
 
-### Production: what is left
+### Production
 
-**Nothing has ever deployed production through this pipeline.** Production
-runs images built by hand from `/home/<usuario>/nodo0-server/services/diagnostic.ar`,
-owned by another account, and has for weeks. To bring it in:
-
-1. **Decide who deploys it**: the account that owns production's checkout,
-   with read access to GHCR, or a checkout of production moved to an account
-   that can have both.
-2. **Rehearse a restore** of a `pg_dump` into staging (see *Backup restore*).
-   Until then the way back from a bad migration is unverified.
-3. **Add `production` to `ops/deploy.sh`**: its two images (backend,
-   frontend), project `diagnosticar` with `docker-compose.prod.yml` and the
-   deploy overlay, a `pg_dump` before every deploy that refuses to continue if
-   it fails, and only tags staging already ran. Production should move when a
-   person says so (`ops/deploy.sh production vX.Y.Z`), not on every tag.
-4. **Deploy one tag by hand**, watching it, before anything automatic.
-
-`ops/systemd/` holds a timer from the first design of this, written for a
-root-owned checkout at `/opt/diagnostic.ar` and never installed. Whatever runs
-production's deploy (that timer or cron) calls `ops/deploy.sh production`.
+`ops/deploy.sh production`, run by a person as `<usuario>`, deploys the
+release staging runs at that moment: a `pg_dump` first, which stops the deploy
+if it fails, then the same pull, smoke test and rollback as staging. It never
+runs from cron and refuses without a terminal. `PRODUCTION.md` is the runbook,
+including the one-time setup and the way back to the hand-built stack.
 
 Why production is riskier than staging, concretely:
 
 - **Staging shares the host with production.** A compose command that resolves
   to the wrong project name hits live clinical data. Every command carries an
-  explicit `-p`.
+  explicit `-p`, and `ops/production.sh` refuses to run as any account but
+  `<usuario>`.
 - **Migrations run on every backend boot.** A bad migration breaks the deploy
-  *and* the data. This is what the pre-deploy `pg_dump` is for, and why an
-  unrehearsed restore is the biggest open risk in this repository.
+  *and* the data. This is what the pre-deploy `pg_dump` is for, and what
+  `ops/production.sh rehearse-restore` checks before the first deploy.
 - **Rollback restores the image, not the database.** If a migration corrupts
   data, going back to the previous tag does not undo it.
 
@@ -525,29 +513,31 @@ ssh nodo0-diagnostic.ar diagnostic.ar/diagnostic.ar-staging/ops/deploy.sh stagin
 
 ### 6. Production
 
-Not through the pipeline yet; see *Production: what is left*.
+When staging has run it long enough, as `<usuario>` on nodo0:
+
+```bash
+cd ~/diagnostic.ar-production && ops/deploy.sh production
+```
+
+See `PRODUCTION.md`.
 
 ---
 
 ## Backup restore
 
-Nothing has ever restored a backup of production. Until a restore has been
-rehearsed, treat the backups as unverified.
-
-Rehearse on staging, never on production, with a dump **of staging**: take a
-`pg_dump` of the staging database, recreate it empty (`ops/staging.sh
-reset-db`), load the dump back with `psql` in the `db` container, and run
-`ops/staging.sh smoke` and a real search to confirm the data is there. A
-production dump must never land on the staging volume: that contradicts the
-synthetic-data rule.
-
-Do this quarterly. An unverified backup is not a backup.
+`ops/production.sh rehearse-restore [DUMP] [TAG]` restores a production dump
+into a throwaway Postgres that has no network and keeps its data in memory,
+compares the row counts with production's, and optionally runs a release's
+migrations on the copy. It touches no volume, staging's included. Run it
+before the first production deploy and every quarter after
+(`PRODUCTION.md`, step 4). A production dump never goes near staging: that
+would break the synthetic-data rule.
 
 ---
 
 ## Known gaps
 
-- **No automated restore test.** The largest remaining gap for a system holding
+- **The restore test is run by hand.** The largest remaining gap for a system holding
   clinical data. See above.
 - **No uptime monitoring.** The deploy smoke test covers the moment of release;
   it does not notice a database filling its disk at 03:00.
@@ -559,5 +549,5 @@ Do this quarterly. An unverified backup is not a backup.
   a stricter supply chain, pin to SHAs.
 - **`apk upgrade` makes builds non-reproducible.** Pin a base digest when that
   matters more than convenience.
-- **brainy is not covered.** Production's model services there are deployed by
-  hand.
+- **The backups are not rotated.** One dump per production deploy accumulates
+  in `~<usuario>/backups/diagnosticar`.

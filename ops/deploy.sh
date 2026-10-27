@@ -13,8 +13,13 @@
 #   ops/deploy.sh staging --rollback   # back to the release before the current one
 #   ops/deploy.sh staging --status     # what runs, what is newest, and the end of the log
 #
-# Only staging for now. Production joins once it runs from GHCR images too
-# (CI_CD.md, "Production").
+# Production never follows tags: it moves when a person runs it, from a
+# terminal, as the account that owns production (PRODUCTION.md).
+#
+#   ops/deploy.sh production           # deploy the release staging runs now
+#   ops/deploy.sh production v0.10.1   # the same, naming it; refused if staging runs another
+#   ops/deploy.sh production --rollback
+#   ops/deploy.sh production --status
 #
 # Each release is attempted once. A tag that failed is not retried; fix forward
 # with the next tag. Deploying a tag by hand moves nothing back: cron only acts
@@ -34,8 +39,51 @@ log() { echo "[$(date -Is)] $*"; }
 die() { log "ERROR: $*"; exit 1; }
 
 usage() {
-  echo "usage: ops/deploy.sh staging [vX.Y.Z | --rollback | --status]" >&2
+  echo "usage: ops/deploy.sh {staging|production} [vX.Y.Z | --rollback | --status]" >&2
   exit 2
+}
+
+STAGING_URL="${STAGING_URL:-https://staging.diagnosticar.infra.cluster.qb.fcen.uba.ar}"
+
+# The release staging's backend reports; empty when it predates the field.
+staging_release() {
+  curl -sf --max-time 10 "$STAGING_URL/api/health" \
+    | sed -n 's/.*"release":"\([^"]*\)".*/\1/p'
+}
+
+# Sets TAG and REF to what production should move to, and asks the person
+# running this to confirm it by typing the tag.
+choose_production_release() {
+  local arg=$1 staged answer
+  [ -t 0 ] || die "production moves when a person says so: run this from a terminal"
+  staged="$(staging_release || true)"
+  case "$arg" in
+    --rollback)
+      TAG="$(read_state previous)"
+      REF="$(read_state previous-ref)"
+      [ -n "$TAG" ] || die "no previous release recorded"
+      ;;
+    "")
+      [ -n "$staged" ] || die "staging does not report its release; name it: ops/deploy.sh production vX.Y.Z"
+      TAG="$staged"
+      REF="refs/tags/$TAG"
+      ;;
+    *)
+      [[ "$arg" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "not a release tag: $arg"
+      if [ -n "$staged" ] && [ "$arg" != "$staged" ]; then
+        die "staging runs $staged, not $arg; production only takes the release staging runs"
+      fi
+      TAG="$arg"
+      REF="refs/tags/$TAG"
+      ;;
+  esac
+  [ "$arg" = --rollback ] || published "$TAG" || die "$TAG is not fully published on GHCR"
+
+  echo "Production runs: $(read_state current || true)"
+  echo "Staging runs:    ${staged:-unknown}"
+  echo "About to deploy: $TAG"
+  read -rp "Type $TAG to deploy it to production: " answer
+  [ "$answer" = "$TAG" ] || die "not confirmed; nothing was deployed"
 }
 
 newest_tag() {
@@ -162,6 +210,10 @@ main() {
       IMAGES=(diagnosticar-backend diagnosticar-frontend-staging diagnosticar-hpo-recognizer
               diagnosticar-model diagnosticar-question-agent)
       ;;
+    production)
+      IMAGES=(diagnosticar-backend diagnosticar-frontend diagnosticar-hpo-recognizer
+              diagnosticar-model diagnosticar-question-agent)
+      ;;
     *) usage ;;
   esac
 
@@ -171,6 +223,11 @@ main() {
   if [ "${2:-}" = --status ]; then
     status
     return 0
+  fi
+
+  local TAG="" REF=""
+  if [ "$ENVIRONMENT" = production ]; then
+    choose_production_release "${2:-}"
   fi
 
   # One deploy at a time: cron fires every five minutes and a first pull takes longer.
@@ -185,6 +242,11 @@ main() {
     mv "$log_file" "$log_file.1"
   fi
   exec > >(tee -a "$log_file") 2>&1
+
+  if [ "$ENVIRONMENT" = production ]; then
+    deploy "$TAG" "$REF"
+    return
+  fi
 
   case "${2:-}" in
     "") follow ;;

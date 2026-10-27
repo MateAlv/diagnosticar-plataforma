@@ -1,5 +1,5 @@
 .PHONY: up down logs shell-frontend shell-backend \
-        up-prod down-prod logs-prod config-prod \
+        promote prod-rollback prod-status prod-backup prod-smoke prod-logs config-prod \
         ci test test-backend test-frontend test-e2e lint typecheck \
         staging-up staging-down staging-logs staging-smoke \
         staging-deploy staging-rollback staging-status smoke
@@ -58,18 +58,29 @@ test-frontend:
 test-e2e:
 	cd frontend && npm run build && npm run test:e2e
 
-# --- Production (nodo0) ----------------------------------------------------
-up-prod:
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+# --- Production (nodo0, as <usuario>; PRODUCTION.md) ----------------------
+# There is no target that builds, stops or resets production. It runs the
+# images a release tag already ran on staging.
+promote:
+	ops/deploy.sh production $(TAG)
 
-down-prod:
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+prod-rollback:
+	ops/deploy.sh production --rollback
 
-logs-prod:
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
+prod-status:
+	ops/deploy.sh production --status
+
+prod-backup:
+	ops/production.sh backup
+
+prod-smoke:
+	ops/production.sh smoke
+
+prod-logs:
+	ops/production.sh logs
 
 config-prod:
-	docker compose --env-file .env -f docker-compose.yml -f docker-compose.prod.yml config
+	docker compose -p diagnosticar --env-file .env -f docker-compose.yml -f docker-compose.prod.yml config
 
 smoke:
 	ops/smoke.sh

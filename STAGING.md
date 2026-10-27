@@ -172,35 +172,28 @@ with it — silently, often after generating a password and before printing it.
 Bit both `make-staging-env.sh` and `seed-admin.sh`. Use
 `head -c 256 /dev/urandom | tr -dc ... | cut -c1-N`.
 
-### Staging shares production's tunnel to brainy
+### Every model service runs on nodo0
 
-Both bridge to the same reverse SSH tunnel on host ports `18100` and `18120`.
-Read-only inference calls, so sharing is fine and no change is needed on
-brainy — but **if the tunnel is down, both environments lose the model
-services**. Check with:
+Staging reaches nothing on brainy. `hpo-recognizer` answers every path under
+`/hpo-api` (extraction, the Spanish symptom search and specialties) and `model`
+answers `/genphenai`. Until October 2026 search and specialties still went to
+brainy through a reverse SSH tunnel shared with production, in two socat
+containers (`hpo-tunnel`, `genphenai-tunnel`); the gateway in the recognizer's
+image answers the same search with the same results, so they were removed.
+Production runs the same layout (`PRODUCTION.md`).
 
-```bash
-ss -ltnH '( sport = :18100 or sport = :18120 )'
-```
+The smoke test checks all three through the public host: a symptom search
+must find Seizure, `/hpo-api/healthz` must report extraction ready, and
+`/genphenai/healthz` must answer ok.
 
-### Symptom extraction on staging runs on nodo0, not brainy
+### Symptom extraction
 
-Because the tunnel is shared, turning the Spanish symptom recognizer on in
-brainy's gateway would turn it on for production. Staging runs its own
-gateway instead — `hpo-recognizer`, a CPU container in this compose project —
-and a Traefik router one priority above `hpo-tunnel`'s takes only
-`/hpo-api/extract-hpo`. Search and specialties still go to brainy.
-
-It starts **unrouted** (`HPO_RECOGNIZER_ROUTED` defaults to `false`), so a
-deploy runs the container without sending it traffic. To switch it on, in
-`.env.staging`, in this order:
+`hpo-recognizer` needs, in `.env.staging`:
 
 1. `STAGING_JWT_ACCESS_PRIVATE_KEY` / `STAGING_JWT_ACCESS_PUBLIC_KEY` — an RSA
-   pair (`openssl genrsa 2048`), each on one line with `\n` escapes, and
-   `STAGING_JWT_ACCEPT_LEGACY_HS256=true` for one access-token lifetime (15
-   min) so open sessions survive; then set it back to `false`. The gateway
-   verifies sessions with the public half, so the backend must sign RS256
-   before anything is routed — otherwise every extraction is a 401.
+   pair (`openssl genrsa 2048`), each on one line with `\n` escapes. The
+   gateway verifies sessions with the public half, so without them every
+   extraction is a 401.
 2. `STAGING_CLAUDE_CODE_OAUTH_TOKEN` — from `claude setup-token`.
 3. `STAGING_TRUSTED_PROXIES` — Traefik's own address on
    `internal-nodo0-web` (172.22.0.7 on 2026-09-24:
@@ -209,18 +202,17 @@ deploy runs the container without sending it traffic. To switch it on, in
    `X-Forwarded-For`. Without this the per-IP limit keys on Traefik and one
    caller throttles everyone — which is also what a stale address looks like,
    so re-check it when extraction starts returning 429s.
-4. `HPO_RECOGNIZER_TAG` — the image tag to run.
+4. `HPO_RECOGNIZER_TAG`, optionally — an image tag other than the release's,
+   to roll the recognizer back alone.
 
-Run `ops/staging.sh up vX.Y.Z`, then check the container before routing:
+To look at the container directly:
 
 ```bash
 docker exec diagnosticar-staging-hpo-recognizer-1 \
   python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/healthz').read().decode())"
 ```
 
-`extract_hpo.ready` must be `true`; when it is not, `error` says why. Then set
-`HPO_RECOGNIZER_ROUTED=true` and `up` again. Routing back is the same variable
-set to `false` — nothing has to be stopped.
+`extract_hpo.ready` must be `true`; when it is not, `error` says why.
 
 Every account on nodo0 can reach the Docker socket, so any of them can read
 the container's environment, token included. Prefer a token from an account
@@ -256,11 +248,10 @@ docker exec diagnosticar-staging-hpo-recognizer-1 python -c "import urllib.reque
 When it runs out, the wizard says so and points to the symptom search, which
 spends nothing.
 
-### Gene ranking on staging runs on nodo0 too
+### Gene ranking
 
-For the same reason, staging has its own GenPhenAI: `model`, with the
-GenPhenia model inside (ONNX on the CPU, ~90 MiB, no secret). Since
-2026-10-15 it is `model-v4.0.0` of diagnostic.ar-model, pinned by sha256 in
+`model` is GenPhenAI with the GenPhenia model inside (ONNX on the CPU, ~90
+MiB, no secret). Since 2026-10-15 it is `model-v4.0.0` of diagnostic.ar-model, pinned by sha256 in
 the API's `services/genphenai/model.lock`: the v4 network, and v4-layer on its
 logits, which reads the patient's sex, age and onset (ADR-0020 in
 diagnostic.ar-training). Production still runs v3.0 on brainy, and moves only
@@ -277,11 +268,6 @@ with Mateo's go.
   runs the release's 32 fixture cases through the deployed service, without
   and with the layer's inputs, and reports the latency. It must print
   `all checks passed`.
-
-`MODEL_ROUTED=true` in `.env.staging` sends `/genphenai` to it: a router one
-priority above `genphenai-tunnel`'s takes the path. With both it and the
-recognizer routed, staging reaches brainy for nothing but the incumbent's
-search and specialties. Routing back is the same variable set to `false`.
 
 ### Follow-up questions (question agent)
 

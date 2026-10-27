@@ -127,6 +127,7 @@ case "${1:-up}" in
     SMOKE_FRONTEND_URL="https://${STAGING_HOST}" \
     SMOKE_BACKEND_URL="https://${STAGING_HOST}" \
     SMOKE_HEALTH_PATH="/api/health" \
+    SMOKE_MODEL_SERVICES=true \
       "$REPO_ROOT/ops/smoke.sh"
     ;;
   reset-db)

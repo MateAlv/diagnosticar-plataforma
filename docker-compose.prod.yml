@@ -1,9 +1,13 @@
-version: "3.8"
-
-networks:
-  traefik_net:
-    external: true
-    name: ${TRAEFIK_NETWORK:-internal-nodo0-web}
+# Production stack for nodo0, compose project `diagnosticar`.
+#
+# The same services as docker-compose.staging.yml, under production's names and
+# host: every service runs on nodo0, and nothing goes through an SSH tunnel to
+# brainy. ops/production.sh runs it with docker-compose.deploy.yml, so each
+# deploy pulls the images a release tag already ran on staging.
+#
+# The database volume is postgres_data from docker-compose.yml, which the
+# project name turns into diagnosticar_postgres_data: the volume production has
+# always used. Renaming either would start production on an empty database.
 
 services:
   db:
@@ -14,6 +18,11 @@ services:
     init: true
     environment:
       NODE_ENV: production
+      # RS256, so hpo-recognizer can verify a session with the public key
+      # alone. Unset, the backend signs HS256 and every extraction is a 401.
+      JWT_ACCESS_PRIVATE_KEY: ${JWT_ACCESS_PRIVATE_KEY:-}
+      JWT_ACCESS_PUBLIC_KEY: ${JWT_ACCESS_PUBLIC_KEY:-}
+      JWT_ACCEPT_LEGACY_HS256: ${JWT_ACCEPT_LEGACY_HS256:-false}
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
@@ -49,47 +58,101 @@ services:
       - default
       - traefik_net
 
-  # Bridges browser traffic routed by Traefik to the reverse SSH tunnel endpoints on nodo0.
-  hpo-tunnel:
-    image: alpine/socat:1.8.0.1
-    command:
-      - "TCP-LISTEN:8000,fork,reuseaddr"
-      - "TCP:host.docker.internal:18100"
+  # Everything under /hpo-api: extraction, the Spanish symptom search and
+  # specialties. See docker-compose.staging.yml for each setting; only the
+  # names, the host and the secrets differ.
+  #
+  # Its routers are named apart from the old hpo-tunnel's and sit one priority
+  # above them, so while both exist during the first deploy this one answers.
+  hpo-recognizer:
+    image: ghcr.io/${GHCR_OWNER:-matealv}/diagnosticar-hpo-recognizer:${HPO_RECOGNIZER_TAG:-${RELEASE_TAG:-latest}}
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    init: true
+    environment:
+      USE_RECOGNIZER: "true"
+      # claude-cli with CLAUDE_CODE_OAUTH_TOKEN (a subscription, as on
+      # staging), or anthropic with ANTHROPIC_API_KEY (an organisation key).
+      # Which one production uses is Mate's call; see PRODUCTION.md.
+      RECOGNIZER_PROVIDER: ${RECOGNIZER_PROVIDER:-claude-cli}
+      RECOGNIZER_MODEL: ${RECOGNIZER_MODEL:-claude-opus-5}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ENABLE_SYMPTOM_EXTRACTION: "false"
+      # The record would hold the clinical text itself.
+      STORE_REQUESTS: "false"
+      CACHE_ENABLED: "false"
+      REQUIRE_AUTH: "true"
+      JWT_PUBLIC_KEY: ${JWT_ACCESS_PUBLIC_KEY:-}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      RATE_LIMIT_PER_MINUTE: ${RECOGNIZER_RATE_LIMIT_PER_MINUTE:-10}
+      MAX_CONCURRENT_EXTRACTIONS: ${RECOGNIZER_MAX_CONCURRENT:-2}
+      RECOGNIZER_LLM_THREADS: ${RECOGNIZER_LLM_THREADS:-16}
+      LLM_REQUESTS_BURST: ${RECOGNIZER_LLM_BURST:-20}
+      USER_EXTRACTIONS_PER_HOUR: ${RECOGNIZER_USER_PER_HOUR:-20}
+      USER_EXTRACTIONS_PER_DAY: ${RECOGNIZER_USER_PER_DAY:-60}
+      GLOBAL_EXTRACTIONS_PER_5H: ${RECOGNIZER_GLOBAL_PER_5H:-40}
+      GLOBAL_EXTRACTIONS_PER_WEEK: ${RECOGNIZER_GLOBAL_PER_WEEK:-1344}
+      EXTRACTION_BUDGET_STATE: /var/lib/recognizer/budget.json
+    volumes:
+      - recognizer_state:/var/lib/recognizer
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
-      - "traefik.http.services.diagnosticar-hpo.loadbalancer.server.port=8000"
-      - "traefik.http.routers.diagnosticar-hpo.rule=Host(`${DIAGNOSTICAR_HOST}`) && PathPrefix(`/hpo-api`)"
-      - "traefik.http.routers.diagnosticar-hpo.entrypoints=websecure"
-      - "traefik.http.routers.diagnosticar-hpo.tls=true"
-      - "traefik.http.routers.diagnosticar-hpo.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
-      - "traefik.http.routers.diagnosticar-hpo.priority=230"
-      - "traefik.http.routers.diagnosticar-hpo.middlewares=diagnosticar-hpo-strip"
-      - "traefik.http.middlewares.diagnosticar-hpo-strip.stripprefix.prefixes=/hpo-api"
+      - "traefik.http.services.diagnosticar-hpo-recognizer.loadbalancer.server.port=8000"
+      - "traefik.http.routers.diagnosticar-hpo-recognizer.rule=Host(`${DIAGNOSTICAR_HOST}`) && PathPrefix(`/hpo-api`)"
+      - "traefik.http.routers.diagnosticar-hpo-recognizer.entrypoints=websecure"
+      - "traefik.http.routers.diagnosticar-hpo-recognizer.tls=true"
+      - "traefik.http.routers.diagnosticar-hpo-recognizer.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
+      - "traefik.http.routers.diagnosticar-hpo-recognizer.priority=240"
+      - "traefik.http.routers.diagnosticar-hpo-recognizer.middlewares=diagnosticar-hpo-recognizer-strip"
+      - "traefik.http.middlewares.diagnosticar-hpo-recognizer-strip.stripprefix.prefixes=/hpo-api"
     networks:
       - traefik_net
 
-  genphenai-tunnel:
-    image: alpine/socat:1.8.0.1
-    command:
-      - "TCP-LISTEN:18020,fork,reuseaddr"
-      - "TCP:host.docker.internal:18120"
+  # GenPhenAI with the model baked in, answering /genphenai.
+  model:
+    image: ghcr.io/${GHCR_OWNER:-matealv}/diagnosticar-model:${MODEL_IMAGE_TAG:-${RELEASE_TAG:-latest}}
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    init: true
+    environment:
+      CORS_ORIGINS: https://${DIAGNOSTICAR_HOST}
+      V4_LAYER_ENABLED: ${V4_LAYER_ENABLED:-true}
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK:-internal-nodo0-web}"
-      - "traefik.http.services.diagnosticar-genphenai.loadbalancer.server.port=18020"
-      - "traefik.http.routers.diagnosticar-genphenai.rule=Host(`${DIAGNOSTICAR_HOST}`) && PathPrefix(`/genphenai`)"
-      - "traefik.http.routers.diagnosticar-genphenai.entrypoints=websecure"
-      - "traefik.http.routers.diagnosticar-genphenai.tls=true"
-      - "traefik.http.routers.diagnosticar-genphenai.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
-      - "traefik.http.routers.diagnosticar-genphenai.priority=230"
-      - "traefik.http.routers.diagnosticar-genphenai.middlewares=diagnosticar-genphenai-strip"
-      - "traefik.http.middlewares.diagnosticar-genphenai-strip.stripprefix.prefixes=/genphenai"
+      - "traefik.http.services.diagnosticar-model.loadbalancer.server.port=18020"
+      - "traefik.http.routers.diagnosticar-model.rule=Host(`${DIAGNOSTICAR_HOST}`) && PathPrefix(`/genphenai`)"
+      - "traefik.http.routers.diagnosticar-model.entrypoints=websecure"
+      - "traefik.http.routers.diagnosticar-model.tls=true"
+      - "traefik.http.routers.diagnosticar-model.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-leresolver}"
+      - "traefik.http.routers.diagnosticar-model.priority=240"
+      - "traefik.http.routers.diagnosticar-model.middlewares=diagnosticar-model-strip"
+      - "traefik.http.middlewares.diagnosticar-model-strip.stripprefix.prefixes=/genphenai"
     networks:
       - traefik_net
+      - default
+
+  # Follow-up questions, called only by the backend: off traefik_net and
+  # without labels, like staging's.
+  question-agent:
+    image: ghcr.io/${GHCR_OWNER:-matealv}/diagnosticar-question-agent:${QUESTION_AGENT_TAG:-${RELEASE_TAG:-latest}}
+    profiles: !reset []
+    restart: unless-stopped
+    init: true
+    environment:
+      PREGUNTAS_MODEL_SERVICE_URL: http://model:18020
+      # The same credential as hpo-recognizer; PREGUNTAS_LLM_PROVIDER picks
+      # claude-cli or anthropic, as RECOGNIZER_PROVIDER does there.
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    extra_hosts: !reset []
+    networks:
+      - default
+
+networks:
+  traefik_net:
+    external: true
+    name: ${TRAEFIK_NETWORK:-internal-nodo0-web}
+
+volumes:
+  recognizer_state:

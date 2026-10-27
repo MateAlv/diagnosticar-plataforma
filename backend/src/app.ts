@@ -61,11 +61,14 @@ export function createApp() {
     // PathPrefix(`/api`); a bare /health never reaches the container through
     // the proxy, which made the deploy smoke test unable to see a healthy
     // backend.
+    //
+    // `release` is the tag the deploy ran, so production can ask staging what
+    // it runs (ops/deploy.sh production). Absent outside a tagged deploy.
     app.get(['/health', '/api/health'], async (req, res) => {
         try {
             const { query } = await import('./database/pool.js');
             await query('SELECT 1');
-            res.json({ status: 'ok' });
+            res.json({ status: 'ok', release: process.env.RELEASE_TAG || undefined });
         } catch {
             res.status(503).json({ status: 'error', detail: 'database unreachable' });
         }

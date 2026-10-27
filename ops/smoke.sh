@@ -84,5 +84,23 @@ echo "$body" | grep -q 'Diagnostic.ar' || fail "/home did not contain the produc
 echo "$body" | grep -q 'Ã©\|Ã³\|â€' && fail "/home contains mojibake — check charset handling"
 ok "landing page renders"
 
+# The model services live on the same public host as the frontend on nodo0.
+# Locally they are usually not running, so the check is opt-in.
+if [ "${SMOKE_MODEL_SERVICES:-false}" = true ]; then
+  echo "==> Model services answer on this host"
+  body=$(curl -sf "${AUTH[@]}" --max-time 10 "$FRONTEND_URL/hpo-api/hpo/es/search?q=convulsiones&limit=3") \
+    || fail "/hpo-api symptom search did not answer"
+  echo "$body" | grep -q '"HP:0001250"' || fail "symptom search did not find Seizure: $body"
+  ok "symptom search"
+  body=$(curl -sf "${AUTH[@]}" --max-time 10 "$FRONTEND_URL/hpo-api/healthz") \
+    || fail "/hpo-api/healthz did not answer"
+  echo "$body" | grep -q '"ready":true' || fail "symptom extraction is not ready: $body"
+  ok "symptom extraction ready"
+  body=$(curl -sf "${AUTH[@]}" --max-time 10 "$FRONTEND_URL/genphenai/healthz") \
+    || fail "/genphenai/healthz did not answer"
+  echo "$body" | grep -q '"status":"ok"' || fail "gene ranking is not ok: $body"
+  ok "gene ranking ($(echo "$body" | grep -o '"release":"[^"]*"' | head -1))"
+fi
+
 echo
 echo "SMOKE PASS"
