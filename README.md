@@ -19,6 +19,10 @@ commits y todas las versiones, pero por seguridad sacamos los datos del servidor
 de la facultad donde corre el sistema (direcciones, usuarios y accesos). Los
 pull requests quedaron en el repositorio original, que es privado.
 
+Está archivada a propósito: es la foto de la versión entregada (v0.10.4) y no
+recibe cambios. El desarrollo sigue en el repositorio de trabajo, al que el
+jurado puede pedir acceso.
+
 ## Qué hay acá
 
 Este repositorio tiene la web (Next.js), el backend (Node.js) y todo lo
